@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { retireMovedCheckupDrafts } from "@/lib/automation-events";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { ensureConversationForClient, normalizeConversationsForBusiness } from "@/lib/inbox-server";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
@@ -1800,6 +1801,8 @@ export async function updateClientFollowUpReminderAction(
       notes: payload.notes?.trim() || null,
     },
   });
+  // A check-up nudge drafted for the old date no longer applies (Automations).
+  await retireMovedCheckupDrafts({ businessId: context.business.id, followUpReminderId: payload.id, remindAt });
 
   return respondWithClientRecord(context.business.id, payload.clientId);
 }

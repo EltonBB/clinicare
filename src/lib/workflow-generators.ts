@@ -310,6 +310,11 @@ const CHECKUP_LOOKBACK_HOURS = 24;
 /** Follow-up dates read per page while looking for ones still due. */
 const CHECKUP_SCAN_LIMIT = 1_000;
 
+/** A check-up nudge's key: one per follow-up reminder and date. */
+export function checkupDedupeKey(followUpReminderId: string, remindAt: Date): string {
+  return `CHECKUP_DUE:${followUpReminderId}:${remindAt.getTime()}`;
+}
+
 /**
  * Follow-up dates staff set on a client's record (Client › Appointments ›
  * Follow-up reminders) that have arrived: still "Scheduled", the client still
@@ -325,7 +330,7 @@ export async function findCheckupDueCandidates(args: {
 
   // A date already nudged (sent or skipped) is identified exactly by its
   // dedupe key, which carries the date; a date staff moved since is new (Codex).
-  const keyFor = (reminder: { id: string; remindAt: Date }) => `CHECKUP_DUE:${reminder.id}:${reminder.remindAt.getTime()}`;
+  const keyFor = (reminder: { id: string; remindAt: Date }) => checkupDedupeKey(reminder.id, reminder.remindAt);
 
   // Read page by page, dropping handled dates before the cap, so dates already
   // nudged can never hold the places of ones still due (Codex).

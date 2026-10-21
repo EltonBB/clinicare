@@ -26,6 +26,7 @@ import {
   queueMissedVisitMessage,
   queueVisitMessage,
   replaceRefusedBookingMessage,
+  retireMovedCheckupDrafts,
   retireVisitDrafts,
   visitEventForSave,
   suppressOpenReminders,
@@ -326,6 +327,12 @@ describe("one message per version of a visit", () => {
     ["a cancellation", { wasNewlyCancelled: true, newStatus: "CANCELLED" }, "cancelled"],
     ["a reset that retired a waiting confirmation", { bookingMessageRetired: true }, "booked"],
     ["a cancelled visit restored", { wasReactivated: true }, "booked"],
+    ["a later edit that retired a waiting moved notice", { visitNoticeRetired: "moved" }, "moved"],
+    [
+      "a later edit to a cancelled visit that retired its waiting notice",
+      { visitNoticeRetired: "cancelled", newStatus: "CANCELLED" },
+      "cancelled",
+    ],
     ["a status change only", {}, null],
   ])("tells the patient about %s", (_label, change, expected) => {
     const save = {
@@ -336,9 +343,10 @@ describe("one message per version of a visit", () => {
       clientChanged: false,
       bookingMessageRetired: false,
       wasReactivated: false,
+      visitNoticeRetired: null,
       ...change,
     };
-    expect(visitEventForSave(save)).toBe(expected);
+    expect(visitEventForSave(save as Parameters<typeof visitEventForSave>[0])).toBe(expected);
   });
 });
 
@@ -450,6 +458,25 @@ describe("suppressOpenReminders", () => {
   });
 });
 
+describe("retireMovedCheckupDrafts", () => {
+  it("withdraws a check-up nudge drafted for a date the clinic just moved", async () => {
+    const remindAt = new Date("2026-10-19T09:00:00.000Z");
+
+    await retireMovedCheckupDrafts({ businessId: "biz_1", followUpReminderId: "fr_1", remindAt });
+
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        followUpReminderId: "fr_1",
+        kind: "CHECKUP_DUE",
+        dedupeKey: { not: `CHECKUP_DUE:fr_1:${remindAt.getTime()}` },
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+      data: { status: "DISMISSED" },
+    });
+  });
+});
+
 describe("retireVisitDrafts", () => {
   it("covers nothing once the visit has moved on from the version the message described", async () => {
     mocks.appointment.findFirst.mockResolvedValue(null);
@@ -461,10 +488,16 @@ describe("retireVisitDrafts", () => {
     expect(mocks.appointmentReminder.updateMany).not.toHaveBeenCalled();
   });
 
-  it("withdraws the drafts that named the visit as it was, and says if a booking message was waiting", async () => {
-    const tx = { followUpDraft: { updateMany: vi.fn(), count: vi.fn().mockResolvedValue(1) } };
+  it("withdraws the drafts that named the visit as it was, and says which messages were waiting", async () => {
+    const tx = {
+      followUpDraft: {
+        updateMany: vi.fn(),
+        count: vi.fn().mockResolvedValue(1),
+        findMany: vi.fn().mockResolvedValue([{ dedupeKey: "VISIT_CHANGED:appt_1:moved:1:2" }]),
+      },
+    };
 
-    expect(await retireVisitDrafts(tx as never, "appt_1")).toEqual({ bookingMessageRetired: true });
+    expect(await retireVisitDrafts(tx as never, "appt_1")).toEqual({ bookingMessageRetired: true, visitNoticeRetired: "moved" });
 
     expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: {

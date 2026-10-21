@@ -320,6 +320,7 @@ export async function saveAppointmentAction(
     // A confirmation or welcome still waiting when this save reset the visit:
     // re-drafted below for the visit as it now stands.
     let bookingMessageRetired = false;
+    let visitNoticeRetired: "moved" | "cancelled" | null = null;
     // Editing a still-cancelled booking's client/time/staff/service: an open
     // offer's text was frozen from the OLD details, but Book reads the row's
     // current ones — so an accepted offer could book the client into a
@@ -570,7 +571,7 @@ export async function saveAppointmentAction(
             },
           });
           // The confirmation/notice drafts named the visit as it was.
-          ({ bookingMessageRetired } = await retireVisitDrafts(tx, payload.id));
+          ({ bookingMessageRetired, visitNoticeRetired } = await retireVisitDrafts(tx, payload.id));
         }
 
         const affectedClientIds = Array.from(
@@ -703,6 +704,7 @@ export async function saveAppointmentAction(
       timeChanged: readSlot !== null && readSlot.startAt.getTime() !== startAt.getTime(),
       clientChanged: readSlot !== null && readSlot.clientId !== payload.clientId,
       bookingMessageRetired,
+      visitNoticeRetired,
     });
     if (visitEvent) {
       await queueVisitMessage({ businessId: business.id, appointmentId: appointmentId!, event: visitEvent });

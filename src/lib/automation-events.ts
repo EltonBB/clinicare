@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { lockAppointmentShared } from "@/lib/row-locks";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
+import { checkupDedupeKey } from "@/lib/workflow-generators";
 
 const HOUR_MS = 3_600_000;
 
@@ -35,14 +36,42 @@ export function visitEventForSave(save: {
   timeChanged: boolean;
   clientChanged: boolean;
   bookingMessageRetired: boolean;
+  /** A moved or cancel notice still waiting when the save reset the visit. */
+  visitNoticeRetired: "moved" | "cancelled" | null;
 }): VisitEvent | null {
   const stands = save.newStatus === "PENDING" || save.newStatus === "CONFIRMED";
   if (save.isNew) return save.newStatus !== "CANCELLED" ? "booked" : null;
   if (save.wasNewlyCancelled) return "cancelled";
   if (stands && (save.clientChanged || save.wasReactivated)) return "booked";
   if (save.newStatus !== "CANCELLED" && save.timeChanged) return "moved";
+  // A notice the save withdrew is still owed, for the visit as it now is (Codex).
+  if (save.visitNoticeRetired === "cancelled" && save.newStatus === "CANCELLED") return "cancelled";
+  if (save.visitNoticeRetired === "moved" && stands) return "moved";
   if (stands && save.bookingMessageRetired) return "booked";
   return null;
+}
+
+/**
+ * A check-up date the clinic just changed: a nudge drafted for the old date,
+ * waiting or claimed but not yet sent, is withdrawn at once, so it can't go out
+ * beside the one the new date gets (Codex).
+ */
+export async function retireMovedCheckupDrafts(args: {
+  businessId: string;
+  followUpReminderId: string;
+  remindAt: Date;
+}): Promise<void> {
+  const { businessId, followUpReminderId, remindAt } = args;
+  await prisma.followUpDraft.updateMany({
+    where: {
+      businessId,
+      followUpReminderId,
+      kind: "CHECKUP_DUE",
+      dedupeKey: { not: checkupDedupeKey(followUpReminderId, remindAt) },
+      OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+    },
+    data: { status: "DISMISSED" },
+  });
 }
 
 /**
@@ -55,18 +84,28 @@ export function visitEventForSave(save: {
 export async function retireVisitDrafts(
   tx: Prisma.TransactionClient,
   appointmentId: string
-): Promise<{ bookingMessageRetired: boolean }> {
-  // Whether a confirmation or welcome was still waiting: the caller re-drafts
-  // it for the visit as it now stands (an unsent confirmation is still owed,
-  // say after a pending booking is confirmed — Codex).
+): Promise<{ bookingMessageRetired: boolean; visitNoticeRetired: "moved" | "cancelled" | null }> {
+  // Whether a confirmation or welcome, or a moved or cancel notice, was still
+  // waiting: the caller re-drafts it for the visit as it now stands (an unsent
+  // message is still owed, say after a pending booking is confirmed — Codex).
   const waitingBookingMessages = await tx.followUpDraft.count({
     where: { appointmentId, status: "PENDING", kind: { in: BOOKING_MESSAGE_KINDS } },
   });
+  const waitingNotices = await tx.followUpDraft.findMany({
+    where: { appointmentId, status: "PENDING", kind: "VISIT_CHANGED" },
+    select: { dedupeKey: true },
+  });
+  const visitNoticeRetired =
+    waitingNotices.length === 0
+      ? null
+      : waitingNotices.some((notice) => notice.dedupeKey?.includes(":cancelled:"))
+        ? "cancelled"
+        : "moved";
   await tx.followUpDraft.updateMany({
     where: { appointmentId, status: "PENDING", kind: { in: VISIT_DRAFT_KINDS } },
     data: { status: "DISMISSED" },
   });
-  return { bookingMessageRetired: waitingBookingMessages > 0 };
+  return { bookingMessageRetired: waitingBookingMessages > 0, visitNoticeRetired };
 }
 
 function isUniqueViolation(error: unknown) {
