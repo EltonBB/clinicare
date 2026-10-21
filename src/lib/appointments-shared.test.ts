@@ -801,6 +801,34 @@ describe("recordAppointmentAttendanceCore", () => {
     });
   });
 
+  it("withdraws the missed-visit message in the undo's own transaction", async () => {
+    // Withdrawn after the commit, it could dismiss the draft of a no-show
+    // recorded again in between (Codex).
+    mockGuardHit();
+
+    await recordAppointmentAttendanceCore({ ...WHERE, attended: true, now: NOW });
+
+    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        businessId: "biz_1",
+        appointmentId: "appt_1",
+        kind: "MISSED_VISIT",
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+      data: { status: "DISMISSED" },
+    });
+  });
+
+  it("withdraws nothing when recording a no-show, or when the undo changed nothing", async () => {
+    mockGuardHit();
+    await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW });
+
+    mockAttendanceMiss({ status: "COMPLETED", startAt: STARTED });
+    await recordAppointmentAttendanceCore({ ...WHERE, attended: true, now: NOW });
+
+    expect(mocks.followUpDraft.updateMany).not.toHaveBeenCalled();
+  });
+
   it("is a no-op success when the appointment is already in the requested state", async () => {
     mockAttendanceMiss({ status: "NO_SHOW", startAt: STARTED });
     expect(await recordAppointmentAttendanceCore({ ...WHERE, attended: false, now: NOW })).toMatchObject({

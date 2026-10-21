@@ -32,9 +32,9 @@ import { acquireSchedulingLock, hasSchedulingConflict } from "@/lib/scheduling-c
 import {
   queueMissedVisitMessage,
   queueVisitMessage,
+  retireMissedVisitDrafts,
   retireVisitDrafts,
   visitEventForSave,
-  withdrawMissedVisitMessage,
 } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { formatZonedDateKey, formatZonedTime24, parseZonedWallClock } from "@/lib/time-zone";
@@ -574,6 +574,13 @@ export async function saveAppointmentAction(
           return { conflict: true, error: APPOINTMENT_CONFLICT_ERROR };
         }
 
+        // Leaving a no-show (the guard above held it as one): its missed-visit
+        // message is withdrawn in this transaction, so a no-show recorded again
+        // after the commit keeps its own new draft (Codex).
+        if (toPrismaAppointmentStatus(payload.baselineStatus) === "NO_SHOW" && newStatus !== "NO_SHOW") {
+          await retireMissedVisitDrafts(tx, { businessId: business.id, appointmentId: payload.id });
+        }
+
         if (shouldResetReminders) {
           await tx.appointmentReminder.deleteMany({
             where: {
@@ -728,10 +735,9 @@ export async function saveAppointmentAction(
     }
     // A no-show recorded here, or one whose patient (or other details) was
     // corrected: the old missed-visit draft was retired with the reset.
+    // (Leaving a no-show withdrew its draft inside the transaction above.)
     if (newStatus === "NO_SHOW" && startAt.getTime() <= Date.now() && (previousStatus !== "NO_SHOW" || shouldResetReminders)) {
       await queueMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
-    } else if (previousStatus === "NO_SHOW" && newStatus !== "NO_SHOW") {
-      await withdrawMissedVisitMessage({ businessId: business.id, appointmentId: appointmentId! });
     }
 
     if (wasNewlyCancelled) {
@@ -896,10 +902,9 @@ export async function recordAppointmentAttendanceAction(
 
   if (outcome.changed) {
     revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
-    // Automations' missed-visit message, or its withdrawal on "Mark as attended".
-    if (attended) {
-      await withdrawMissedVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId });
-    } else {
+    // Automations' missed-visit message ("Mark as attended" withdrew it inside
+    // recordAppointmentAttendanceCore's transaction).
+    if (!attended) {
       await queueMissedVisitMessage({ businessId: business.id, appointmentId: outcome.appointmentId });
     }
   }

@@ -330,7 +330,7 @@ export async function replaceRefusedVisitMessage(args: {
 /**
  * Drafts the "we missed you" message when a visit is recorded as a no-show,
  * to go out after the clinic's delay (`sendAfter`). Undoing the no-show
- * withdraws it (withdrawMissedVisitMessage). Never throws, like queueVisitMessage.
+ * withdraws it (retireMissedVisitDrafts). Never throws, like queueVisitMessage.
  */
 export async function queueMissedVisitMessage(args: {
   businessId: string;
@@ -419,19 +419,24 @@ export async function queueMissedVisitMessage(args: {
   }
 }
 
-/** The no-show was undone ("Mark as attended"): a missed-visit message still waiting no longer applies. */
-export async function withdrawMissedVisitMessage(args: { businessId: string; appointmentId: string }): Promise<void> {
-  try {
-    await prisma.followUpDraft.updateMany({
-      // Waiting, or claimed but not yet sent: its last check before the send
-      // then refuses it, and it can't come back if the no-show is recorded
-      // again (Codex).
-      where: { ...args, kind: "MISSED_VISIT", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
-      data: { status: "DISMISSED" },
-    });
-  } catch (error) {
-    logger.error("Withdrawing a missed-visit message failed.", error, args);
-  }
+/**
+ * The no-show was undone ("Mark as attended", or a save to another status): a
+ * missed-visit message still waiting no longer applies. Runs inside the
+ * transaction that leaves NO_SHOW, so it only ever sees drafts for the no-show
+ * being undone: run after the commit, it could dismiss the draft of a no-show
+ * recorded again in between (Codex).
+ */
+export async function retireMissedVisitDrafts(
+  tx: Prisma.TransactionClient,
+  args: { businessId: string; appointmentId: string }
+): Promise<void> {
+  await tx.followUpDraft.updateMany({
+    // Waiting, or claimed but not yet sent: its last check before the send
+    // then refuses it, and it can't come back if the no-show is recorded
+    // again (Codex).
+    where: { ...args, kind: "MISSED_VISIT", OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
+    data: { status: "DISMISSED" },
+  });
 }
 
 /**

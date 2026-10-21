@@ -27,10 +27,10 @@ import {
   queueVisitMessage,
   replaceRefusedVisitMessage,
   retireMovedCheckupDrafts,
+  retireMissedVisitDrafts,
   retireVisitDrafts,
   visitEventForSave,
   suppressOpenReminders,
-  withdrawMissedVisitMessage,
 } from "./automation-events";
 
 const NOW = new Date("2026-10-20T08:00:00.000Z");
@@ -422,10 +422,12 @@ describe("queueMissedVisitMessage", () => {
     );
   });
 
-  it("withdraws a waiting (or claimed, not yet sent) missed-visit message when the no-show is undone", async () => {
-    await withdrawMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1" });
+  it("withdraws a waiting (or claimed, not yet sent) missed-visit message, inside the caller's transaction", async () => {
+    const tx = { followUpDraft: { updateMany: vi.fn() } };
+    await retireMissedVisitDrafts(tx as never, { businessId: "biz_1", appointmentId: "appt_1" });
 
-    expect(mocks.followUpDraft.updateMany).toHaveBeenCalledWith({
+    expect(mocks.followUpDraft.updateMany).not.toHaveBeenCalled();
+    expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
       where: {
         businessId: "biz_1",
         appointmentId: "appt_1",

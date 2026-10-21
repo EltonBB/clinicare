@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
-import { retireVisitDrafts } from "@/lib/automation-events";
+import { retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
 
@@ -354,6 +354,9 @@ export async function recordAppointmentAttendanceCore(args: {
     });
 
     await refreshClientLastVisitAt(updated.clientId, businessId, tx);
+    // The undo withdraws this no-show's missed-visit message in the same
+    // transaction, never a later one recorded after it commits.
+    if (attended) await retireMissedVisitDrafts(tx, { businessId, appointmentId: id });
 
     return mutationDone(updated, true);
   });

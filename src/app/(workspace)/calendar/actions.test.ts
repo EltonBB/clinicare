@@ -60,7 +60,7 @@ vi.mock("@/lib/automation-events", async (importOriginal) => ({
   visitEventForSave: (await importOriginal<typeof import("@/lib/automation-events")>()).visitEventForSave,
   queueVisitMessage: vi.fn(),
   queueMissedVisitMessage: vi.fn(),
-  withdrawMissedVisitMessage: vi.fn(),
+  retireMissedVisitDrafts: vi.fn(),
   retireVisitDrafts: vi.fn().mockResolvedValue({ bookingMessageRetired: false, visitNoticeRetired: null }),
 }));
 vi.mock("@/lib/prisma", () => ({
@@ -141,6 +141,7 @@ import {
   deleteAppointmentCore,
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
+import { queueMissedVisitMessage, retireMissedVisitDrafts } from "@/lib/automation-events";
 
 const BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const EXISTING = {
@@ -1437,6 +1438,40 @@ describe("saveAppointmentAction — no-show status", () => {
     ).toEqual({ ok: false, error: APPOINTMENT_ALREADY_NO_SHOW_ERROR });
     expect(mocks.appointment.updateMany).not.toHaveBeenCalled();
     expect(mocks.revalidateCalendarSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the missed-visit message inside the save's transaction when a no-show is corrected", async () => {
+    // After the commit it could dismiss the draft of a no-show recorded again
+    // in between (Codex).
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({ ...NO_SHOW_ROW, status: "COMPLETED" });
+    let inTransaction = false;
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => {
+      inTransaction = true;
+      try {
+        return await cb({ appointment: mocks.appointment, appointmentReminder: mocks.appointmentReminder, scheduleBlock: mocks.scheduleBlock });
+      } finally {
+        inTransaction = false;
+      }
+    });
+    let retiredInTransaction = false;
+    vi.mocked(retireMissedVisitDrafts).mockImplementation(async () => {
+      retiredInTransaction = inTransaction;
+    });
+
+    const result = await saveAppointmentAction({ ...PAYLOAD, status: "completed", baselineStatus: "no-show" });
+
+    expect(result.ok).toBe(true);
+    expect(retireMissedVisitDrafts).toHaveBeenCalledWith(expect.anything(), { businessId: "biz_1", appointmentId: "appt_1" });
+    expect(retiredInTransaction).toBe(true);
+    expect(queueMissedVisitMessage).not.toHaveBeenCalled();
+  });
+
+  it("leaves the missed-visit message alone when a no-show stays a no-show", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, status: "NO_SHOW" });
+
+    expect((await saveAppointmentAction({ ...NO_SHOW_PAYLOAD, baselineStatus: "no-show" })).ok).toBe(true);
+    expect(retireMissedVisitDrafts).not.toHaveBeenCalled();
   });
 
   it("refuses to relabel a cancelled booking as a no-show through the edit form", async () => {
