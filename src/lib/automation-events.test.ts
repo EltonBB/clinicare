@@ -119,7 +119,7 @@ describe("queueVisitMessage", () => {
     await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "booked", now: NOW });
 
     expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
-      where: { businessId: "biz_1", clientId: "client_1", kind: "NEW_PATIENT_WELCOME", status: "SENT" },
+      where: { businessId: "biz_1", clientId: "client_1", kind: "NEW_PATIENT_WELCOME", status: "SENT", sentAt: { not: null } },
     });
     expect(mocks.followUpDraft.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ kind: "BOOKING_CONFIRMATION" }) })
@@ -313,7 +313,7 @@ describe("one message per version of a visit", () => {
           businessId: "biz_1",
           clientId: "client_1",
           kind: "NEW_PATIENT_WELCOME",
-          OR: [{ status: "SENT" }, { status: "PENDING", appointment: { status: { in: ["PENDING", "CONFIRMED"] } } }],
+          OR: [{ status: "SENT", sentAt: { not: null } }, { status: { in: ["PENDING", "SENT"] }, appointment: { status: { in: ["PENDING", "CONFIRMED"] } } }],
         },
       })
     );

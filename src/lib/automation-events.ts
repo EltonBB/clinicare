@@ -148,12 +148,13 @@ export async function queueVisitMessage(args: {
           ],
         },
       });
-      // A welcome that went out stays on record even if the booking it was
-      // for is deleted later, so the patient isn't welcomed twice (Codex).
+      // A welcome that went out (delivered, not merely claimed) stays on record
+      // even if the booking it was for is deleted later, so the patient isn't
+      // welcomed twice (Codex).
       const welcomed =
         earlierVisits === 0 &&
         (await prisma.followUpDraft.count({
-          where: { businessId, clientId: appointment.clientId, kind: "NEW_PATIENT_WELCOME", status: "SENT" },
+          where: { businessId, clientId: appointment.clientId, kind: "NEW_PATIENT_WELCOME", status: "SENT", sentAt: { not: null } },
         })) > 0;
       kind = earlierVisits === 0 && !welcomed && !args.notNewPatient ? "NEW_PATIENT_WELCOME" : "BOOKING_CONFIRMATION";
     } else {
@@ -232,13 +233,13 @@ export async function queueVisitMessage(args: {
       const firstWelcome =
         kind === "NEW_PATIENT_WELCOME"
           ? await prisma.followUpDraft.findFirst({
-              // Sent, or still waiting for a booking that stands: a welcome left
+              // Delivered, or waiting (or being sent) for a booking that stands: a welcome left
               // over from a deleted or cancelled first booking can't win (Codex).
               where: {
                 businessId,
                 clientId: appointment.clientId,
                 kind,
-                OR: [{ status: "SENT" }, { status: "PENDING", appointment: { status: { in: ["PENDING", "CONFIRMED"] } } }],
+                OR: [{ status: "SENT", sentAt: { not: null } }, { status: { in: ["PENDING", "SENT"] }, appointment: { status: { in: ["PENDING", "CONFIRMED"] } } }],
               },
               orderBy: [{ createdAt: "asc" }, { id: "asc" }],
               select: { id: true },
