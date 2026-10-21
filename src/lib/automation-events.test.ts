@@ -406,6 +406,8 @@ describe("queueMissedVisitMessage", () => {
     mocks.followUpDraft.count.mockResolvedValue(1);
 
     expect(await queueMissedVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", now: NOW })).toBeNull();
+    // Checked under the visit's exclusive lock, so two callers can't both see none.
+    expect((mocks.$executeRaw.mock.calls[0][0] as string[]).join("?")).toContain("FOR NO KEY UPDATE");
     expect(mocks.followUpDraft.count).toHaveBeenCalledWith({
       where: {
         businessId: "biz_1",

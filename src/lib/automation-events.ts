@@ -5,7 +5,7 @@ import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomati
 import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
-import { lockAppointmentShared } from "@/lib/row-locks";
+import { lockAppointmentExclusive, lockAppointmentShared } from "@/lib/row-locks";
 import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 import { checkupDedupeKey } from "@/lib/workflow-generators";
 
@@ -381,12 +381,14 @@ export async function queueMissedVisitMessage(args: {
     if (!setting.enabled) return null;
 
     const delayHours = setting.timing ?? automationDefinition("MISSED_VISIT").defaultTiming ?? 1;
-    // Drafted only while it is still a no-show, checked under the visit's share
-    // lock: an undo ("Mark as attended") that lands meanwhile either waits for
-    // this draft and then withdraws it, or has committed and nothing is drafted
-    // — never a stale draft left behind that a later no-show would revive (Codex).
+    // Drafted only while it is still a no-show, checked under the visit's lock:
+    // an undo ("Mark as attended") that lands meanwhile either waits for this
+    // draft and then withdraws it, or has committed and nothing is drafted —
+    // never a stale draft left behind that a later no-show would revive (Codex).
+    // Exclusive, so two of these for one visit (an edit's and a refused send's
+    // replacement) run one at a time and the second sees the first's draft.
     return await prisma.$transaction(async (tx) => {
-      await lockAppointmentShared(tx, appointment.id);
+      await lockAppointmentExclusive(tx, appointment.id);
       // The same no-show as read: same patient and visit version, so an edit
       // that landed in between (and already retired the old drafts) isn't
       // drafted over with the details it replaced (Codex).
