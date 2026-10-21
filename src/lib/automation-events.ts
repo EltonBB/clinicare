@@ -140,11 +140,16 @@ export async function queueVisitMessage(args: {
   event: VisitEvent;
   now?: Date;
   /**
-   * The visit version the caller's save committed: nothing is said once a
-   * later edit has moved it on (that edit tells the patient where it stands
-   * now), so an older event can't be told to a newer patient or time (Codex).
+   * The visit version and patient the caller's save committed. Once a later
+   * edit has moved the visit on, the message is still owed to that patient
+   * (the later edit may say nothing itself, say a new service), drafted for
+   * the visit as it now stands; it is dropped only when the visit now belongs
+   * to another patient, who is never told the old one's news (Codex). A later
+   * edit that did say something wins through the one-message-per-version
+   * checks below.
    */
   generation?: number;
+  clientId?: string;
   /** Internal: another booking already holds this patient's welcome, so this one gets the confirmation. */
   notNewPatient?: boolean;
 }): Promise<string | null> {
@@ -172,7 +177,9 @@ export async function queueVisitMessage(args: {
       },
     });
     if (!appointment || appointment.startAt.getTime() <= now.getTime()) return null;
-    if (args.generation !== undefined && appointment.reminderGeneration !== args.generation) return null;
+    if (args.generation !== undefined && appointment.reminderGeneration !== args.generation && appointment.clientId !== args.clientId) {
+      return null;
+    }
 
     const business = appointment.business;
     // A clinic that set up WhatsApp gets the draft even while the link is down:

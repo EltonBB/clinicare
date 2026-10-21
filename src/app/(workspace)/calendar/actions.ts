@@ -733,6 +733,7 @@ export async function saveAppointmentAction(
         appointmentId: appointmentId!,
         event: visitEvent,
         generation: savedGeneration,
+        clientId: payload.clientId,
       });
     }
     // A no-show recorded here, or one whose patient was corrected, gets its
@@ -840,6 +841,7 @@ export async function cancelAppointmentAction(
       appointmentId: outcome.appointmentId,
       event: "cancelled",
       generation: outcome.generation,
+      clientId: outcome.clientId,
     });
   }
 

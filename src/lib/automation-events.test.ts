@@ -142,12 +142,27 @@ describe("queueVisitMessage", () => {
     });
   });
 
-  it("says nothing for a save the visit has moved on from since (a later edit)", async () => {
-    // The visit is at generation 2 now; this save committed generation 1.
+  it.each([
+    ["the visit now belongs to another patient", "client_2"],
+    ["the caller didn't say who the save was for", undefined],
+  ])("says nothing for a save the visit has moved on from when %s", async (_label, clientId) => {
+    // The visit is at generation 2 now, for client_1; this save committed generation 1.
     expect(
-      await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "moved", generation: 1, now: NOW })
+      await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "moved", generation: 1, clientId, now: NOW })
     ).toBeNull();
     expect(mocks.followUpDraft.create).not.toHaveBeenCalled();
+  });
+
+  it("still tells the same patient after a later detail-only edit, for the visit as it now stands", async () => {
+    // A later save changed only the service (generation 2) and said nothing
+    // itself; this save's moved notice is still owed (Codex).
+    expect(
+      await queueVisitMessage({ businessId: "biz_1", appointmentId: "appt_1", event: "moved", generation: 1, clientId: "client_1", now: NOW })
+    ).toBe("draft_1");
+    expect(mocks.followUpDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "VISIT_CHANGED", clientId: "client_1", appointmentGeneration: 2 }),
+      select: { id: true },
+    });
   });
 
   it("says nothing about a visit whose time has passed", async () => {

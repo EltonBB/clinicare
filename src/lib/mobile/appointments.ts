@@ -145,6 +145,7 @@ export async function cancelOwnAppointment(
     appointmentId: outcome.appointmentId,
     event: "cancelled",
     generation: outcome.generation,
+    clientId: outcome.clientId,
   });
 
   // Surface the cancellation to the admin in the staff↔admin thread so they can

@@ -141,7 +141,7 @@ import {
   deleteAppointmentCore,
   NO_SHOW_PLAN_ERROR,
 } from "@/lib/appointments-shared";
-import { queueMissedVisitMessage, retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
+import { queueMissedVisitMessage, queueVisitMessage, retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
 
 const BUSINESS = { id: "biz_1", plan: "PRO" as const };
 const EXISTING = {
@@ -1413,6 +1413,16 @@ describe("saveAppointmentAction — no-show status", () => {
     expect(mocks.appointment.create).not.toHaveBeenCalled();
   });
 
+  it("binds a save's visit message to the patient it was saved for", async () => {
+    mocks.appointment.findFirst.mockResolvedValue({ ...EXISTING, reminderGeneration: 3 });
+    mocks.appointment.findUniqueOrThrow.mockResolvedValue({ ...NO_SHOW_ROW, status: "CONFIRMED" });
+
+    expect((await saveAppointmentAction({ ...PAYLOAD, startTime: "10:00", endTime: "10:30" })).ok).toBe(true);
+    expect(queueVisitMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "moved", generation: 4, clientId: "client_1" })
+    );
+  });
+
   it("creates a new past no-show on Pro", async () => {
     mocks.appointment.create.mockResolvedValue({ id: "appt_1" });
 
@@ -1637,6 +1647,7 @@ describe("cancelAppointmentAction", () => {
       clientId: "client_1",
       staffMemberId: "staff_1",
       changed: true,
+      generation: 4,
     });
 
     const result = await cancelAppointmentAction("appt_1");
@@ -1644,6 +1655,14 @@ describe("cancelAppointmentAction", () => {
     expect(result).toEqual({ ok: true, appointmentId: "appt_1" });
     expect(mocks.cancelAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
     expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
+    // The notice is bound to the version and patient the cancel committed.
+    expect(queueVisitMessage).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      appointmentId: "appt_1",
+      event: "cancelled",
+      generation: 4,
+      clientId: "client_1",
+    });
   });
 });
 
