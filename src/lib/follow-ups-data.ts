@@ -10,7 +10,7 @@ import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { automationEnabledWhere } from "@/lib/automations-data";
-import { rebookedAppointmentWhere } from "@/lib/workflow-generators";
+import { checkupDedupeKey, rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
 // A draft is actionable while it's PENDING and what it's about still holds.
 // The list, the Inbox count and Send's compare-and-set all use this one
@@ -450,6 +450,8 @@ function flipDraftToSent(args: {
           body: true,
           kind: true,
           dedupeKey: true,
+          followUpReminderId: true,
+          followUpReminder: { select: { remindAt: true } },
           appointmentId: true,
           appointmentGeneration: true,
           clientId: true,
@@ -469,6 +471,18 @@ function flipDraftToSent(args: {
           draft.appointment.clientId !== draft.clientId)
       ) {
         throw new VisitChangedSinceDrafted(draft.kind, draft.appointment ? draft.appointmentId : null, draft.dedupeKey);
+      }
+
+      // A check-up nudge names one follow-up date: refused (and expired, like a
+      // changed visit's draft) once staff moved that date, however the old
+      // date's draft came about (Codex).
+      if (
+        draft.kind === "CHECKUP_DUE" &&
+        (!draft.followUpReminderId ||
+          !draft.followUpReminder ||
+          draft.dedupeKey !== checkupDedupeKey(draft.followUpReminderId, draft.followUpReminder.remindAt))
+      ) {
+        throw new VisitChangedSinceDrafted(draft.kind, null, draft.dedupeKey);
       }
 
       if (

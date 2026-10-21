@@ -262,7 +262,9 @@ export async function queueVisitMessage(args: {
     const sameVersion = { businessId, appointmentId: appointment.id, appointmentGeneration: appointment.reminderGeneration };
     if (kind === "VISIT_CHANGED") {
       await prisma.followUpDraft.updateMany({
-        where: { ...sameVersion, kind: { in: BOOKING_MESSAGE_KINDS }, status: "PENDING" },
+        // Waiting, or claimed but not yet sent (its last check then refuses it):
+        // a delivered one is left as it is (Codex).
+        where: { ...sameVersion, kind: { in: BOOKING_MESSAGE_KINDS }, OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
         data: { status: "DISMISSED" },
       });
     } else {

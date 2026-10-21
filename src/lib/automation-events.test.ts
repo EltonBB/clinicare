@@ -278,7 +278,8 @@ describe("one message per version of a visit", () => {
         appointmentId: "appt_1",
         appointmentGeneration: 2,
         kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"] },
-        status: "PENDING",
+        // Waiting, or claimed but not yet sent: a delivered one is left alone.
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
       },
       data: { status: "DISMISSED" },
     });

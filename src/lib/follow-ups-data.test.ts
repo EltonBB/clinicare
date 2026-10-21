@@ -216,6 +216,8 @@ function serveDrafts(rows: Row[]) {
       kind: row.kind,
       appointmentId: row.appointmentId ?? undefined,
       dedupeKey: row.dedupeKey ?? null,
+      followUpReminderId: row.followUpReminderId ?? null,
+      followUpReminder: row.followUpReminder ? { remindAt: (row.followUpReminder as Row).remindAt } : null,
       appointmentGeneration: row.appointmentGeneration ?? undefined,
       clientId: row.clientId,
       client: { phone: rowClient.phone ?? null, name: rowClient.name ?? null },
@@ -798,6 +800,23 @@ describe("follow-ups data layer — which drafts are actionable", () => {
         data: { status: "EXPIRED" },
       });
     }
+  });
+
+  it.each([
+    ["its date still matches", 0, true],
+    ["staff moved the date since it was drafted", 3_600_000, false],
+  ])("sends a check-up nudge only while %s", async (_label, shift, sendable) => {
+    const remindAt = new Date(NOW.getTime() - 2 * 3_600_000);
+    serveDrafts([
+      draftRow({
+        kind: "CHECKUP_DUE",
+        followUpReminderId: "fr_1",
+        dedupeKey: `CHECKUP_DUE:fr_1:${remindAt.getTime()}`,
+        followUpReminder: { id: "fr_1", status: "Scheduled", remindAt: new Date(remindAt.getTime() + shift) },
+      }),
+    ]);
+
+    expect(await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW })).toMatchObject({ ok: sendable });
   });
 
   it("owes a moved notice again when a later edit refuses it mid-send", async () => {
