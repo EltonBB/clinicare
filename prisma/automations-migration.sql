@@ -57,3 +57,9 @@ CREATE INDEX IF NOT EXISTS "FollowUpDraft_followUpReminderId_idx" ON "FollowUpDr
 
 -- PR #180: a visit draft remembers which version of the visit it was written for.
 ALTER TABLE "FollowUpDraft" ADD COLUMN IF NOT EXISTS "appointmentGeneration" INTEGER;
+
+-- PR #181: every automation can wait for review, the reminders included.
+ALTER TYPE "FollowUpDraftKind" ADD VALUE IF NOT EXISTS 'FIRST_REMINDER';
+ALTER TYPE "FollowUpDraftKind" ADD VALUE IF NOT EXISTS 'SECOND_REMINDER';
+ALTER TYPE "FollowUpDraftKind" ADD VALUE IF NOT EXISTS 'HIGH_RISK_REMINDER';
+ALTER TYPE "AppointmentReminderStatus" ADD VALUE IF NOT EXISTS 'DRAFTED';

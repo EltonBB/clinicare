@@ -1,15 +1,16 @@
 import { addHours } from "date-fns";
 
-import type { AutomationKind } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 import { renderAutomationMessage } from "@/lib/automations";
-import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
+import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 import { sendMessage } from "@/lib/messaging";
 import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import { prisma } from "@/lib/prisma";
+import { lockAppointmentShared } from "@/lib/row-locks";
 import { getReminderCursor, setReminderCursor } from "@/lib/reminder-cursor";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { reminderTypeForAppointment, type ReminderType } from "@/lib/reminder-schedule";
@@ -50,7 +51,107 @@ export type ReminderCronResult = ReminderSyncResult & {
 /** How long after a visit message was sent a due reminder still defers to it. */
 const VISIT_MESSAGE_RECENT_MS = 10 * 60_000;
 
-const REMINDER_AUTOMATION: Record<ReminderType, AutomationKind> = {
+const REVIEW_REMINDER_KINDS = ["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const;
+
+/**
+ * A more urgent reminder for this visit has just been drafted or sent: a
+ * longer-lead one still waiting in To review would now arrive after it,
+ * backwards (the order reminderTypeForAppointment keeps), so it is withdrawn
+ * (Codex). Reminders are only ever drafted in order of decreasing lead, so any
+ * other one still waiting is longer.
+ */
+async function retireLongerReminderDrafts(
+  client: Pick<Prisma.TransactionClient, "followUpDraft">,
+  appointmentId: string,
+  keep: (typeof REVIEW_REMINDER_KINDS)[number]
+): Promise<void> {
+  // Waiting, or claimed by staff but not yet sent: a claimed one is refused by
+  // its own re-check right before the send once it is no longer SENT (Codex).
+  await client.followUpDraft.updateMany({
+    where: {
+      appointmentId,
+      kind: { in: REVIEW_REMINDER_KINDS.filter((kind) => kind !== keep) },
+      OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+    },
+    data: { status: "DISMISSED" },
+  });
+}
+
+/**
+ * A reminder the clinic set to wait for review: the draft goes to To review
+ * and the reminder is recorded as handled (a person decides whether it goes
+ * out). Best-effort per reminder — a failed draft is retried on the next run,
+ * since the reminder isn't recorded then.
+ */
+async function draftReminderForReview(args: {
+  businessId: string;
+  appointmentId: string;
+  clientId: string;
+  /** The visit's reminderGeneration: the draft is refused once the visit changes. */
+  appointmentGeneration: number;
+  automationKind: "FIRST_REMINDER" | "SECOND_REMINDER" | "HIGH_RISK_REMINDER";
+  reminderType: ReminderType;
+  body: string;
+  dedupeKey: string;
+}): Promise<void> {
+  const { businessId, appointmentId, clientId, appointmentGeneration, automationKind, reminderType, body, dedupeKey } = args;
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Only for the visit as it was read: an edit that moved it on meanwhile
+      // has reset its reminders, and this run must not draft (or mark) the old
+      // version over them (Codex). The share lock makes an edit wait for this.
+      await lockAppointmentShared(tx, appointmentId);
+      const current = await tx.appointment.findFirst({
+        where: { id: appointmentId, businessId, reminderGeneration: appointmentGeneration },
+        select: { id: true },
+      });
+      if (!current) return;
+
+      // The marker first, and never over a SENT row: a booking message that
+      // covered this reminder meanwhile wins (Codex). A cover running at the
+      // same moment meets this insert on the unique row and waits for it, then
+      // sees the draft below and withdraws it.
+      // DRAFTED, not SENT: nothing reached the patient yet, so a "2" reply
+      // can't be read as an answer to it and the risk score doesn't count it.
+      await tx.appointmentReminder.createMany({
+        data: [{ appointmentId, type: reminderType, status: "DRAFTED" }],
+        skipDuplicates: true,
+      });
+      await tx.appointmentReminder.updateMany({
+        where: { appointmentId, type: reminderType, status: "FAILED" },
+        data: { status: "DRAFTED", sentAt: new Date() },
+      });
+      const marker = await tx.appointmentReminder.findUnique({
+        where: { appointmentId_type: { appointmentId, type: reminderType } },
+        select: { status: true },
+      });
+      if (marker?.status !== "DRAFTED") return;
+
+      await tx.followUpDraft.createMany({
+        data: [
+          {
+            businessId,
+            clientId,
+            appointmentId,
+            appointmentGeneration,
+            kind: automationKind,
+            status: "PENDING",
+            body,
+            dedupeKey,
+            autoSend: false,
+          },
+        ],
+        // Already drafted (an overlapping run): fine.
+        skipDuplicates: true,
+      });
+      await retireLongerReminderDrafts(tx, appointmentId, automationKind);
+    });
+  } catch (error) {
+    logger.error("Drafting a reminder for review failed.", error, { businessId, appointmentId, reminderType });
+  }
+}
+
+const REMINDER_AUTOMATION: Record<ReminderType, "FIRST_REMINDER" | "SECOND_REMINDER" | "HIGH_RISK_REMINDER"> = {
   TWENTY_FOUR_HOUR: "FIRST_REMINDER",
   TWO_HOUR: "SECOND_REMINDER",
   HIGH_RISK: "HIGH_RISK_REMINDER",
@@ -204,29 +305,19 @@ export async function syncAppointmentRemindersForBusiness(
       highRisk: { enabled: highRisk.enabled, hours: highRiskHours, isHighRisk: highRiskIds.has(appointment.id) },
       sentLeadHours: Object.fromEntries(
         appointment.reminders
-          .filter((reminder) => reminder.status === "SENT")
+          .filter((reminder) => reminder.status === "SENT" || reminder.status === "DRAFTED")
           .map((reminder) => [reminder.type, (appointment.startAt.getTime() - reminder.sentAt.getTime()) / 3_600_000])
       ),
-      // Only delivered reminders suppress a re-send; a FAILED row retries.
+      // Delivered (or drafted for review) reminders suppress a re-send; a
+      // FAILED row retries.
       sentTypes: new Set(
         appointment.reminders
-          .filter((reminder) => reminder.status === "SENT")
+          .filter((reminder) => reminder.status === "SENT" || reminder.status === "DRAFTED")
           .map((reminder) => reminder.type)
       ),
     });
 
     if (!reminderType) {
-      continue;
-    }
-
-    const clientPhone = normalizePhone(appointment.client.phone);
-    // Canonical dedup key (digits only) — the conversation is keyed on this so a
-    // reminder and the patient's later inbound reply resolve to the SAME row.
-    const clientPhoneKey = phoneLookupKey(appointment.client.phone);
-
-    if (!clientPhone || !clientPhoneKey) {
-      failed += 1;
-      progress.failed += 1;
       continue;
     }
 
@@ -241,6 +332,51 @@ export async function syncAppointmentRemindersForBusiness(
       staff_name: appointment.staffMember?.name ?? business.name,
       clinic_name: business.name,
     });
+    // The clinic may have changed this reminder (off, to review, to automatic)
+    // since this run read its settings: re-read before acting on the mode,
+    // whichever it now is (Codex).
+    const latest = (await getAutomationSettings(businessId))[automationKind];
+    if (!latest.enabled) {
+      continue;
+    }
+    // A new timing or wording saved meanwhile: whether it is due, and what it
+    // says, came from the old one. Left alone; the next run (minutes away)
+    // works it out from the new setting (Codex).
+    if (latest.timing !== settings[automationKind].timing || latest.template !== settings[automationKind].template) {
+      continue;
+    }
+
+    if (latest.mode === "REVIEW") {
+      // Set to wait for review: drafted for To review (a person sends it) and
+      // recorded as handled, so later runs don't draft it again.
+      await draftReminderForReview({
+        businessId,
+        appointmentId: appointment.id,
+        clientId: appointment.client.id,
+        appointmentGeneration: appointment.reminderGeneration,
+        automationKind,
+        reminderType,
+        body,
+        dedupeKey: `${automationKind}:${appointment.id}:${appointment.startAt.getTime()}:${appointment.reminderGeneration}`,
+      });
+      continue;
+    }
+
+    const clientPhone = normalizePhone(appointment.client.phone);
+    // Canonical dedup key (digits only) — the conversation is keyed on this so a
+    // reminder and the patient's later inbound reply resolve to the SAME row.
+    const clientPhoneKey = phoneLookupKey(appointment.client.phone);
+
+    if (!clientPhone || !clientPhoneKey) {
+      failed += 1;
+      progress.failed += 1;
+      continue;
+    }
+
+    // A longer-lead reminder still waiting for review (or claimed by staff)
+    // is withdrawn before this more urgent one goes out, not after (Codex).
+    await retireLongerReminderDrafts(prisma, appointment.id, automationKind);
+
     // A booking confirmation, welcome or moved notice for this version of the
     // visit going out right now (or just now) already tells the patient the
     // time; it covers the reminders already due once delivered. Held back, not

@@ -25,7 +25,17 @@ export type OwedVisitMessageArgs = { appointmentId: string; event: OwedVisitMess
  * Drafts written about a visit as it stood: its patient, time, staff member
  * and status are baked into them (Codex).
  */
-const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED", "MISSED_VISIT"];
+const VISIT_DRAFT_KINDS: FollowUpDraftKind[] = [
+  "BOOKING_CONFIRMATION",
+  "NEW_PATIENT_WELCOME",
+  "VISIT_CHANGED",
+  "MISSED_VISIT",
+  // A reminder waiting for review was rendered for the visit as it stood too;
+  // the reset reminders draft a fresh one when it falls due again (Codex).
+  "FIRST_REMINDER",
+  "SECOND_REMINDER",
+  "HIGH_RISK_REMINDER",
+];
 
 const BOOKING_MESSAGE_KINDS: FollowUpDraftKind[] = ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME"];
 
@@ -520,28 +530,42 @@ async function coverOpenReminders(
   settings: Awaited<ReturnType<typeof getAutomationSettings>>,
   now: Date
 ): Promise<void> {
-  const appointment = { startAt };
   const reminders = [
-    { type: "TWENTY_FOUR_HOUR", setting: settings.FIRST_REMINDER },
-    { type: "TWO_HOUR", setting: settings.SECOND_REMINDER },
-    { type: "HIGH_RISK", setting: settings.HIGH_RISK_REMINDER },
+    { type: "TWENTY_FOUR_HOUR", kind: "FIRST_REMINDER", setting: settings.FIRST_REMINDER },
+    { type: "TWO_HOUR", kind: "SECOND_REMINDER", setting: settings.SECOND_REMINDER },
+    { type: "HIGH_RISK", kind: "HIGH_RISK_REMINDER", setting: settings.HIGH_RISK_REMINDER },
   ] as const;
   const open = reminders.filter(
     ({ setting }) =>
       setting.enabled &&
       setting.timing !== null &&
-      appointment.startAt.getTime() <= now.getTime() + setting.timing * HOUR_MS
+      startAt.getTime() <= now.getTime() + setting.timing * HOUR_MS
   );
   if (open.length === 0) return;
 
-  // A FAILED row is one the reminders job would retry: mark it covered too.
-  // A row already SENT keeps its real send time.
-  await tx.appointmentReminder.updateMany({
-    where: { appointmentId, type: { in: open.map(({ type }) => type) }, status: "FAILED" },
-    data: { status: "SENT", sentAt: now },
-  });
+  // The insert first: one that meets a reminder being drafted right now waits
+  // for it (the unique row), so the update and the withdrawal below then see
+  // that reminder and its draft (Codex).
   await tx.appointmentReminder.createMany({
     data: open.map(({ type }) => ({ appointmentId, type, status: "SENT" as const, sentAt: now })),
     skipDuplicates: true,
+  });
+  // A FAILED row is one the reminders job would retry; a DRAFTED one waits in
+  // To review. Both are covered now, and SENT is what reply routing and the
+  // risk score trust (Codex). A row already SENT keeps its real send time.
+  await tx.appointmentReminder.updateMany({
+    where: { appointmentId, type: { in: open.map(({ type }) => type) }, status: { in: ["FAILED", "DRAFTED"] } },
+    data: { status: "SENT", sentAt: now },
+  });
+  // One drafted for review earlier would repeat what the patient was just told:
+  // waiting, or claimed by staff but not yet sent (its re-check right before
+  // the send refuses it once it is no longer SENT — Codex).
+  await tx.followUpDraft.updateMany({
+    where: {
+      appointmentId,
+      kind: { in: open.map(({ kind }) => kind) },
+      OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+    },
+    data: { status: "DISMISSED" },
   });
 }

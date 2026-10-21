@@ -101,10 +101,12 @@ describe("saveAutomationSettingAction", () => {
     );
   });
 
-  it("touches no drafts for a reminder", async () => {
+  it("holds a reminder's queued drafts too when it is turned off", async () => {
     await saveAutomationSettingAction({ ...base, kind: "FIRST_REMINDER", enabled: false, timing: 24 });
 
-    expect(mocks.tx.followUpDraft.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.followUpDraft.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ kind: { in: ["FIRST_REMINDER"] } }) })
+    );
   });
 
   it("hands queued automatic sends to review when switched to review", async () => {
@@ -131,8 +133,18 @@ describe("saveAutomationSettingAction", () => {
     );
   });
 
-  it("never stores a reminder in review", async () => {
+  it("lets a Pro clinic set a reminder to wait for review", async () => {
     await saveAutomationSettingAction({ ...base, kind: "SECOND_REMINDER", mode: "REVIEW", timing: 2 });
+
+    expect(mocks.tx.automationSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ mode: "REVIEW" }) })
+    );
+  });
+
+  it("keeps a Basic clinic's first reminder automatic", async () => {
+    workspace("BASIC");
+
+    await saveAutomationSettingAction({ ...base, kind: "FIRST_REMINDER", mode: "REVIEW", timing: 24 });
 
     expect(mocks.tx.automationSetting.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ update: expect.objectContaining({ mode: "AUTOMATIC" }) })

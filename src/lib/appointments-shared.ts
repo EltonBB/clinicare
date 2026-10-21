@@ -395,6 +395,17 @@ export async function confirmAppointmentCore(where: {
       return { ok: false, status: 409, error: APPOINTMENT_CONFLICT_ERROR };
     }
 
+    // The patient just confirmed: a high-risk "can you still make it?" message
+    // waiting for review (or claimed, not yet sent) no longer applies (Codex).
+    await tx.followUpDraft.updateMany({
+      where: {
+        appointmentId: where.id,
+        kind: "HIGH_RISK_REMINDER",
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+      data: { status: "DISMISSED" },
+    });
+
     const updated = await tx.appointment.findFirstOrThrow({
       where: { id: where.id },
       select: { id: true, clientId: true, staffMemberId: true },

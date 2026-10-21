@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   groupBy: vi.fn(),
   updateMany: vi.fn(),
+  reminderUpdateMany: vi.fn(),
   getAutomationsCursor: vi.fn(),
   setAutomationsCursor: vi.fn(),
   getAutomationSettings: vi.fn(),
@@ -39,7 +40,10 @@ vi.mock("@/lib/messaging", () => ({ sendMessage: mocks.sendMessage }));
 vi.mock("@/lib/messaging/inbox-mirror", () => ({ mirrorOutboundToInbox: mocks.mirrorOutboundToInbox }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { followUpDraft: { findMany: mocks.findMany, groupBy: mocks.groupBy, updateMany: mocks.updateMany } },
+  prisma: {
+    followUpDraft: { findMany: mocks.findMany, groupBy: mocks.groupBy, updateMany: mocks.updateMany },
+    appointmentReminder: { updateMany: mocks.reminderUpdateMany },
+  },
 }));
 
 import { dispatchDueAutomaticDrafts, dispatchFollowUpDraft } from "./follow-up-dispatch";
@@ -60,6 +64,7 @@ beforeEach(() => {
   mocks.groupBy.mockResolvedValue([]);
   mocks.getAutomationsCursor.mockResolvedValue(null);
   mocks.suppressOpenReminders.mockResolvedValue(undefined);
+  mocks.reminderUpdateMany.mockResolvedValue({ count: 1 });
   mocks.getAutomationSettings.mockResolvedValue(
     new Proxy({}, { get: () => ({ enabled: true, mode: "AUTOMATIC" }) })
   );
@@ -137,6 +142,32 @@ describe("dispatchFollowUpDraft", () => {
       appointmentId: "appt_1",
       appointmentGeneration: 2,
     });
+  });
+
+  it("marks a reminder sent from review as really sent, for the visit version it was written for", async () => {
+    const reminder = { ...DRAFT, kind: "SECOND_REMINDER", appointmentId: "appt_1", appointmentGeneration: 3 };
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: reminder });
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: reminder });
+
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.reminderUpdateMany).toHaveBeenCalledWith({
+      where: { appointmentId: "appt_1", type: "TWO_HOUR", status: "DRAFTED", appointment: { reminderGeneration: 3 } },
+      data: { status: "SENT", sentAt: expect.any(Date) },
+    });
+  });
+
+  it("marks a reviewed reminder sent when its delivery is uncertain too", async () => {
+    const reminder = { ...DRAFT, kind: "FIRST_REMINDER", appointmentId: "appt_1", appointmentGeneration: 3 };
+    mocks.markFollowUpDraftSent.mockResolvedValue({ ok: true, draft: reminder });
+    mocks.confirmFollowUpDraftDispatch.mockResolvedValue({ ok: true, draft: reminder });
+    mocks.sendMessage.mockResolvedValue({ ok: false, reason: "delivery_uncertain", error: "x" });
+
+    await dispatchFollowUpDraft({ draftId: "d_1", businessId: "biz_1" });
+
+    expect(mocks.reminderUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ type: "TWENTY_FOUR_HOUR", status: "DRAFTED" }) })
+    );
   });
 
   it("doesn't touch reminders after a thank-you", async () => {

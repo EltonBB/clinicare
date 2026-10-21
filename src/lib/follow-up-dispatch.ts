@@ -17,6 +17,39 @@ import type { SendMessageResult } from "@/lib/messaging/types";
 import { prisma } from "@/lib/prisma";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 
+/**
+ * A reminder sent from To review has really reached the patient (or may have):
+ * its DRAFTED marker becomes SENT, which reply routing and the no-show risk
+ * signal trust — for the visit version it was written for only. Best-effort.
+ */
+async function promoteReviewedReminder(
+  businessId: string,
+  draftId: string,
+  draft: { kind: string; appointmentId: string | null; appointmentGeneration: number | null }
+): Promise<void> {
+  const reminderType = REVIEWED_REMINDER_TYPE[draft.kind];
+  if (!reminderType || !draft.appointmentId || draft.appointmentGeneration == null) return;
+  await prisma.appointmentReminder
+    .updateMany({
+      where: {
+        appointmentId: draft.appointmentId,
+        type: reminderType,
+        status: "DRAFTED",
+        appointment: { reminderGeneration: draft.appointmentGeneration },
+      },
+      data: { status: "SENT", sentAt: new Date() },
+    })
+    .catch((error) => {
+      logger.error("Sent a reminder from review but couldn't record it as sent.", error, { businessId, draftId });
+    });
+}
+
+const REVIEWED_REMINDER_TYPE: Partial<Record<string, "TWENTY_FOUR_HOUR" | "TWO_HOUR" | "HIGH_RISK">> = {
+  FIRST_REMINDER: "TWENTY_FOUR_HOUR",
+  SECOND_REMINDER: "TWO_HOUR",
+  HIGH_RISK_REMINDER: "HIGH_RISK",
+};
+
 /** Messages that state the visit's date and time (a cancellation notice doesn't need a reminder to stand in for). */
 const TELLS_THE_TIME = new Set(["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"]);
 
@@ -172,10 +205,13 @@ export async function dispatchFollowUpDraft(args: {
   if (uncertain) {
     // May already be with the patient: never back to Pending (a second send
     // could deliver it twice). Recorded as sent; if that fails the hourly sweep
-    // settles it (settleInterruptedFollowUpSends). Nothing to mirror. A visit
-    // message that may have arrived covers the reminders already due, as a
-    // confirmed one does (Codex).
-    if (claimed) await coverDueReminders(businessId, draftId, claimed);
+    // settles it (settleInterruptedFollowUpSends). Nothing to mirror. A
+    // message that may have arrived counts as sent: a visit message covers the
+    // reminders already due, a reviewed reminder is marked sent (Codex).
+    if (claimed) {
+      await coverDueReminders(businessId, draftId, claimed);
+      await promoteReviewedReminder(businessId, draftId, claimed);
+    }
     await markFollowUpDraftDelivered({ id: draftId, businessId }).catch((error) => {
       logger.error("A follow-up's delivery is uncertain and it couldn't be recorded as sent.", error, {
         businessId,
@@ -197,6 +233,8 @@ export async function dispatchFollowUpDraft(args: {
   });
 
   await coverDueReminders(businessId, draftId, sent);
+
+  await promoteReviewedReminder(businessId, draftId, sent);
 
   // Best-effort Inbox mirror: the message already went out.
   await mirrorOutboundToInbox({
@@ -224,7 +262,6 @@ const AUTO_SEND_GRACE_MS = 60_000;
 const AUTO_SEND_MAX_AGE_MS = 3 * 24 * 3_600_000;
 /** Most automatic sends per clinic per run: a backlog drains over a few runs, never as one burst. */
 const AUTO_SEND_PER_BUSINESS_CAP = 20;
-
 
 /**
  * Sends the `autoSend` drafts that are due: made at least a minute ago (the

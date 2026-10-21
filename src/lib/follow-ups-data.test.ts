@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mocks.prisma }));
+// No assessment by default: only the high-risk tests below score a patient.
+const getNoShowRiskAssessments = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/no-show-risk-data", () => ({ getNoShowRiskAssessments }));
 
 
 import { FollowUpDraftKind, Prisma } from "@prisma/client";
@@ -835,6 +838,39 @@ describe("follow-ups data layer — which drafts are actionable", () => {
       // Owed to the patient and version the refused draft was written for.
       visitMessageOwed: { appointmentId: "appt_2", event: "moved", clientId: "client_1", generation: 3 },
     });
+  });
+
+  it.each([
+    ["withdraws it once the patient no longer scores high (a no-show since marked attended)", "low", false],
+    ["sends it while the patient still scores high", "high", true],
+  ])("a high-risk reminder: %s", async (_label, level, sendable) => {
+    serveDrafts([
+      draftRow({
+        kind: "HIGH_RISK_REMINDER",
+        appointmentId: "appt_2",
+        appointmentGeneration: 3,
+        appointment: { id: "appt_2", clientId: "client_1", status: "CONFIRMED", startAt: FUTURE, createdAt: NOW, reminderGeneration: 3 },
+        // Off by default: this clinic switched it on.
+        business: { plan: "PRO", workflowSettings: ALL_WORKFLOWS_ON, automationSettings: [{ kind: "HIGH_RISK_REMINDER", enabled: true }] },
+      }),
+    ]);
+    getNoShowRiskAssessments.mockResolvedValue(new Map([["appt_2", { level, reasons: [], insufficientHistory: false }]]));
+
+    const result = await markFollowUpDraftSent({ id: "d_1", businessId: "biz_1", now: NOW });
+
+    expect(result).toEqual(expect.objectContaining({ ok: sendable }));
+    // Re-scored for this draft's visit, at the gate.
+    expect(getNoShowRiskAssessments).toHaveBeenCalledWith({
+      businessId: "biz_1",
+      now: NOW,
+      appointments: [{ id: "appt_2", clientId: "client_1", status: "CONFIRMED", startAt: FUTURE, createdAt: NOW }],
+    });
+    if (!sendable) {
+      expect(mocks.prisma.followUpDraft.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ["d_1"] }, OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }] },
+        data: { status: "DISMISSED" },
+      });
+    }
   });
 
   it("owes the missed-visit message again when a later edit refuses it mid-send", async () => {

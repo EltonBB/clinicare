@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => {
   const business = { findUnique: vi.fn() };
   const appointment = { findMany: vi.fn() };
   const appointmentReminder = { upsert: vi.fn() };
-  const followUpDraft = { count: vi.fn() };
+  const followUpDraft = { create: vi.fn(), count: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 0 }) };
   const $transaction = vi.fn();
   const sendMessage = vi.fn();
   const getNoShowRiskAssessments = vi.fn();
@@ -329,5 +329,189 @@ describe("syncAppointmentRemindersForBusiness with automation settings", () => {
     await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
 
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+function reviewTx(generation: number | null = 4, markerAfter = "DRAFTED") {
+  const tx = {
+    $executeRaw: vi.fn(),
+    appointment: { findFirst: vi.fn().mockResolvedValue(generation === null ? null : { id: "appt_1" }) },
+    followUpDraft: { createMany: vi.fn().mockResolvedValue({ count: 1 }), updateMany: vi.fn() },
+    appointmentReminder: {
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findUnique: vi.fn().mockResolvedValue({ status: markerAfter }),
+    },
+  };
+  mocks.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+  return tx;
+}
+
+function reviewSecondReminder() {
+  mocks.business.findUnique.mockResolvedValue(
+    business({
+      automationSettings: [
+        { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+      ],
+    })
+  );
+}
+
+describe("syncAppointmentRemindersForBusiness with a reminder set to review", () => {
+  it("drafts the due reminder for To review instead of sending it, marked drafted, not sent", async () => {
+    reviewSecondReminder();
+    const appointment = appointmentIn(1, "appt_1", 4);
+    mocks.appointment.findMany.mockResolvedValue([appointment]);
+    const tx = reviewTx();
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(tx.appointment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ reminderGeneration: 4 }) })
+    );
+    expect(tx.followUpDraft.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          kind: "SECOND_REMINDER",
+          appointmentId: "appt_1",
+          appointmentGeneration: 4,
+          autoSend: false,
+          dedupeKey: `SECOND_REMINDER:appt_1:${appointment.startAt.getTime()}:4`,
+        }),
+      ],
+      skipDuplicates: true,
+    });
+    // DRAFTED: a "2" reply can't be read as an answer to it, nor the risk score count it.
+    // Recorded before the draft, and never over a row a covering message marked sent.
+    expect(tx.appointmentReminder.createMany).toHaveBeenCalledWith({
+      data: [{ appointmentId: "appt_1", type: "TWO_HOUR", status: "DRAFTED" }],
+      skipDuplicates: true,
+    });
+    expect(tx.appointmentReminder.updateMany).toHaveBeenCalledWith({
+      where: { appointmentId: "appt_1", type: "TWO_HOUR", status: "FAILED" },
+      data: expect.objectContaining({ status: "DRAFTED" }),
+    });
+    expect(tx.appointmentReminder.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.followUpDraft.createMany.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("drafts nothing when a message covering the reminder already marked it sent", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1", 4)]);
+    const tx = reviewTx(4, "SENT");
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("withdraws a longer-lead reminder still waiting for review when it drafts a more urgent one", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1", 4)]);
+    const tx = reviewTx();
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.updateMany).toHaveBeenCalledWith({
+      where: {
+        appointmentId: "appt_1",
+        kind: { in: ["FIRST_REMINDER", "HIGH_RISK_REMINDER"] },
+        OR: [{ status: "PENDING" }, { status: "SENT", sentAt: null }],
+      },
+      data: { status: "DISMISSED" },
+    });
+  });
+
+  it("drafts nothing for a visit an edit moved on since this run read it", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1", 4)]);
+    const tx = reviewTx(null);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    expect(tx.appointmentReminder.createMany).not.toHaveBeenCalled();
+  });
+
+  it("withdraws a waiting longer-lead review reminder before sending a more urgent one", async () => {
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+    mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    const retire = mocks.followUpDraft.updateMany.mock.invocationCallOrder[0];
+    const send = mocks.sendMessage.mock.invocationCallOrder[0];
+    expect(retire).toBeLessThan(send);
+  });
+
+  it.each([
+    ["timing", { timing: 1, template: null }],
+    ["wording", { timing: 2, template: "Hi {client_name}, new wording." }],
+  ])("leaves a reminder whose %s changed during the run to the next run", async (_label, change) => {
+    mocks.business.findUnique.mockResolvedValueOnce(business()).mockResolvedValue(
+      business({
+        automationSettings: [{ kind: "SECOND_REMINDER", enabled: true, mode: "AUTOMATIC", template2: null, ...change }],
+      })
+    );
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1.5, "appt_1")]);
+    const tx = reviewTx();
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+  });
+
+  it("drafts nothing when the clinic switched the reminder back to automatic during the run", async () => {
+    mocks.business.findUnique
+      .mockResolvedValueOnce(
+        business({
+          automationSettings: [
+            { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+          ],
+        })
+      )
+      .mockResolvedValue(business());
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+    const tx = reviewTx();
+    mocks.sendMessage.mockResolvedValue({ ok: true, providerMessageId: "m", status: "SENT", body: "Hi" });
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).not.toHaveBeenCalled();
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't send a reminder the clinic switched to review during the run", async () => {
+    mocks.business.findUnique
+      .mockResolvedValueOnce(business())
+      .mockResolvedValue(
+        business({
+          automationSettings: [
+            { kind: "SECOND_REMINDER", enabled: true, mode: "REVIEW", timing: 2, template: null, template2: null },
+          ],
+        })
+      );
+    mocks.appointment.findMany.mockResolvedValue([appointmentIn(1, "appt_1")]);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncAppointmentRemindersForBusiness review drafts without a phone", () => {
+  it("still drafts a review reminder for a client with no usable phone, so staff can fix it", async () => {
+    reviewSecondReminder();
+    mocks.appointment.findMany.mockResolvedValue([
+      { ...appointmentIn(1, "appt_1"), client: { id: "client_appt_1", name: "Mira", phone: "" } },
+    ]);
+    const tx = reviewTx(0);
+
+    await syncAppointmentRemindersForBusiness("biz_1", createReminderRunProgress());
+
+    expect(tx.followUpDraft.createMany).toHaveBeenCalled();
   });
 });

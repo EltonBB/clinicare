@@ -9,7 +9,10 @@ export type FollowUpDraftKind =
   | "NEW_PATIENT_WELCOME"
   | "VISIT_CHANGED"
   | "MISSED_VISIT"
-  | "CHECKUP_DUE";
+  | "CHECKUP_DUE"
+  | "FIRST_REMINDER"
+  | "SECOND_REMINDER"
+  | "HIGH_RISK_REMINDER";
 export type FollowUpDraftStatus = "PENDING" | "SENT" | "DISMISSED" | "EXPIRED";
 
 export type FollowUpDraftItem = {
@@ -41,6 +44,9 @@ const KIND_LABELS: Record<FollowUpDraftKind, string> = {
   VISIT_CHANGED: "Visit moved or cancelled",
   MISSED_VISIT: "Missed visit",
   CHECKUP_DUE: "Check-up due",
+  FIRST_REMINDER: "First reminder",
+  SECOND_REMINDER: "Second reminder",
+  HIGH_RISK_REMINDER: "High-risk reminder",
 };
 
 export type FollowUpDraftRecord = {
@@ -70,6 +76,10 @@ export function followUpRowKey(item: Pick<FollowUpDraftItem, "id" | "canBook">) 
  */
 export const followUpKindOrder: FollowUpDraftKind[] = [
   "SLOT_OFFER",
+  // A reminder waiting for review is due now: it goes first after slot offers.
+  "SECOND_REMINDER",
+  "HIGH_RISK_REMINDER",
+  "FIRST_REMINDER",
   "PAYMENT",
   "MISSED_VISIT",
   "CHECKUP_DUE",
@@ -91,6 +101,9 @@ export const followUpKindGroupLabels: Record<FollowUpDraftKind, string> = {
   VISIT_CHANGED: "Visit changes",
   MISSED_VISIT: "Missed visits",
   CHECKUP_DUE: "Check-ups due",
+  FIRST_REMINDER: "First reminders",
+  SECOND_REMINDER: "Second reminders",
+  HIGH_RISK_REMINDER: "High-risk reminders",
 };
 
 /**

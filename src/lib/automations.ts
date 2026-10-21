@@ -30,7 +30,11 @@ export type AutomationDefinition = {
   defaultEnabled: boolean;
   /** Available on Basic (always automatic there). Everything else is Pro. */
   basic: boolean;
-  /** Can wait in To review. Reminders can't: one that waits arrives late. */
+  /**
+   * Can wait in To review. Every automation can since 2026-10-20 (owner
+   * decision): a reminder set to review is drafted when it falls due and sent
+   * by a person. Basic has no review queue, so there everything is automatic.
+   */
   reviewable: boolean;
   tokens: readonly AutomationToken[];
   defaultTemplate: string;
@@ -112,7 +116,7 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     defaultMode: "AUTOMATIC",
     defaultEnabled: true,
     basic: true,
-    reviewable: false,
+    reviewable: true,
     tokens: VISIT_TOKENS,
     defaultTemplate: DEFAULT_REMINDER_TEMPLATE,
     timingPhrase: (timing) => `${count(timing ?? 24, "hour")} before`,
@@ -127,7 +131,7 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     defaultMode: "AUTOMATIC",
     defaultEnabled: true,
     basic: false,
-    reviewable: false,
+    reviewable: true,
     tokens: VISIT_TOKENS,
     defaultTemplate: "Hi {client_name}, see you at {time} on {date}. Reply 2 if you can't make it.",
     timingPhrase: (timing) => `${count(timing ?? 2, "hour")} before`,
@@ -142,7 +146,7 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     defaultMode: "AUTOMATIC",
     defaultEnabled: false,
     basic: false,
-    reviewable: false,
+    reviewable: true,
     tokens: VISIT_TOKENS,
     defaultTemplate:
       "Hi {client_name}, can you still make your visit at {time} on {date}? Reply 1 to confirm or 2 to cancel so we can offer the time to someone else.",
@@ -280,6 +284,9 @@ export const FOLLOW_UP_KIND_TO_AUTOMATION: Record<FollowUpDraftKind, AutomationK
   VISIT_CHANGED: "VISIT_CHANGED",
   MISSED_VISIT: "MISSED_VISIT",
   CHECKUP_DUE: "CHECKUP_DUE",
+  FIRST_REMINDER: "FIRST_REMINDER",
+  SECOND_REMINDER: "SECOND_REMINDER",
+  HIGH_RISK_REMINDER: "HIGH_RISK_REMINDER",
 };
 
 const REMINDER_KINDS = new Set<AutomationKind>(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"]);

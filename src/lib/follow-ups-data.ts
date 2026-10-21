@@ -1,4 +1,4 @@
-import { FollowUpDraftKind as FollowUpDraftKindEnum, Prisma, type FollowUpDraftKind } from "@prisma/client";
+import { FollowUpDraftKind as FollowUpDraftKindEnum, Prisma, type AppointmentStatus, type FollowUpDraftKind } from "@prisma/client";
 
 import { ELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { MAX_MESSAGE_BODY_LENGTH, MESSAGE_TOO_LONG_ERROR } from "@/lib/messaging/limits";
@@ -10,6 +10,8 @@ import type { FollowUpDraftRecord } from "@/lib/follow-ups";
 import { liveSlotOfferWhere, reofferFreedSlot, retryOnWriteConflict } from "@/lib/slot-offers";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 import { automationEnabledWhere } from "@/lib/automations-data";
+import { logger } from "@/lib/logger";
+import { getNoShowRiskAssessments } from "@/lib/no-show-risk-data";
 import type { OwedVisitMessage, OwedVisitMessageArgs } from "@/lib/automation-events";
 import { checkupDedupeKey, rebookedAppointmentWhere } from "@/lib/workflow-generators";
 
@@ -116,6 +118,13 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
         client: ELIGIBLE_CLIENT_WHERE,
         appointment: { status: "NO_SHOW" },
       },
+      // A reminder waiting for review: only while the visit is still booked and ahead.
+      ...(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const).map((kind) => ({
+        kind,
+        business: automationEnabledWhere(kind),
+        client: ELIGIBLE_CLIENT_WHERE,
+        appointment: { status: { in: ["PENDING", "CONFIRMED"] as AppointmentStatus[] }, startAt: { gt: now } },
+      })),
       // Not booked since: a check-up nudge to someone with a visit ahead is noise.
       {
         kind: "CHECKUP_DUE",
@@ -163,6 +172,105 @@ const INTERRUPTED_SEND_AFTER_MS = 2 * 60 * 1000;
  * offer stuck in between would otherwise stay hidden, its slot blocked from
  * being offered to anyone else, until the slot passed.
  */
+/**
+ * A reminder sent from To review whose DRAFTED marker never became SENT (the
+ * server stopped between the two writes, or the promotion failed): marked SENT
+ * here, for the visit version the draft was written for, so reply routing and
+ * the no-show risk signal see the reminder the patient received (Codex). Run
+ * by the hourly follow-ups job, after interrupted sends are settled. A
+ * column-to-column match, so raw SQL.
+ */
+export async function promoteDeliveredReviewReminders(): Promise<number> {
+  return prisma.$executeRaw`
+    UPDATE "AppointmentReminder" r
+    SET "status" = 'SENT', "sentAt" = d."sentAt"
+    FROM "FollowUpDraft" d
+    JOIN "Appointment" a ON a."id" = d."appointmentId"
+    WHERE r."appointmentId" = d."appointmentId"
+      AND r."status" = 'DRAFTED'
+      AND d."status" = 'SENT'
+      AND d."sentAt" IS NOT NULL
+      AND d."appointmentGeneration" = a."reminderGeneration"
+      AND (
+        (d."kind" = 'FIRST_REMINDER' AND r."type" = 'TWENTY_FOUR_HOUR')
+        OR (d."kind" = 'SECOND_REMINDER' AND r."type" = 'TWO_HOUR')
+        OR (d."kind" = 'HIGH_RISK_REMINDER' AND r."type" = 'HIGH_RISK')
+      )
+  `;
+}
+
+/**
+ * A high-risk reminder is drafted because the patient scored high (say, a
+ * recent no-show), and is only right while that still holds: a correction
+ * since (that no-show marked attended) can drop the score, and the "can you
+ * still make it?" message would then be wrong (Codex). Re-scores the waiting
+ * (or claimed, not yet sent) high-risk reminders - one draft, or a patient's -
+ * and withdraws those no longer high. Returns how many it withdrew.
+ *
+ * The send gate runs it at the claim and at the last check; a correction runs
+ * it for the patient so the draft also leaves To review at once. Outside any
+ * transaction: the scorer reads history on its own connection.
+ */
+export async function retireStaleHighRiskReminders(args: {
+  businessId: string;
+  draftId?: string;
+  clientId?: string;
+  now?: Date;
+}): Promise<number> {
+  const { businessId, draftId, clientId, now = new Date() } = args;
+  const unsent: Prisma.FollowUpDraftWhereInput[] = [{ status: "PENDING" }, { status: "SENT", sentAt: null }];
+  const drafts = await prisma.followUpDraft.findMany({
+    where: {
+      businessId,
+      kind: "HIGH_RISK_REMINDER",
+      ...(draftId !== undefined ? { id: draftId } : {}),
+      ...(clientId !== undefined ? { clientId } : {}),
+      OR: unsent,
+      // A visit no longer booked and ahead is the rest of the gate's to refuse.
+      appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+    },
+    select: { id: true, appointment: { select: { id: true, clientId: true, startAt: true, createdAt: true, status: true } } },
+  });
+  const scored = drafts.flatMap((draft) => (draft.appointment ? [{ draftId: draft.id, appointment: draft.appointment }] : []));
+  if (scored.length === 0) return 0;
+
+  const risks = await getNoShowRiskAssessments({
+    businessId,
+    now,
+    appointments: scored.map(({ appointment: { id, clientId, startAt, createdAt, status } }) => ({
+      id,
+      clientId,
+      startAt,
+      createdAt,
+      status: status as "PENDING" | "CONFIRMED",
+    })),
+  });
+  const stale = scored.filter(({ appointment }) => {
+    const risk = risks.get(appointment.id);
+    return risk !== undefined && risk.level !== "high";
+  });
+  if (stale.length === 0) return 0;
+
+  const { count } = await prisma.followUpDraft.updateMany({
+    where: { id: { in: stale.map(({ draftId: id }) => id) }, OR: unsent },
+    data: { status: "DISMISSED" },
+  });
+  return count;
+}
+
+/**
+ * After a correction that can lower these patients' no-show risk (a no-show
+ * undone): their high-risk reminders that no longer apply leave To review now.
+ * Best-effort, after the correction committed; the send gate re-checks anyway.
+ */
+export async function retireStaleHighRiskRemindersForClients(businessId: string, clientIds: Array<string | null>): Promise<void> {
+  for (const clientId of new Set(clientIds.filter((id): id is string => Boolean(id)))) {
+    await retireStaleHighRiskReminders({ businessId, clientId }).catch((error) =>
+      logger.error("Withdrawing stale high-risk reminders failed.", error, { businessId, clientId })
+    );
+  }
+}
+
 export async function settleInterruptedFollowUpSends(now: Date): Promise<number> {
   const { count } = await prisma.followUpDraft.updateMany({
     where: { status: "SENT", sentAt: null, updatedAt: { lt: new Date(now.getTime() - INTERRUPTED_SEND_AFTER_MS) } },
@@ -372,6 +480,10 @@ async function runSendGate(args: {
   editedBody?: string;
   automatic?: boolean;
 }): Promise<MarkDraftSentResult> {
+  // A high-risk reminder whose patient no longer scores high is withdrawn, not sent.
+  if ((await retireStaleHighRiskReminders({ businessId: args.businessId, draftId: args.id, now: args.now })) > 0) {
+    return { ok: false, error: ALREADY_HANDLED_ERROR };
+  }
   try {
     return await flipDraftToSent(args);
   } catch (error) {

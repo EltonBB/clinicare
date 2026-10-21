@@ -10,7 +10,7 @@ import { isProBusinessPlan } from "@/lib/billing";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { withDeadline } from "@/lib/concurrency";
 import { getFollowUpCursor, setFollowUpCursor } from "@/lib/follow-up-cursor";
-import { settleInterruptedFollowUpSends } from "@/lib/follow-ups-data";
+import { promoteDeliveredReviewReminders, settleInterruptedFollowUpSends } from "@/lib/follow-ups-data";
 import { lastAttemptedId, rotateForFairness } from "@/lib/reminder-fairness";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -313,7 +313,16 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
   // check-up nudge to someone who has booked since or two weeks old.
   rules.push(
     {
-      kind: { in: ["BOOKING_CONFIRMATION", "NEW_PATIENT_WELCOME", "VISIT_CHANGED"] },
+      kind: {
+        in: [
+          "BOOKING_CONFIRMATION",
+          "NEW_PATIENT_WELCOME",
+          "VISIT_CHANGED",
+          "FIRST_REMINDER",
+          "SECOND_REMINDER",
+          "HIGH_RISK_REMINDER",
+        ],
+      },
       status: "PENDING",
       OR: [{ appointmentId: null }, { appointment: { startAt: { lte: now } } }, { client: INELIGIBLE_CLIENT_WHERE }],
     },
@@ -463,6 +472,12 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
   } catch (error) {
     totals.errors += 1;
     logger.error("Settling interrupted follow-up sends failed.", error);
+  }
+  try {
+    await promoteDeliveredReviewReminders();
+  } catch (error) {
+    totals.errors += 1;
+    logger.error("Recording reviewed reminders as sent failed.", error);
   }
   try {
     const slotOffers = await expirePastSlotOffers(undefined, now, {

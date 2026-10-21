@@ -143,6 +143,9 @@ describe("countFollowUpsByKind", () => {
       BOOKING_CONFIRMATION: 0,
       NEW_PATIENT_WELCOME: 0,
       VISIT_CHANGED: 0,
+      FIRST_REMINDER: 0,
+      SECOND_REMINDER: 0,
+      HIGH_RISK_REMINDER: 0,
     });
   });
 });
