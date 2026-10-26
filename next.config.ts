@@ -28,7 +28,9 @@ function devAllowedOrigins() {
 }
 
 function contentSecurityPolicy() {
-  const connectSrc = ["'self'", ...supabaseConnectSources()];
+  // Paddle (billing): Paddle.js from its CDN, its checkout in a frame, and its
+  // checkout/pricing APIs (live and sandbox).
+  const connectSrc = ["'self'", ...supabaseConnectSources(), "https://*.paddle.com"];
 
   if (isDev) {
     // Next dev server needs eval (HMR) and a websocket to the dev host.
@@ -46,8 +48,9 @@ function contentSecurityPolicy() {
     "style-src 'self' 'unsafe-inline'",
     // Next/React inject inline bootstrap scripts; without per-request nonces this
     // needs 'unsafe-inline'. Dev additionally needs 'unsafe-eval' for HMR.
-    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'unsafe-inline' https://cdn.paddle.com${isDev ? " 'unsafe-eval'" : ""}`,
     `connect-src ${connectSrc.join(" ")}`,
+    "frame-src https://buy.paddle.com https://sandbox-buy.paddle.com",
   ];
 
   return directives.join("; ");

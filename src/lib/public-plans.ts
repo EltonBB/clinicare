@@ -1,4 +1,4 @@
-import type { BusinessPlan, BusinessPlanStatus } from "@prisma/client";
+import type { BusinessPlan } from "@prisma/client";
 
 export type PublicPlanKey = "basic" | "pro";
 
@@ -7,6 +7,8 @@ export type PublicPlan = {
   rank: number;
   name: string;
   price: string;
+  /** The yearly price: twelve months for the price of eleven. */
+  yearlyPrice: string;
   cadence: string;
   description: string;
   audience: string;
@@ -20,6 +22,7 @@ export const publicPlans: PublicPlan[] = [
     rank: 1,
     name: "Basic",
     price: "$39",
+    yearlyPrice: "$429",
     cadence: "per month",
     description:
       "For solo practitioners and small clinics that need one clean daily workspace.",
@@ -39,6 +42,7 @@ export const publicPlans: PublicPlan[] = [
     rank: 2,
     name: "Pro",
     price: "$79",
+    yearlyPrice: "$869",
     cadence: "per month",
     description:
       "For growing clinics that need deeper intelligence, team visibility, and stronger support.",
@@ -80,175 +84,4 @@ export function publicPlanKeyFromBusinessPlan(plan: BusinessPlan): PublicPlanKey
 
 export function publicPlanDisplayFromBusinessPlan(plan: BusinessPlan) {
   return publicPlanKeyFromBusinessPlan(plan) === "pro" ? "Pro" : "Basic";
-}
-
-export function getPublicPlanRank(planKey: PublicPlanKey) {
-  return publicPlans.find((plan) => plan.key === planKey)?.rank ?? 0;
-}
-
-export function isBillablePlanStatus(status?: BusinessPlanStatus | null) {
-  return status === "ACTIVE" || status === "TRIALING";
-}
-
-export type CheckoutPlanIntent =
-  | "first_purchase"
-  | "upgrade"
-  | "downgrade"
-  | "current_plan"
-  | "reactivate";
-
-export type CheckoutPlanState = {
-  currentPlanKey: PublicPlanKey | null;
-  currentPlanName: string | null;
-  status: BusinessPlanStatus | null;
-  statusLabel: string;
-  workspaceName: string | null;
-  intent: CheckoutPlanIntent;
-  badge: string;
-  headline: string;
-  description: string;
-  summaryTitle: string;
-  primaryActionLabel: string;
-  secondaryActionLabel: string;
-  secondaryActionHref: string;
-};
-
-export function resolveCheckoutPlanState({
-  selectedPlan,
-  currentPlan,
-  currentPlanStatus,
-  workspaceName,
-  isAuthenticated,
-}: {
-  selectedPlan: PublicPlan;
-  currentPlan?: BusinessPlan | null;
-  currentPlanStatus?: BusinessPlanStatus | null;
-  workspaceName?: string | null;
-  isAuthenticated: boolean;
-}): CheckoutPlanState {
-  const currentPlanKey = currentPlan ? publicPlanKeyFromBusinessPlan(currentPlan) : null;
-  const currentPlanName = currentPlan ? publicPlanDisplayFromBusinessPlan(currentPlan) : null;
-  const hasBillableWorkspace = currentPlanKey && isBillablePlanStatus(currentPlanStatus);
-  const selectedRank = getPublicPlanRank(selectedPlan.key);
-  const currentRank = currentPlanKey ? getPublicPlanRank(currentPlanKey) : 0;
-  const statusLabel = formatCheckoutPlanStatus(currentPlanStatus);
-
-  if (!isAuthenticated || !currentPlanKey) {
-    return {
-      currentPlanKey,
-      currentPlanName,
-      status: currentPlanStatus ?? null,
-      statusLabel,
-      workspaceName: workspaceName ?? null,
-      intent: "first_purchase",
-      badge: "New subscription",
-      headline: "Start your Vela subscription",
-      description:
-        "No active workspace plan is attached to this checkout yet. Create or sign in to an account before payment is collected.",
-      summaryTitle: "First purchase",
-      primaryActionLabel: "Create account before payment",
-      secondaryActionLabel: isAuthenticated ? "Go to onboarding" : "Create account first",
-      secondaryActionHref: isAuthenticated ? "/onboarding" : "/sign-up",
-    };
-  }
-
-  if (!hasBillableWorkspace) {
-    return {
-      currentPlanKey,
-      currentPlanName,
-      status: currentPlanStatus ?? null,
-      statusLabel,
-      workspaceName: workspaceName ?? null,
-      intent: "reactivate",
-      badge: "Reactivate plan",
-      headline: `Reactivate ${workspaceName ?? "this workspace"}`,
-      description: `This workspace has a ${currentPlanName} plan marked ${statusLabel}. The selected ${selectedPlan.name} plan can be reactivated during setup.`,
-      summaryTitle: "Reactivation",
-      primaryActionLabel: `Reactivate on ${selectedPlan.name}`,
-      secondaryActionLabel: "Back to settings",
-      secondaryActionHref: "/settings?section=billing",
-    };
-  }
-
-  if (selectedPlan.key === currentPlanKey) {
-    return {
-      currentPlanKey,
-      currentPlanName,
-      status: currentPlanStatus ?? null,
-      statusLabel,
-      workspaceName: workspaceName ?? null,
-      intent: "current_plan",
-      badge: "Current plan",
-      headline: `You are already on Vela ${selectedPlan.name}`,
-      description:
-        "This checkout matches the workspace's current plan. Contact support if you need help reviewing or changing billing details.",
-      summaryTitle: "Current subscription",
-      primaryActionLabel: "Manage current plan",
-      secondaryActionLabel: "Back to settings",
-      secondaryActionHref: "/settings?section=billing",
-    };
-  }
-
-  if (selectedRank > currentRank) {
-    return {
-      currentPlanKey,
-      currentPlanName,
-      status: currentPlanStatus ?? null,
-      statusLabel,
-      workspaceName: workspaceName ?? null,
-      intent: "upgrade",
-      badge: "Upgrade",
-      headline: `Upgrade from ${currentPlanName} to ${selectedPlan.name}`,
-      description:
-        "The account is already subscribed to a lower plan. Plan activation is currently handled during setup so the workspace keeps the right context.",
-      summaryTitle: "Plan upgrade",
-      primaryActionLabel: `Upgrade to ${selectedPlan.name}`,
-      secondaryActionLabel: "Back to settings",
-      secondaryActionHref: "/settings?section=billing",
-    };
-  }
-
-  return {
-    currentPlanKey,
-    currentPlanName,
-    status: currentPlanStatus ?? null,
-    statusLabel,
-    workspaceName: workspaceName ?? null,
-    intent: "downgrade",
-    badge: "Downgrade",
-    headline: `Downgrade from ${currentPlanName} to ${selectedPlan.name}`,
-    description:
-      "The account is already subscribed to a higher plan. Contact support to review the downgrade timing and keep the workspace configured correctly.",
-    summaryTitle: "Plan downgrade",
-    primaryActionLabel: `Downgrade to ${selectedPlan.name}`,
-    secondaryActionLabel: "Back to settings",
-    secondaryActionHref: "/settings?section=billing",
-  };
-}
-
-export function checkoutPlanOptionLabel(plan: PublicPlan, state: CheckoutPlanState) {
-  if (state.currentPlanKey === plan.key && isBillablePlanStatus(state.status)) {
-    return "Current plan";
-  }
-
-  if (!state.currentPlanKey || !isBillablePlanStatus(state.status)) {
-    return "Select plan";
-  }
-
-  return plan.rank > getPublicPlanRank(state.currentPlanKey) ? "Upgrade" : "Downgrade";
-}
-
-function formatCheckoutPlanStatus(status?: BusinessPlanStatus | null) {
-  switch (status) {
-    case "ACTIVE":
-      return "active";
-    case "TRIALING":
-      return "trialing";
-    case "CANCELED":
-      return "canceled";
-    case "INACTIVE":
-      return "inactive";
-    default:
-      return "not started";
-  }
 }

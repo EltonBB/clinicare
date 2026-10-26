@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => {
   const getCurrentUser = vi.fn();
   const updateCurrentUserMetadata = vi.fn();
   const revalidatePath = vi.fn();
+  const paddleConfig = vi.fn();
   return {
+    paddleConfig,
     business,
     whatsAppConnection,
     businessHours,
@@ -38,6 +40,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/paddle/paddle-config", () => ({ paddleConfig: mocks.paddleConfig }));
+
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: mocks.getCurrentUser,
   updateCurrentUserMetadata: mocks.updateCurrentUserMetadata,
@@ -64,6 +68,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getCurrentUser.mockResolvedValue(USER);
   mocks.updateCurrentUserMetadata.mockResolvedValue({ error: false });
+  mocks.paddleConfig.mockReturnValue({ env: "sandbox" });
   mocks.whatsAppConnection.findUnique.mockResolvedValue(null);
   mocks.staffMember.findFirst.mockResolvedValue(null);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
@@ -119,5 +124,44 @@ describe("saveOnboardingStateAction — workspace-shell revalidation", () => {
     expect(result.error).toBe("Upload the clinic logo again before completing onboarding.");
     expect(mocks.$transaction).not.toHaveBeenCalled();
     expect(mocks.updateCurrentUserMetadata).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveOnboardingStateAction — billing", () => {
+  function captureUpsert() {
+    const upsert = vi.fn().mockResolvedValue({ id: "biz_1" });
+    mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        business: { upsert },
+        whatsAppConnection: mocks.whatsAppConnection,
+        businessHours: mocks.businessHours,
+        staffMember: mocks.staffMember,
+        reminderSettings: mocks.reminderSettings,
+      })
+    );
+    return upsert;
+  }
+
+  it("creates a new clinic that must choose a plan, without touching an existing one's billing", async () => {
+    const upsert = captureUpsert();
+
+    await saveOnboardingStateAction(completedState());
+
+    const { create, update } = upsert.mock.calls[0][0];
+    expect(create).toMatchObject({ billingMode: "SUBSCRIPTION", subscriptionStatus: "NONE", lockedAt: expect.any(Date) });
+    expect(update).not.toHaveProperty("billingMode");
+    expect(update).not.toHaveProperty("subscriptionStatus");
+  });
+
+  it("keeps a new clinic free while billing is switched off, so it is never stuck on checkout", async () => {
+    mocks.paddleConfig.mockReturnValue(null);
+    const upsert = captureUpsert();
+
+    await saveOnboardingStateAction(completedState());
+
+    const { create } = upsert.mock.calls[0][0];
+    expect(create).not.toHaveProperty("billingMode");
+    expect(create).not.toHaveProperty("subscriptionStatus");
+    expect(create).not.toHaveProperty("lockedAt");
   });
 });
