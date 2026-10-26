@@ -117,7 +117,9 @@ export function buildBillingSummary(
       : `Free trial, then billed ${BILLED[interval]}.`;
   }
 
-  const currentPlan = normalizeBusinessPlan(business.plan);
+  // What Paddle bills, not what the clinic currently gets: during an offered
+  // Pro trial the subscription is still Basic.
+  const currentPlan = normalizeBusinessPlan(business.subscribedPlan ?? business.plan);
   // Paddle won't change a subscription while a payment is failing: the card comes first.
   const changeOptions: BillingChangeOption[] =
     portal && !ending && business.subscriptionStatus !== "PAST_DUE"

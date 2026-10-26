@@ -65,7 +65,7 @@ describe("buildBillingSummary", () => {
   });
 
   it("credits a move to a cheaper plan", () => {
-    const pro = summary({ plan: "PRO" });
+    const pro = summary({ plan: "PRO", subscribedPlan: "PRO" });
     expect(pro.changeOptions.find((option) => option.plan === "BASIC" && option.interval === "MONTH")?.effect).toBe(
       "The unused part of this period is credited to your next bill."
     );
@@ -125,5 +125,20 @@ describe("buildBillingSummary", () => {
         proTrialEndsAt: new Date("2026-11-09T12:00:00Z"),
       }).proTrial
     ).toEqual({ state: "active", endsOn: "November 9, 2026" });
+  });
+
+  it("offers plan switches from the plan Paddle bills, even during an offered Pro trial", () => {
+    const onProTrial = summary({
+      plan: "PRO",
+      subscribedPlan: "BASIC",
+      proTrialOfferedAt: NOW,
+      proTrialStartedAt: NOW,
+      proTrialEndsAt: new Date("2026-11-09T12:00:00Z"),
+    });
+    expect(onProTrial.changeOptions.map((option) => option.label)).toEqual([
+      "Basic, billed yearly",
+      "Pro, billed monthly",
+      "Pro, billed yearly",
+    ]);
   });
 });
