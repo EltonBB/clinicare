@@ -9,6 +9,7 @@ import {
 } from "@/lib/automations";
 import { DEFAULT_REMINDER_TEMPLATE, LEGACY_DEFAULT_REMINDER_TEMPLATE } from "@/lib/messaging/render";
 import { isProBusinessPlan } from "@/lib/billing";
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { prisma } from "@/lib/prisma";
 
 export type AutomationSettingView = {
@@ -229,7 +230,8 @@ export function automationEnabledWhere(kind: AutomationKind): Prisma.BusinessWhe
     ],
   };
 
-  if (definition.basic) return enabled;
+  // A read-only workspace (its plan ended) runs no automation at all.
+  if (definition.basic) return { AND: [workspaceUsableWhere(), enabled] };
   const proPlans = Object.values(BusinessPlan).filter((plan) => isProBusinessPlan(plan));
-  return { AND: [{ plan: { in: proPlans } }, enabled] };
+  return { AND: [workspaceUsableWhere(), { plan: { in: proPlans } }, enabled] };
 }

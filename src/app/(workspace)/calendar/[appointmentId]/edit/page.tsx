@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { isProBusinessPlan } from "@/lib/billing";
+import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
+import { canUseWorkspace } from "@/lib/billing-access";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +21,13 @@ export default async function EditAppointmentPage({
   const { user, business } = await requireCurrentWorkspace("/calendar", {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return (
+      <CreatePageShell title="Edit booking">
+        <WorkspaceLockedState />
+      </CreatePageShell>
+    );
+  }
   const { ownerName } = toBusinessIdentity(business, user);
   const { appointmentId } = await params;
 

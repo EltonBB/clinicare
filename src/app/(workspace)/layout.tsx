@@ -5,6 +5,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { WorkspaceToaster } from "@/components/layout/workspace-toaster";
 import { completePastConfirmedAppointments } from "@/lib/appointments";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
+import { workspaceAccess } from "@/lib/billing-access";
+import { billingBanner } from "@/lib/billing-banner";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { getCached } from "@/lib/cache";
 import { isOnboardingCompleted } from "@/lib/onboarding";
@@ -37,6 +39,13 @@ export default async function WorkspaceLayout({
 
   if (!isOnboardingCompleted(user.user_metadata)) {
     redirect("/onboarding");
+  }
+
+  // A paying-mode workspace that never subscribed chooses a plan first; one
+  // whose plan ended stays readable, with the banner saying so.
+  const access = workspaceAccess(business);
+  if (access.kind === "needs_plan") {
+    redirect("/checkout");
   }
 
   after(async () => {
@@ -78,6 +87,7 @@ export default async function WorkspaceLayout({
       planStatus={planStatusLabel(business.planStatus)}
       brandAccentColor={business.brandAccentColor}
       logoUrl={logoDisplayUrl}
+      billingBanner={billingBanner(access)}
       unreadCount={0}
       inboxUnreadCount={0}
       notifications={[]}

@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const isWorkspaceLockedForSending = vi.hoisted(() => vi.fn(async () => false));
+vi.mock("./workspace-gate", () => ({ isWorkspaceLockedForSending }));
 
 import {
   ChannelRegistry,
@@ -86,6 +89,24 @@ describe("renderReminder (minimum-necessary)", () => {
 });
 
 describe("sendMessage dispatch", () => {
+  it("sends nothing for a read-only workspace (its plan ended)", async () => {
+    isWorkspaceLockedForSending.mockResolvedValueOnce(true);
+    const echo = new EchoAdapter("WHATSAPP");
+    const result = await sendMessage(
+      {
+        channel: "WHATSAPP",
+        businessId: "biz_1",
+        to: "+14155550100",
+        message: { kind: "freeform", body: "Hello" },
+      },
+      registryWith(echo)
+    );
+
+    expect(result).toMatchObject({ ok: false, reason: "workspace_locked" });
+    expect(echo.sent).toHaveLength(0);
+    expect(isWorkspaceLockedForSending).toHaveBeenCalledWith("biz_1");
+  });
+
   it("routes to the registered adapter and returns a neutral result", async () => {
     const echo = new EchoAdapter("WHATSAPP");
     const result = await sendMessage(

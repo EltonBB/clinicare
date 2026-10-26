@@ -58,6 +58,8 @@ vi.mock("@/lib/messaging", () => ({
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 const allowReplyAck = vi.hoisted(() => vi.fn());
 vi.mock("./send-limits", () => ({ allowReplyAck }));
+const isWorkspaceLockedForSending = vi.hoisted(() => vi.fn(async () => false));
+vi.mock("./workspace-gate", () => ({ isWorkspaceLockedForSending }));
 
 import { applyInboundReplyIntent, handOffAbandonedReplyIntents, recordInboundMessage } from "./inbound";
 
@@ -252,6 +254,13 @@ describe("applyInboundReplyIntent", () => {
   it("does nothing when the body has no intent", async () => {
     const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "hello", now: NOW });
     expect(result).toEqual({ applied: false, reason: "no_intent" });
+    expect(mocks.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("changes nothing for a read-only workspace (its plan ended)", async () => {
+    isWorkspaceLockedForSending.mockResolvedValueOnce(true);
+    const result = await applyInboundReplyIntent({ businessId: "biz_1", clientId: "client_1", body: "2", now: NOW });
+    expect(result).toEqual({ applied: false, reason: "workspace_locked" });
     expect(mocks.appointment.findMany).not.toHaveBeenCalled();
   });
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { clockStaff } from "@/lib/mobile/clock";
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, mobileWriteBlocked, staffAuthResponse } from "@/lib/mobile/guard";
 import { readMobileJson } from "@/lib/mobile/json-body";
 import { requireStaffContext } from "@/lib/staff-auth";
 
@@ -15,6 +15,9 @@ export async function POST(request: Request) {
   if ("error" in ctx) {
     return staffAuthResponse(ctx);
   }
+
+  const blocked = mobileWriteBlocked(ctx.business);
+  if (blocked) return blocked;
 
   const limited = await mobileRateLimit(ctx.device.id, "clock", { limit: 20, windowMs: 60_000 });
   if (limited) {

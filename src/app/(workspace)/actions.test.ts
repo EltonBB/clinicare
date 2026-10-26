@@ -50,7 +50,10 @@ function channel(overrides: {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireCurrentWorkspace.mockResolvedValue({ business: { id: "biz_1" }, user: { id: "user_1" } });
+  mocks.requireCurrentWorkspace.mockResolvedValue({
+    business: { id: "biz_1", billingMode: "COMPLIMENTARY" },
+    user: { id: "user_1" },
+  });
   mocks.isWithinActionBudget.mockResolvedValue(true);
   mocks.conversation.aggregate.mockResolvedValue({ _sum: { unreadCount: 0 } });
   mocks.conversation.findMany.mockResolvedValue([]);
@@ -89,6 +92,17 @@ describe("refreshWorkspaceNotificationsAction reminderWarning", () => {
     mocks.business.findUnique.mockResolvedValue(channel({ status: "ERRORED" }));
 
     expect(await warningFor()).toBe("errored");
+  });
+
+  it("stays quiet for a read-only workspace, which sends no reminders by design", async () => {
+    mocks.requireCurrentWorkspace.mockResolvedValue({
+      business: { id: "biz_1", billingMode: "SUBSCRIPTION", subscriptionStatus: "CANCELED" },
+      user: { id: "user_1" },
+    });
+    mocks.business.findUnique.mockResolvedValue(channel({ status: "DISCONNECTED" }));
+
+    expect(await warningFor()).toBeNull();
+    expect(mocks.appointment.count).not.toHaveBeenCalled();
   });
 
   it("stays quiet when nothing is booked in the next 24 hours", async () => {

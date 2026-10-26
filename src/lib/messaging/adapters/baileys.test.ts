@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../workspace-gate", () => ({ isWorkspaceLockedForSending: vi.fn(async () => false) }));
+
 import { buildConfiguredRegistry } from "../configure";
 import { sendMessage } from "../index";
 import { SendOutcomeUnknownError } from "../types";

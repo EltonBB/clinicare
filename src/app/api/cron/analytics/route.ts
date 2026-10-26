@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { generateAnalyticsSnapshotsForBusiness } from "@/lib/analytics-ai";
 import { analyticsSnapshotsCacheKey } from "@/lib/analytics-snapshot-cache";
 import { isProBusinessPlan } from "@/lib/billing";
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { invalidateCacheVersioned } from "@/lib/cache";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
@@ -39,6 +40,7 @@ async function run() {
   const businesses = await prisma.business.findMany({
     where: {
       planStatus: "ACTIVE",
+      ...workspaceUsableWhere(),
     },
     select: {
       id: true,

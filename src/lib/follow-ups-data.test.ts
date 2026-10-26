@@ -122,6 +122,11 @@ function matchesScalar(value: unknown, filter: unknown): boolean {
   });
 }
 
+// Columns a fixture leaves out read as their database default, as a row
+// written before the column existed would (a business predating billing is a
+// free account, so it stays usable).
+const COLUMN_DEFAULTS: Row = { billingMode: "COMPLIMENTARY", subscriptionStatus: "NONE" };
+
 function matchesWhere(row: Row, where: Row): boolean {
   return Object.entries(where).every(([key, filter]) => {
     if (key === "OR") return (filter as Row[]).some((branch) => matchesWhere(row, branch));
@@ -130,7 +135,7 @@ function matchesWhere(row: Row, where: Row): boolean {
     // each one individually, ANDed together — same shape as AND above, just
     // inverted.
     if (key === "NOT") return [filter].flat().every((branch) => !matchesWhere(row, branch as Row));
-    const value = row[key];
+    const value = row[key] === undefined ? COLUMN_DEFAULTS[key] : row[key];
     if (isScalarFilter(filter)) return matchesScalar(value, filter);
     // A to-many relation a fixture leaves out (e.g. a business's saved
     // automation rows) reads as an empty list, as Prisma would load it.
@@ -309,6 +314,20 @@ const LIVENESS_CASES: Array<{ name: string; live: boolean; row: Row; keptBySweep
   { name: "rebook, client status archived", live: false, row: draftRow({ kind: "REBOOK", client: client({ status: "ARCHIVED" }) }) },
   // Rebooking nudges are Pro: a downgrade stops them at once, not after the hourly sweep.
   { name: "rebook, workspace since dropped to Basic", live: false, row: draftRow({ kind: "REBOOK", business: { plan: "BASIC" } }) },
+  // A workspace whose plan ended is read-only: its drafts are hidden and can't
+  // be sent, but stay pending so they return if it renews (an old automatic one
+  // then waits for review: AUTO_SEND_MAX_AGE_MS).
+  {
+    name: "thank-you, workspace's plan has ended",
+    live: false,
+    keptBySweep: true,
+    row: draftRow({
+      kind: "THANK_YOU",
+      appointmentId: "appt_1",
+      appointment: { status: "COMPLETED", startAt: PAST },
+      business: { plan: "PRO", workflowSettings: ALL_WORKFLOWS_ON, billingMode: "SUBSCRIPTION", subscriptionStatus: "CANCELED" },
+    }),
+  },
   {
     name: "rebook, legacy Advanced plan (counts as Pro)",
     live: true,

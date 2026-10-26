@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
+import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
+import { WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
+import { canUseWorkspace } from "@/lib/billing-access";
 import { getSampleReportsView } from "@/lib/reports-sample";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
@@ -58,6 +61,16 @@ export default async function ReportsPage({
   const { business } = await requireCurrentWorkspace("/reports", {
     missingBusinessRedirect: "/onboarding",
   });
+
+  // Reports is off while the workspace is read-only (its plan ended).
+  if (!canUseWorkspace(business)) {
+    return (
+      <WorkspacePage>
+        <WorkspaceHeader title="Reports" />
+        <WorkspaceLockedState />
+      </WorkspacePage>
+    );
+  }
   const { from, to } = await searchParams;
   const selectedFrom = parseDateParam(from);
   const selectedTo = parseDateParam(to);

@@ -5,6 +5,7 @@ import type { Business } from "@prisma/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 import { getCurrentUser, requireCurrentUser } from "@/lib/auth";
+import { canUseWorkspace, WORKSPACE_LOCKED_ERROR } from "@/lib/billing-access";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, type RateLimitRule } from "@/lib/rate-limit";
 
@@ -20,7 +21,8 @@ export type WorkspaceContext = {
 export type AuthedBusinessResult =
   // `throttled` tells an over-budget request apart from a signed-out one, so a
   // caller never sends a valid session to "log in again" (Codex #140).
-  | { error: string; throttled?: true }
+  // `locked`: the workspace's plan has ended, so it is read-only (billing-access.ts).
+  | { error: string; throttled?: true; locked?: true }
   | { business: Business; user: SupabaseUser };
 
 export const getCurrentBusiness = cache(async function getCurrentBusiness(
@@ -104,10 +106,17 @@ export async function isWithinBackgroundBudget(userId: string): Promise<boolean>
  * `budget: "background"` is only for a small, repeat-safe acknowledgement
  * (marking something read or seen) whose page fires it once and moves on: it
  * spends the separate background allowance instead of the shared budget.
+ *
+ * Also the billing write gate: a workspace whose plan has ended is read-only,
+ * so an action is refused with {@link WORKSPACE_LOCKED_ERROR} unless it only
+ * reads (`access: "read"`; background acknowledgements count as reads).
  */
 export async function getAuthedBusiness(
   sessionExpiredMessage = "Your session expired. Log in again to continue.",
-  { budget = "actions" }: { budget?: "actions" | "background" } = {}
+  {
+    budget = "actions",
+    access = budget === "background" ? "read" : "write",
+  }: { budget?: "actions" | "background"; access?: "read" | "write" } = {}
 ): Promise<AuthedBusinessResult> {
   const user = await getCurrentUser();
 
@@ -123,6 +132,10 @@ export async function getAuthedBusiness(
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+
+  if (access === "write" && !canUseWorkspace(business)) {
+    return { error: WORKSPACE_LOCKED_ERROR, locked: true } as const;
+  }
 
   return { business, user } as const;
 }

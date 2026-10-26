@@ -85,7 +85,10 @@ export type SendFailureReason =
   | "delivery_uncertain"
   // The clinic's number reached its sending ceiling: nothing was sent, and the
   // same send can go out once the window has moved on.
-  | "rate_limited";
+  | "rate_limited"
+  // The clinic's plan has ended (read-only workspace): nothing was sent, and
+  // nothing goes to its patients until it is renewed (billing-access.ts).
+  | "workspace_locked";
 
 export type SendMessageResult =
   | {

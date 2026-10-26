@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const clinicSendRefusal = vi.hoisted(() => vi.fn());
 vi.mock("./send-limits", () => ({ clinicSendRefusal }));
+vi.mock("./workspace-gate", () => ({ isWorkspaceLockedForSending: vi.fn(async () => false) }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 import { ChannelRegistry, EchoAdapter, sendMessage } from "./index";

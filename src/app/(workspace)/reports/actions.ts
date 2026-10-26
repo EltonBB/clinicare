@@ -10,6 +10,7 @@ import {
   allPeriodsRateLimited,
   analyticsSnapshotsCacheKey,
 } from "@/lib/analytics-snapshot-cache";
+import { canUseWorkspace, WORKSPACE_LOCKED_ERROR } from "@/lib/billing-access";
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { invalidateCacheVersioned } from "@/lib/cache";
 import { logger } from "@/lib/logger";
@@ -27,6 +28,10 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
 
   if (!(await isWithinActionBudget(user.id))) {
     return { ok: false, message: ACTION_RATE_LIMIT_ERROR, results: [] };
+  }
+
+  if (!canUseWorkspace(business)) {
+    return { ok: false, message: WORKSPACE_LOCKED_ERROR, results: [] };
   }
 
   const results = await generateAnalyticsSnapshotsForBusiness(business.id);

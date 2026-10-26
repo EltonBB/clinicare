@@ -1,5 +1,6 @@
 "use server";
 
+import { canUseWorkspace } from "@/lib/billing-access";
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { checkinDetail } from "@/lib/notification-copy";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
@@ -159,9 +160,12 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
   const channelHealthy = !!reminderChannel?.whatsappEnabled && connectionStatus === "CONNECTED";
   // Visits are only counted when there's a problem, so a healthy clinic pays
   // nothing extra per poll. Same status filter as the reminders cron's query.
+  // A read-only workspace sends no reminders by design, so its link isn't a
+  // problem to warn about (the billing banner already explains the state).
   const visitsOwedReminders =
     !!reminderChannel &&
     remindersOn &&
+    canUseWorkspace(business) &&
     !channelHealthy &&
     (await prisma.appointment.count({
       where: {

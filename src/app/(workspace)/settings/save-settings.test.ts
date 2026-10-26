@@ -100,6 +100,7 @@ beforeEach(() => {
     logoUrl: null,
     plan: "PRO",
     currency: "EUR",
+    billingMode: "COMPLIMENTARY",
   });
   mocks.prisma.$transaction.mockImplementation(async (run: (tx: typeof mocks.tx) => unknown) => run(mocks.tx));
   mocks.prisma.business.findUniqueOrThrow.mockResolvedValue({ id: "biz_1" });

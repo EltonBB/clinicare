@@ -881,7 +881,7 @@ export type RecentCheckIn = {
  * is actually present when they check in from the mobile app. Read-only.
  */
 export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
-  const context = await getAuthedBusinessContext();
+  const context = await getAuthedBusinessContext(undefined, { access: "read" });
   if ("error" in context) {
     // Over the action budget, reject rather than answer "nothing recent": the
     // toaster would take an empty first answer as its baseline and later show
@@ -929,7 +929,7 @@ export type RecentStaffMessage = {
  * generic notice only (no message body — they open the staff page to read it).
  */
 export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
-  const context = await getAuthedBusinessContext();
+  const context = await getAuthedBusinessContext(undefined, { access: "read" });
   if ("error" in context) {
     // Same as getRecentStaffCheckInsAction: a throttled poll must not become
     // the toaster's baseline (Codex #140).
