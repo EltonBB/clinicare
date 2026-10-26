@@ -60,6 +60,17 @@ export function changePaddleSubscriptionPrice(
   });
 }
 
+/**
+ * Cancels a subscription at once, before anything (more) is charged. Only for
+ * one the app refuses to attach to a clinic (subscription-sync.ts).
+ */
+export function cancelPaddleSubscription(config: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
+  return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {
+    method: "POST",
+    body: { effective_from: "immediately" },
+  });
+}
+
 /** A short-lived link to Paddle's customer portal: card, invoices, cancel. */
 export async function createPaddlePortalUrl(
   config: PaddleConfig,

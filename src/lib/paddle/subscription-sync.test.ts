@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), updateMany: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), updateMany: vi.fn(), cancelPaddleSubscription: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: { business: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } } }));
+vi.mock("./paddle-api", () => ({ cancelPaddleSubscription: mocks.cancelPaddleSubscription }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import type { PaddleConfig } from "./paddle-config";
@@ -46,6 +47,7 @@ const CLINIC = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.updateMany.mockResolvedValue({ count: 1 });
+  mocks.cancelPaddleSubscription.mockResolvedValue({});
 });
 
 describe("applySubscriptionSnapshot", () => {
@@ -81,6 +83,79 @@ describe("applySubscriptionSnapshot", () => {
 
     expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
     expect(mocks.updateMany).not.toHaveBeenCalled();
+    // ...and cancels the second one, so the clinic isn't charged twice.
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
+  });
+
+  it("doesn't cancel a refused subscription that has already ended", async () => {
+    mocks.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_old", subscriptionStatus: "ACTIVE" });
+
+    expect(await applySubscriptionSnapshot(CONFIG, { ...SUB, status: "canceled" }, OCCURRED)).toBe("unmatched");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
+  });
+
+  it("still answers when Paddle won't cancel a refused subscription", async () => {
+    mocks.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_old", subscriptionStatus: "ACTIVE" });
+    mocks.cancelPaddleSubscription.mockRejectedValue(new Error("Paddle is down"));
+
+    expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
+  });
+
+  it("refuses a second free trial for a clinic that has had its trial", async () => {
+    const trial = {
+      ...SUB,
+      status: "trialing",
+      items: [{ price: { id: "pri_bm_t" }, trial_dates: { starts_at: "2026-10-26T12:00:00Z", ends_at: "2026-11-09T12:00:00Z" } }],
+    };
+    mocks.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_old", subscriptionStatus: "CANCELED", trialUsedAt: new Date("2026-09-01") });
+
+    expect(await applySubscriptionSnapshot(CONFIG, trial, OCCURRED)).toBe("unmatched");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
+  });
+
+  it("keeps a trial moving between plans on the clinic's own subscription", async () => {
+    const trial = {
+      ...SUB,
+      status: "trialing",
+      items: [{ price: { id: "pri_pm_t" }, trial_dates: { starts_at: "2026-10-20T12:00:00Z", ends_at: "2026-11-03T12:00:00Z" } }],
+    };
+    mocks.findUnique.mockResolvedValueOnce({
+      ...CLINIC,
+      paddleSubscriptionId: "sub_new",
+      subscriptionStatus: "TRIALING",
+      trialUsedAt: new Date("2026-10-20T12:00:00Z"),
+    });
+
+    expect(await applySubscriptionSnapshot(CONFIG, trial, OCCURRED)).toBe("applied");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
+  });
+
+  it("never changes a free clinic, even when a checkout names it", async () => {
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...CLINIC, billingMode: "COMPLIMENTARY" });
+
+    expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
+  });
+
+  it("leaves a free clinic's old, ended subscription alone", async () => {
+    mocks.findUnique.mockResolvedValueOnce({
+      ...CLINIC,
+      billingMode: "COMPLIMENTARY",
+      paddleSubscriptionId: "sub_new",
+      subscriptionStatus: "CANCELED",
+    });
+
+    expect(await applySubscriptionSnapshot(CONFIG, { ...SUB, status: "canceled" }, OCCURRED)).toBe("unmatched");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
   });
 
   it("lets a clinic whose old subscription ended subscribe again", async () => {

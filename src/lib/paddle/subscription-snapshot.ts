@@ -68,8 +68,10 @@ function date(value: string | null | undefined): Date | null {
  * - `trialUsedAt` is set once, the first time a trial is seen: one per clinic.
  * - `lockedAt` starts the 90-day retention clock when the subscription stops
  *   being usable, keeps an earlier start, and clears once it is usable again.
- * - A free account stays free if an old subscription of it ends; a usable
- *   subscription makes the clinic a paying one.
+ * - Whether a clinic is free is never changed here, only on the owner page:
+ *   the clinic id reaches Paddle from the browser, so a subscription someone
+ *   else paid for (and then cancelled) must not be able to turn a free
+ *   clinic into a lockable one.
  */
 export function subscriptionSnapshotUpdate(
   subscription: PaddleSubscription,
@@ -87,7 +89,7 @@ export function subscriptionSnapshotUpdate(
   const usable = (USABLE_SUBSCRIPTION_STATUSES as readonly SubscriptionStatus[]).includes(status);
   const trialStart = date(item.trial_dates?.starts_at);
   const firstTrialSeen = status === "TRIALING" || trialStart ? (trialStart ?? occurredAt) : null;
-  const billingMode: BillingMode = usable ? "SUBSCRIPTION" : existing.billingMode;
+  const billingMode = existing.billingMode;
 
   return {
     kind: "update",

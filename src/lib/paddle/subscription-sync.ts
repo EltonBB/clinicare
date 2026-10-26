@@ -2,6 +2,7 @@ import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
+import { cancelPaddleSubscription } from "./paddle-api";
 import { priceLookup, type PaddleConfig } from "./paddle-config";
 import { type PaddleSubscription, subscriptionSnapshotUpdate } from "./subscription-snapshot";
 
@@ -16,6 +17,38 @@ const BUSINESS_SELECT = {
   lockedAt: true,
 } as const;
 
+// Paddle statuses that are, or can become, billable again.
+const LIVE_PADDLE_STATUSES = new Set(["trialing", "active", "past_due", "paused"]);
+
+type RefusalReason = "free_account" | "another_live_subscription" | "trial_already_used";
+
+/**
+ * A subscription the app won't attach to its clinic is cancelled in Paddle at
+ * once, so nobody is charged for a plan that unlocks nothing: a second
+ * checkout from another tab, a checkout for a clinic the owner has made free,
+ * or a second free trial (the trial price picked in the browser). Logged by id
+ * only; a cancel that fails is an error a person follows up.
+ */
+async function refuseSubscription(
+  config: PaddleConfig,
+  subscription: PaddleSubscription,
+  businessId: string,
+  reason: RefusalReason
+): Promise<"unmatched"> {
+  logger.warn("Paddle subscription refused.", { businessId, subscriptionId: subscription.id, reason });
+  if (LIVE_PADDLE_STATUSES.has(subscription.status)) {
+    try {
+      await cancelPaddleSubscription(config, subscription.id);
+    } catch (error) {
+      logger.error("Couldn't cancel a refused Paddle subscription.", error, {
+        businessId,
+        subscriptionId: subscription.id,
+      });
+    }
+  }
+  return "unmatched";
+}
+
 /**
  * Writes a Paddle subscription snapshot onto the clinic it belongs to: the one
  * already holding this subscription id, else the clinic named in the checkout's
@@ -23,8 +56,10 @@ const BUSINESS_SELECT = {
  * the write only lands when the snapshot is not older than the last one
  * applied (`billingSyncedAt`), checked in the same statement.
  *
- * A clinic that already has a different live subscription is never taken over
- * by another one (logged, by id only, for a person to sort out).
+ * The clinic id reaches Paddle from the browser, so it is never trusted to
+ * change more than a paying clinic's own billing: a free clinic is left as it
+ * is, and a clinic is never taken over by a second live subscription or given
+ * a second free trial (see {@link refuseSubscription}).
  */
 export async function applySubscriptionSnapshot(
   config: PaddleConfig,
@@ -52,12 +87,17 @@ export async function applySubscriptionSnapshot(
       business.paddleSubscriptionId !== subscription.id &&
       (USABLE_SUBSCRIPTION_STATUSES as readonly string[]).includes(business.subscriptionStatus);
     if (holdsAnotherLiveSubscription) {
-      logger.warn("Paddle subscription ignored: the clinic already has another live subscription.", {
-        businessId: business.id,
-        subscriptionId: subscription.id,
-      });
-      return "unmatched";
+      return refuseSubscription(config, subscription, business.id, "another_live_subscription");
     }
+    const hasTrial = subscription.status === "trialing" || subscription.items.some((item) => item.trial_dates);
+    if (hasTrial && business.trialUsedAt) {
+      return refuseSubscription(config, subscription, business.id, "trial_already_used");
+    }
+  }
+
+  // Free accounts are the owner's call (/owner), never Paddle's.
+  if (business.billingMode === "COMPLIMENTARY") {
+    return refuseSubscription(config, subscription, business.id, "free_account");
   }
 
   const update = subscriptionSnapshotUpdate(subscription, occurredAt, priceLookup(config.prices), business);

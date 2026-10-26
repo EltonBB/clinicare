@@ -116,14 +116,14 @@ describe("subscriptionSnapshotUpdate", () => {
     });
   });
 
-  it("never moves a free account to paying on an ended subscription", () => {
-    const result = subscriptionSnapshotUpdate(
-      sub({ status: "canceled" }),
-      OCCURRED,
-      LOOKUP,
-      { billingMode: "COMPLIMENTARY", trialUsedAt: null, lockedAt: null }
-    );
-    expect(result).toMatchObject({ kind: "update", data: { billingMode: "COMPLIMENTARY", lockedAt: null } });
+  it("never changes whether a clinic is free: only the owner page does", () => {
+    const free = { billingMode: "COMPLIMENTARY" as const, trialUsedAt: null, lockedAt: null };
+    for (const status of ["active", "canceled"]) {
+      expect(subscriptionSnapshotUpdate(sub({ status }), OCCURRED, LOOKUP, free)).toMatchObject({
+        kind: "update",
+        data: { billingMode: "COMPLIMENTARY", lockedAt: null },
+      });
+    }
   });
 
   it("is unmatched for a price this app doesn't sell or an unknown status", () => {

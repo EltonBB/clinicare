@@ -26,6 +26,8 @@ export async function reconcileOverdueSubscriptions(
   const overdueBefore = new Date(now.getTime() - GRACE_MS);
   const due = await prisma.business.findMany({
     where: {
+      // A free clinic's leftover subscription is never synced (subscription-sync.ts).
+      billingMode: "SUBSCRIPTION",
       paddleSubscriptionId: { not: null },
       subscriptionStatus: { in: [...USABLE_SUBSCRIPTION_STATUSES] },
       OR: [{ currentPeriodEndsAt: { lt: overdueBefore } }, { cancelAt: { lt: now } }],

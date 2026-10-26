@@ -31,6 +31,7 @@ describe("reconcileOverdueSubscriptions", () => {
     expect(mocks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          billingMode: "SUBSCRIPTION",
           paddleSubscriptionId: { not: null },
           subscriptionStatus: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] },
           OR: [{ currentPeriodEndsAt: { lt: new Date("2026-10-26T11:00:00Z") } }, { cancelAt: { lt: NOW } }],
