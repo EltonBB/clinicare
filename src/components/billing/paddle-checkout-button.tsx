@@ -26,7 +26,7 @@ export function PaddleCheckoutButton({
   label: string;
   className?: string;
 }) {
-  const paddle = usePaddle(paddleConfig);
+  const { paddle, failed } = usePaddle(paddleConfig);
 
   function open() {
     paddle?.Checkout.open({
@@ -40,6 +40,20 @@ export function PaddleCheckoutButton({
         successUrl: `${window.location.origin}/checkout/success`,
       },
     });
+  }
+
+  if (failed) {
+    return (
+      <p
+        role="alert"
+        className={cn(
+          "flex min-h-12 w-full items-center justify-center rounded-(--radius-mkt-field) bg-muted px-4 text-center text-sm font-medium text-muted-foreground",
+          className
+        )}
+      >
+        Checkout didn&apos;t load. Turn off any content blocker for this page, then refresh.
+      </p>
+    );
   }
 
   return (

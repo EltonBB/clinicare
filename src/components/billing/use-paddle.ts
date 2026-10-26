@@ -72,24 +72,28 @@ function loadPaddle(config: PaddleClientConfig): Promise<PaddleJs> {
   return loading;
 }
 
-/** Paddle.js once it has loaded; null until then, or when billing is off. */
-export function usePaddle(config: PaddleClientConfig | null): PaddleJs | null {
-  const [paddle, setPaddle] = useState<PaddleJs | null>(null);
+/**
+ * Paddle.js once it has loaded (null until then, or when billing is off), and
+ * whether loading failed (a blocker, a network error) so callers can say so.
+ */
+export function usePaddle(config: PaddleClientConfig | null): { paddle: PaddleJs | null; failed: boolean } {
+  const [state, setState] = useState<{ paddle: PaddleJs | null; failed: boolean }>({ paddle: null, failed: false });
   useEffect(() => {
     if (!config) return;
     let cancelled = false;
     loadPaddle(config)
       .then((instance) => {
-        if (!cancelled) setPaddle(instance);
+        if (!cancelled) setState({ paddle: instance, failed: false });
       })
       .catch(() => {
-        // Prices fall back to the list prices; the checkout button says it's unavailable.
+        // Prices fall back to the list prices; the checkout button says it didn't load.
+        if (!cancelled) setState({ paddle: null, failed: true });
       });
     return () => {
       cancelled = true;
     };
   }, [config]);
-  return paddle;
+  return state;
 }
 
 /** "€39.00" → "€39": whole amounts read cleaner on a pricing card. */
@@ -103,7 +107,7 @@ export function trimWholeAmount(formatted: string): string {
  * their list price meanwhile.
  */
 export function useLocalizedPrices(config: PaddleClientConfig | null, priceIds: string[]): Record<string, string> {
-  const paddle = usePaddle(config);
+  const { paddle } = usePaddle(config);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const key = priceIds.join(",");
   useEffect(() => {
