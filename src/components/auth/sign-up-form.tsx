@@ -91,7 +91,7 @@ export function SignUpForm() {
         >
           Create account
         </SubmitButton>
-        <p className="text-center text-xs text-muted-foreground">No credit card required.</p>
+        <p className="text-center text-xs text-muted-foreground">Then set up your clinic and start your 14-day free trial.</p>
       </div>
     </form>
   );
