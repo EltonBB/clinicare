@@ -13,8 +13,7 @@ import {
   type WorkingHoursState,
   weekdayOrder,
 } from "@/lib/onboarding";
-import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
-import { proAddedFeatures } from "@/lib/public-plans";
+import { buildBillingSummary, type BillingSummary } from "@/lib/billing-summary";
 // Type-only: workflow-generators pulls in prisma, which must never reach the
 // client bundle this module is part of. The server-side loader
 // (settings-server.ts) supplies the values, defaults included.
@@ -112,17 +111,7 @@ export type SettingsState = {
   };
   reminders: SettingsReminders;
   workflows: WorkflowSettingsValues;
-  billing: {
-    // Server-computed (isProBusinessPlan) — gates the Pro-only rebooking row.
-    isPro: boolean;
-    planName: string;
-    statusLabel: string;
-    note: string;
-    nextStep: string;
-    ctaLabel: string;
-    checkoutHref: string;
-    lockedFeatures: string[];
-  };
+  billing: BillingSummary;
 };
 
 type SettingsWorkspaceData = {
@@ -135,6 +124,8 @@ type SettingsWorkspaceData = {
   workflows: WorkflowSettingsValues;
   whatsappConnection: WhatsAppConnection | null;
   logoDisplayUrl?: string;
+  /** Paddle is configured here (lib/paddle/paddle-config.ts): billing can be managed. */
+  billingEnabled?: boolean;
 };
 
 export function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
@@ -160,30 +151,6 @@ export function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): Worki
         };
     return result;
   }, {} as WorkingHoursState);
-}
-
-function buildBillingSummary(business: Business): SettingsState["billing"] {
-  const planName = planDisplayName(business.plan);
-
-  return {
-    isPro: isProBusinessPlan(business.plan),
-    planName,
-    statusLabel: planStatusLabel(business.planStatus),
-    note:
-      planName === "Pro"
-        ? "Your workspace is on the Pro plan with reports and premium workflow surfaces enabled."
-        : "Your workspace is on the Basic plan with core clinic operations enabled for daily use.",
-    nextStep:
-      planName === "Pro"
-        ? "Online billing opens soon. Contact support to change plans."
-        : "Pro unlocks full reports. Contact support to upgrade.",
-    ctaLabel: planName === "Pro" ? "Manage plan" : "Unlock Pro",
-    checkoutHref: "/checkout?plan=pro",
-    // Same Pro-exclusive bullets either way — only the section heading framing
-    // differs ("Included in your plan" vs "Unlock with Pro"). Sourced from
-    // publicPlans so this can never drift from /pricing or the checkout summary.
-    lockedFeatures: proAddedFeatures,
-  };
 }
 
 // Exported so settings-workspace.tsx's client-side pairing handlers can
@@ -248,6 +215,7 @@ export function buildSettingsStateFromWorkspace({
   workflows,
   whatsappConnection,
   logoDisplayUrl: resolvedLogoDisplayUrl,
+  billingEnabled = false,
 }: SettingsWorkspaceData): SettingsState {
   const businessType = businessTypes.includes(business.businessType as BusinessType)
     ? (business.businessType as BusinessType)
@@ -292,7 +260,7 @@ export function buildSettingsStateFromWorkspace({
       template: reminderTemplate,
     },
     workflows,
-    billing: buildBillingSummary(business),
+    billing: buildBillingSummary(business, { billingEnabled }),
   };
 }
 
