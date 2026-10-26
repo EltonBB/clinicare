@@ -30,6 +30,10 @@ export default async function OwnerPage() {
       cancelAt: true,
       trialEndsAt: true,
       lockedAt: true,
+      subscribedPlan: true,
+      proTrialOfferedAt: true,
+      proTrialStartedAt: true,
+      proTrialEndsAt: true,
     },
     orderBy: { createdAt: "desc" },
   });
@@ -76,6 +80,7 @@ export default async function OwnerPage() {
                 isFree={row.isFree}
                 plan={row.plan}
                 canMakeFree={row.canMakeFree}
+                proTrial={row.proTrial}
               />
             </div>
           ))}

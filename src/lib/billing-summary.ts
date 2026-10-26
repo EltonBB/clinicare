@@ -2,6 +2,7 @@ import type { Business, BillingInterval } from "@prisma/client";
 
 import { isProBusinessPlan, normalizeBusinessPlan, planDisplayName } from "@/lib/billing";
 import { workspaceAccess } from "@/lib/billing-access";
+import { proTrialState } from "@/lib/pro-trial";
 import { proAddedFeatures } from "@/lib/public-plans";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
@@ -16,6 +17,10 @@ export type BillingSummarySource = Pick<
   | "trialEndsAt"
   | "lockedAt"
   | "paddleCustomerId"
+  | "subscribedPlan"
+  | "proTrialOfferedAt"
+  | "proTrialStartedAt"
+  | "proTrialEndsAt"
 >;
 
 export type BillingChangeOption = {
@@ -37,6 +42,8 @@ export type BillingSummary = {
   canManage: boolean;
   changeOptions: BillingChangeOption[];
   lockedFeatures: string[];
+  /** The owner-offered free Pro trial: waiting to be started, or running until a date. */
+  proTrial: { state: "offered" } | { state: "active"; endsOn: string } | null;
 };
 
 const PLAN_NAME = { BASIC: "Basic", PRO: "Pro" } as const;
@@ -49,10 +56,17 @@ export function buildBillingSummary(
 ): BillingSummary {
   const now = options.now ?? new Date();
   const date = (value: Date) => formatZonedFullDate(value, options.timeZone);
+  const trial = proTrialState(business, now);
   const base = {
     isPro: isProBusinessPlan(business.plan),
     planName: planDisplayName(business.plan),
     lockedFeatures: proAddedFeatures,
+    proTrial:
+      trial.kind === "offered"
+        ? ({ state: "offered" } as const)
+        : trial.kind === "active"
+          ? ({ state: "active", endsOn: date(trial.endsAt) } as const)
+          : null,
   };
   const access = workspaceAccess(business, now);
   const portal = options.billingEnabled && !!business.paddleCustomerId;

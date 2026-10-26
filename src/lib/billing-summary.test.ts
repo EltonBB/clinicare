@@ -16,6 +16,10 @@ function business(overrides: Partial<BillingSummarySource>): BillingSummarySourc
     trialEndsAt: null,
     lockedAt: null,
     paddleCustomerId: "ctm_1",
+    subscribedPlan: "BASIC",
+    proTrialOfferedAt: null,
+    proTrialStartedAt: null,
+    proTrialEndsAt: null,
     ...overrides,
   };
 }
@@ -108,5 +112,18 @@ describe("buildBillingSummary", () => {
 
   it("offers no management while billing is switched off", () => {
     expect(summary({}, false)).toMatchObject({ canManage: false, changeOptions: [] });
+  });
+
+  it("carries the owner-offered Pro trial: waiting to start, then running until a date", () => {
+    expect(summary({}).proTrial).toBeNull();
+    expect(summary({ proTrialOfferedAt: NOW }).proTrial).toEqual({ state: "offered" });
+    expect(
+      summary({
+        plan: "PRO",
+        proTrialOfferedAt: NOW,
+        proTrialStartedAt: NOW,
+        proTrialEndsAt: new Date("2026-11-09T12:00:00Z"),
+      }).proTrial
+    ).toEqual({ state: "active", endsOn: "November 9, 2026" });
   });
 });

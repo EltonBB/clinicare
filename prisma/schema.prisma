@@ -47,6 +47,15 @@ model Business {
   // occurred_at of the last Paddle event applied, so an older event that arrives
   // late can never overwrite a newer state.
   billingSyncedAt        DateTime?
+  // The plan Paddle bills (from the price). `plan` above is what the clinic
+  // gets, which is Pro during an owner-offered Pro trial on a Basic subscription.
+  subscribedPlan         BusinessPlan?
+  // Owner-offered free Pro trial for a paying Basic clinic: offered once,
+  // started once by the clinic, Pro until proTrialEndsAt (set to the moment it
+  // keeps Pro or returns to Basic early).
+  proTrialOfferedAt      DateTime?
+  proTrialStartedAt      DateTime?
+  proTrialEndsAt         DateTime?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   staffMembers           StaffMember[]

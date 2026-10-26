@@ -9,6 +9,8 @@ import { logger } from "@/lib/logger";
 import { changePaddleSubscriptionPrice, createPaddlePortalUrl } from "@/lib/paddle/paddle-api";
 import { paddleConfig } from "@/lib/paddle/paddle-config";
 import { applySubscriptionSnapshot } from "@/lib/paddle/subscription-sync";
+import { prisma } from "@/lib/prisma";
+import { PRO_TRIAL_DAYS, proTrialState } from "@/lib/pro-trial";
 
 const SESSION_EXPIRED = "Your session expired. Log in again to manage billing.";
 const BILLING_UNAVAILABLE = "Billing isn't available right now. Please try again later.";
@@ -81,6 +83,64 @@ export async function changeBillingPlanAction(input: z.input<typeof changeSchema
   }
 
   // Plan name, Pro features and the banner render on every workspace page.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Starts the owner-offered free Pro trial: Pro now, Basic billing unchanged. */
+export async function startProTrialAction(): Promise<BillingActionResult> {
+  const context = await getAuthedBusiness(SESSION_EXPIRED);
+  if ("error" in context) return { ok: false, error: context.error };
+  const now = new Date();
+  if (proTrialState(context.business, now).kind !== "offered") {
+    return { ok: false, error: "This offer isn't available any more." };
+  }
+  // Guarded in the write too: two clicks can't start it twice.
+  const started = await prisma.business.updateMany({
+    where: { id: context.business.id, proTrialStartedAt: null },
+    data: {
+      plan: "PRO",
+      proTrialStartedAt: now,
+      proTrialEndsAt: new Date(now.getTime() + PRO_TRIAL_DAYS * 24 * 60 * 60 * 1000),
+    },
+  });
+  if (started.count === 0) return { ok: false, error: "This offer isn't available any more." };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Keeps Pro after the trial: the subscription moves to the Pro price now (prorated). */
+export async function keepProAction(): Promise<BillingActionResult> {
+  const context = await getAuthedBusiness(SESSION_EXPIRED);
+  if ("error" in context) return { ok: false, error: context.error };
+  const { business } = context;
+  const config = paddleConfig();
+  if (!config || !business.paddleSubscriptionId) return { ok: false, error: BILLING_UNAVAILABLE };
+  if (proTrialState(business).kind !== "active") return { ok: false, error: "Your Pro trial has already ended." };
+
+  try {
+    const priceId = config.prices.PRO[business.billingInterval ?? "MONTH"].noTrial;
+    const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId);
+    await applySubscriptionSnapshot(config, subscription, new Date());
+    await prisma.business.update({ where: { id: business.id }, data: { proTrialEndsAt: new Date() } });
+  } catch (error) {
+    logger.error("Couldn't move the subscription to Pro.", error, { businessId: business.id });
+    return { ok: false, error: "We couldn't switch you to Pro. Please try again." };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Ends the Pro trial early and goes back to Basic; nothing changes in billing. */
+export async function endProTrialAction(): Promise<BillingActionResult> {
+  const context = await getAuthedBusiness(SESSION_EXPIRED, { access: "read" });
+  if ("error" in context) return { ok: false, error: context.error };
+  const { business } = context;
+  if (proTrialState(business).kind !== "active") return { ok: false, error: "Your Pro trial has already ended." };
+  await prisma.business.update({
+    where: { id: business.id },
+    data: { plan: business.subscribedPlan ?? "BASIC", proTrialEndsAt: new Date() },
+  });
   revalidatePath("/", "layout");
   return { ok: true };
 }

@@ -39,6 +39,7 @@ describe("subscriptionSnapshotUpdate", () => {
         subscriptionStatus: "TRIALING",
         planStatus: "TRIALING",
         plan: "BASIC",
+        subscribedPlan: "BASIC",
         billingInterval: "MONTH",
         paddleSubscriptionId: "sub_1",
         paddleCustomerId: "ctm_1",
@@ -134,6 +135,17 @@ describe("subscriptionSnapshotUpdate", () => {
     expect(subscriptionSnapshotUpdate(sub({ status: "mystery" }), OCCURRED, LOOKUP, EXISTING)).toEqual({
       kind: "unmatched",
       reason: "unknown_status",
+    });
+  });
+
+  it("keeps a running Pro trial on Pro while Paddle bills Basic, and drops it once it has ended", () => {
+    const active = { ...EXISTING, proTrialEndsAt: new Date("2026-11-01T00:00:00Z") };
+    expect(subscriptionSnapshotUpdate(sub({ status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] }), OCCURRED, LOOKUP, active)).toMatchObject({
+      data: { plan: "PRO", subscribedPlan: "BASIC" },
+    });
+    const ended = { ...EXISTING, proTrialEndsAt: new Date("2026-10-20T00:00:00Z") };
+    expect(subscriptionSnapshotUpdate(sub({ status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] }), OCCURRED, LOOKUP, ended)).toMatchObject({
+      data: { plan: "BASIC", subscribedPlan: "BASIC" },
     });
   });
 });
