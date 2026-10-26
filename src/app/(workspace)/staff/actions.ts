@@ -675,7 +675,10 @@ export type MobileAccessResult = {
   code?: string;
 };
 
-async function requireOwnedStaff(rawStaffId: unknown, options?: { budget?: "actions" | "background" }) {
+async function requireOwnedStaff(
+  rawStaffId: unknown,
+  options?: { budget?: "actions" | "background"; access?: "read" | "write" }
+) {
   const staffId = parseRecordId(rawStaffId);
   if (!staffId) {
     return { error: "Staff member not found." } as const;
@@ -749,7 +752,9 @@ export async function generateMobileAccessCodeAction(
 export async function revokeMobileAccessAction(
   staffId: string
 ): Promise<MobileAccessResult> {
-  const owned = await requireOwnedStaff(staffId);
+  // Taking a phone's access away is a security step, so it works even while
+  // the workspace is read-only (its plan ended).
+  const owned = await requireOwnedStaff(staffId, { access: "read" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }

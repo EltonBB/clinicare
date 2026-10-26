@@ -38,10 +38,9 @@ export async function GET(request: Request) {
 
 async function run() {
   const businesses = await prisma.business.findMany({
-    where: {
-      planStatus: "ACTIVE",
-      ...workspaceUsableWhere(),
-    },
+    // Usable workspaces (free, trialing or paying), not the older planStatus:
+    // a Pro clinic in its trial gets its daily insights too.
+    where: workspaceUsableWhere(),
     select: {
       id: true,
       plan: true,
