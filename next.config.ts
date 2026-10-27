@@ -28,8 +28,8 @@ function devAllowedOrigins() {
 }
 
 function contentSecurityPolicy() {
-  // Paddle (billing): Paddle.js from its CDN, its checkout in a frame, and its
-  // checkout/pricing APIs (live and sandbox).
+  // Paddle (billing): Paddle.js and its stylesheet from its CDN, its checkout in
+  // a frame, and its checkout/pricing APIs (live and sandbox).
   const connectSrc = ["'self'", ...supabaseConnectSources(), "https://*.paddle.com"];
 
   if (isDev) {
@@ -45,7 +45,8 @@ function contentSecurityPolicy() {
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
+    // Paddle.js loads its overlay stylesheet from its CDN.
+    "style-src 'self' 'unsafe-inline' https://cdn.paddle.com https://sandbox-cdn.paddle.com",
     // Next/React inject inline bootstrap scripts; without per-request nonces this
     // needs 'unsafe-inline'. Dev additionally needs 'unsafe-eval' for HMR.
     `script-src 'self' 'unsafe-inline' https://cdn.paddle.com${isDev ? " 'unsafe-eval'" : ""}`,
