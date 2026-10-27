@@ -87,8 +87,9 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Permissions-Policy",
+            // Paddle's checkout frame may use the Payment Request API (Apple Pay, Google Pay).
             value:
-              "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)",
+              'camera=(), microphone=(), geolocation=(), payment=(self "https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=(), fullscreen=(self)',
           },
           {
             key: "Strict-Transport-Security",
