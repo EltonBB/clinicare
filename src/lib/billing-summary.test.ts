@@ -57,8 +57,9 @@ describe("buildBillingSummary", () => {
     );
   });
 
-  it("says a move between monthly and yearly starts a new, paid period today", () => {
-    const yearly = "A new billing period starts today. You pay for it now, less the unused part of this one.";
+  it("says a move between monthly and yearly starts a new period today, paid from the old one first", () => {
+    const yearly =
+      "A new billing period starts today. The unused part of this one goes toward it: you pay any difference now, and anything left over is credited to your next bills.";
     expect(summary({}).changeOptions.find((option) => option.label === "Basic, billed yearly")?.effect).toBe(yearly);
     const pro = summary({ plan: "PRO", billingInterval: "YEAR" });
     expect(pro.changeOptions.find((option) => option.label === "Basic, billed monthly")?.effect).toBe(yearly);

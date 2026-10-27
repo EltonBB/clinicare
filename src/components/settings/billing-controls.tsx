@@ -24,7 +24,14 @@ import { cn } from "@/lib/utils";
  * portal; switching plan or billing period happens here, after a confirm that
  * says what it costs. A clinic without a live plan is sent to choose one.
  */
-export function BillingControls({ billing }: { billing: BillingSummary }) {
+export function BillingControls({
+  billing,
+  onChanged,
+}: {
+  billing: BillingSummary;
+  /** Reloads the popup's own copy of the plan, which router.refresh() doesn't reach. */
+  onChanged: () => Promise<void>;
+}) {
   const router = useRouter();
   const [choice, setChoice] = useState(0);
   const [confirming, setConfirming] = useState(false);
@@ -48,6 +55,7 @@ export function BillingControls({ billing }: { billing: BillingSummary }) {
       if (result.ok) {
         setMessage({ tone: "done", text: done });
         router.refresh();
+        await onChanged();
       } else {
         setMessage({ tone: "error", text: result.error });
       }
@@ -63,6 +71,9 @@ export function BillingControls({ billing }: { billing: BillingSummary }) {
       if (result.ok) {
         setMessage({ tone: "done", text: `You're now on ${option.label}.` });
         router.refresh();
+        // The options list changes with the plan, so the picker starts over.
+        setChoice(0);
+        await onChanged();
       } else {
         setMessage({ tone: "error", text: result.error });
       }

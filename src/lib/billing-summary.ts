@@ -132,7 +132,7 @@ export function buildBillingSummary(
             effect: trialing
               ? "Nothing is charged before your trial ends."
               : option.interval !== interval
-                ? "A new billing period starts today. You pay for it now, less the unused part of this one."
+                ? "A new billing period starts today. The unused part of this one goes toward it: you pay any difference now, and anything left over is credited to your next bills."
                 : option.plan === "PRO"
                   ? "You're charged the difference for the rest of this period now."
                   : "The unused part of this period is credited to your next bill.",

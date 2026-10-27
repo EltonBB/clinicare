@@ -36,6 +36,12 @@ export function checkoutStage(args: { signedIn: boolean; business: CheckoutBusin
   return { kind: "subscribe", trialAvailable: access.kind === "needs_plan" && !business.trialUsedAt };
 }
 
+/** Whether choosing a plan from here still starts with the free trial. */
+export function offersTrial(stage: CheckoutStage): boolean {
+  if (stage.kind === "sign_up" || stage.kind === "onboarding") return true;
+  return stage.kind === "subscribe" && stage.trialAvailable;
+}
+
 export function checkoutPriceId(prices: PriceTable, plan: PaidPlan, interval: PaidInterval, trialAvailable: boolean): string {
   const pair = prices[plan][interval];
   return trialAvailable ? pair.trial : pair.noTrial;

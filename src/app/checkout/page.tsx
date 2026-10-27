@@ -12,9 +12,9 @@ import { BrandMark } from "@/components/brand-mark";
 import { getCurrentUser } from "@/lib/auth";
 import { workspaceAccess } from "@/lib/billing-access";
 import { getCurrentBusiness } from "@/lib/business";
-import { checkoutPriceId, checkoutStage, TRIAL_DAYS, type CheckoutStage } from "@/lib/checkout-state";
+import { checkoutPriceId, checkoutStage, offersTrial, TRIAL_DAYS, type CheckoutStage } from "@/lib/checkout-state";
 import { paddleConfig, type PaidInterval, type PaidPlan } from "@/lib/paddle/paddle-config";
-import { getPublicPlan, publicPlans, type PublicPlan } from "@/lib/public-plans";
+import { getPublicPlan, publicPlanKeyFromBusinessPlan, publicPlans, type PublicPlan } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -41,12 +41,18 @@ function paidPlan(plan: PublicPlan): PaidPlan {
 
 export default async function CheckoutPage({ searchParams }: CheckoutPageProps) {
   const params = await searchParams;
-  const selectedPlan = getPublicPlan(params?.plan);
-  const interval: PaidInterval = first(params?.interval) === "year" ? "YEAR" : "MONTH";
   const user = await getCurrentUser();
   const business = user ? await getCurrentBusiness(user.id) : null;
   const stage = checkoutStage({ signedIn: Boolean(user), business });
   const locked = business ? workspaceAccess(business).kind === "locked" : false;
+  // A paying clinic opens on its own plan and billing period.
+  const current =
+    stage.kind === "subscribed" ? { plan: stage.plan, interval: business?.billingInterval ?? "MONTH" } : null;
+  const selectedPlan = getPublicPlan(params?.plan ?? (current ? publicPlanKeyFromBusinessPlan(current.plan) : undefined));
+  const intervalParam = first(params?.interval);
+  const interval: PaidInterval =
+    intervalParam === "year" ? "YEAR" : intervalParam === "month" ? "MONTH" : (current?.interval ?? "MONTH");
+  const showsCurrent = Boolean(current && current.plan === paidPlan(selectedPlan) && current.interval === interval);
 
   const config = paddleConfig();
   const paddle: PaddleClientConfig | null = config ? { env: config.env, clientToken: config.clientToken } : null;
@@ -56,10 +62,11 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
   const listPrice = (plan: PublicPlan) => (interval === "YEAR" ? plan.yearlyPrice : plan.price);
   const cadence = interval === "YEAR" ? "per year" : "per month";
 
-  const copy = stageCopy(stage, locked, selectedPlan);
+  const copy = stageCopy(stage, locked, selectedPlan, showsCurrent);
   const step = stage.kind === "sign_up" ? 1 : stage.kind === "onboarding" ? 2 : stage.kind === "subscribe" ? 3 : 4;
+  // Always explicit: a yearly clinic's default is yearly, so "monthly" must be said.
   const href = (plan: string, nextInterval: PaidInterval) =>
-    `/checkout?plan=${plan}${nextInterval === "YEAR" ? "&interval=year" : ""}`;
+    `/checkout?plan=${plan}&interval=${nextInterval === "YEAR" ? "year" : "month"}`;
 
   return (
     <main className="grid min-h-dvh bg-white text-foreground lg:grid-cols-[minmax(0,1fr)_minmax(0,36rem)]">
@@ -147,7 +154,9 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                     <span className="text-xs text-muted-foreground">{cadence}</span>
                   </span>
                   <span className="mt-3 text-[13px] leading-5 text-muted-foreground">{plan.description}</span>
-                  <span className="mt-4 text-xs font-semibold text-muted-foreground">{TRIAL_DAYS}-day free trial</span>
+                  {offersTrial(stage) ? (
+                    <span className="mt-4 text-xs font-semibold text-muted-foreground">{TRIAL_DAYS}-day free trial</span>
+                  ) : null}
                 </Link>
               ))}
             </div>
@@ -275,7 +284,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
   );
 }
 
-function stageCopy(stage: CheckoutStage, locked: boolean, plan: PublicPlan) {
+function stageCopy(stage: CheckoutStage, locked: boolean, plan: PublicPlan, showsCurrent: boolean) {
   switch (stage.kind) {
     case "free_account":
       return { badge: "Free account", headline: "Your clinic has a free account", receiptTag: "Free account" };
@@ -283,7 +292,7 @@ function stageCopy(stage: CheckoutStage, locked: boolean, plan: PublicPlan) {
       return {
         badge: "Current plan",
         headline: `You're on Vela ${stage.plan === "PRO" ? "Pro" : "Basic"}`,
-        receiptTag: "Your plan",
+        receiptTag: showsCurrent ? "Your plan" : `Vela ${plan.name}`,
       };
     case "subscribe":
       if (stage.trialAvailable) {

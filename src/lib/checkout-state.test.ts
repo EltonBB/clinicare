@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkoutPriceId, checkoutStage, firstChargeLine } from "./checkout-state";
+import { checkoutPriceId, checkoutStage, firstChargeLine, offersTrial } from "./checkout-state";
 
 const PRICES = {
   BASIC: { MONTH: { trial: "pri_bm_t", noTrial: "pri_bm" }, YEAR: { trial: "pri_by_t", noTrial: "pri_by" } },
@@ -48,6 +48,17 @@ describe("checkoutStage", () => {
     expect(checkoutStage({ signedIn: true, business: { ...SUBSCRIPTION, billingMode: "COMPLIMENTARY" } })).toEqual({
       kind: "free_account",
     });
+  });
+});
+
+describe("offersTrial", () => {
+  it("promises the trial only to someone who can still get it", () => {
+    expect(offersTrial({ kind: "sign_up" })).toBe(true);
+    expect(offersTrial({ kind: "onboarding" })).toBe(true);
+    expect(offersTrial({ kind: "subscribe", trialAvailable: true })).toBe(true);
+    expect(offersTrial({ kind: "subscribe", trialAvailable: false })).toBe(false);
+    expect(offersTrial({ kind: "subscribed", plan: "PRO" })).toBe(false);
+    expect(offersTrial({ kind: "free_account" })).toBe(false);
   });
 });
 
