@@ -7,6 +7,7 @@ import {
   type AutomationSettingsSource,
 } from "@/lib/automations-data";
 import { isProBusinessPlan } from "@/lib/billing";
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { withDeadline } from "@/lib/concurrency";
 import { getFollowUpCursor, setFollowUpCursor } from "@/lib/follow-up-cursor";
@@ -351,7 +352,9 @@ export async function expireStaleFollowUpDrafts(now: Date): Promise<number> {
   );
 
   let expired = 0;
-  for (const where of rules) {
+  for (const rule of rules) {
+    // A read-only workspace's drafts stay as they are: nothing in it changes.
+    const where = { ...rule, business: workspaceUsableWhere() };
     const { count } = await prisma.followUpDraft.updateMany({ where, data: { status: "EXPIRED" } });
     expired += count;
   }
@@ -386,8 +389,9 @@ export async function generateFollowUpDrafts(now: Date = new Date()): Promise<Fo
   // would draft it later (Codex). The drafts wait for the link (the automatic
   // sender needs it; one over 3 days late goes to review). A workspace that
   // never set WhatsApp up gets none: nothing could ever send them.
+  // A read-only workspace (its plan ended) gets none.
   const businesses = await prisma.business.findMany({
-    where: { whatsappEnabled: true },
+    where: { AND: [{ whatsappEnabled: true }, workspaceUsableWhere()] },
     select: {
       id: true,
       name: true,
