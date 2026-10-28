@@ -46,6 +46,9 @@ const CLINIC = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Drop answers a test queued but did not use, so none leaks into the next.
+  mocks.findUnique.mockReset();
+  mocks.updateMany.mockReset();
   mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.cancelPaddleSubscription.mockResolvedValue({});
 });
@@ -64,16 +67,24 @@ describe("applySubscriptionSnapshot", () => {
 
     expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("applied");
     expect(mocks.updateMany).toHaveBeenCalledWith({
-      where: { id: "biz_1", OR: [{ billingSyncedAt: null }, { billingSyncedAt: { lte: OCCURRED } }] },
+      where: {
+        id: "biz_1",
+        // Only if the clinic is still as read: no other subscription attached since.
+        paddleSubscriptionId: null,
+        billingMode: "SUBSCRIPTION",
+        OR: [{ billingSyncedAt: null }, { billingSyncedAt: { lte: OCCURRED } }],
+      },
       data: expect.objectContaining({ paddleSubscriptionId: "sub_new", subscriptionStatus: "ACTIVE", plan: "BASIC" }),
     });
   });
 
   it("is stale when a newer event already landed (Review Focus 1)", async () => {
-    mocks.findUnique.mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_new" });
+    mocks.findUnique.mockResolvedValue({ ...CLINIC, paddleSubscriptionId: "sub_new" });
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
     expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("stale");
+    // One fresh read before giving up, never a loop.
+    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
   });
 
   it("never lets a second subscription take over a clinic that already has a live one", async () => {
@@ -84,6 +95,21 @@ describe("applySubscriptionSnapshot", () => {
     expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
     expect(mocks.updateMany).not.toHaveBeenCalled();
     // ...and cancels the second one, so the clinic isn't charged twice.
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
+  });
+
+  it("refuses the losing subscription when two checkouts' webhooks race for one clinic", async () => {
+    mocks.findUnique
+      // First read: the clinic has no subscription yet...
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(CLINIC)
+      // ...but the other checkout attached its own before this write landed.
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_other", subscriptionStatus: "TRIALING" });
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
+    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
     expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
   });
 
