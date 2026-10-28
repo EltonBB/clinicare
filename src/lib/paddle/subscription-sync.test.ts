@@ -113,6 +113,16 @@ describe("applySubscriptionSnapshot", () => {
     expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
   });
 
+  it("cancels a paused subscription a new checkout replaces, so it can't resume and bill too", async () => {
+    mocks.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_paused", subscriptionStatus: "PAUSED" });
+
+    expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("applied");
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_paused");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalledWith(CONFIG, "sub_new");
+  });
+
   it("doesn't cancel a refused subscription that has already ended", async () => {
     mocks.findUnique
       .mockResolvedValueOnce(null)

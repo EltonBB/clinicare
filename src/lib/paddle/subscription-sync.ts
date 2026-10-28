@@ -124,7 +124,22 @@ export async function applySubscriptionSnapshot(
     },
     data: update.data,
   });
-  if (written.count > 0) return "applied";
+  if (written.count > 0) {
+    // A new checkout replaced a paused subscription, which could otherwise
+    // resume and bill alongside it: it ends now.
+    const replaced = business.paddleSubscriptionId;
+    if (replaced && replaced !== subscription.id && business.subscriptionStatus === "PAUSED") {
+      try {
+        await cancelPaddleSubscription(config, replaced);
+      } catch (error) {
+        logger.error("Couldn't cancel a replaced paused Paddle subscription.", error, {
+          businessId: business.id,
+          subscriptionId: replaced,
+        });
+      }
+    }
+    return "applied";
+  }
   // Older than what landed, or the clinic changed since the read: read again
   // once, which refuses this subscription if another one took the clinic.
   return retried ? "stale" : applySubscriptionSnapshot(config, subscription, occurredAt, true);
