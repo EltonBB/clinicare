@@ -60,11 +60,16 @@ async function refuseSubscription(
  * change more than a paying clinic's own billing: a free clinic is left as it
  * is, and a clinic is never taken over by a second live subscription or given
  * a second free trial (see {@link refuseSubscription}).
+ *
+ * The write also only lands while the clinic is as it was read, so two
+ * checkouts' webhooks racing can't both attach: the loser reads again once
+ * (`retried`) and is refused then.
  */
 export async function applySubscriptionSnapshot(
   config: PaddleConfig,
   subscription: PaddleSubscription,
-  occurredAt: Date
+  occurredAt: Date,
+  retried = false
 ): Promise<SyncOutcome> {
   let business = await prisma.business.findUnique({
     where: { paddleSubscriptionId: subscription.id },
@@ -113,9 +118,14 @@ export async function applySubscriptionSnapshot(
   const written = await prisma.business.updateMany({
     where: {
       id: business.id,
+      paddleSubscriptionId: business.paddleSubscriptionId,
+      billingMode: business.billingMode,
       OR: [{ billingSyncedAt: null }, { billingSyncedAt: { lte: occurredAt } }],
     },
     data: update.data,
   });
-  return written.count > 0 ? "applied" : "stale";
+  if (written.count > 0) return "applied";
+  // Older than what landed, or the clinic changed since the read: read again
+  // once, which refuses this subscription if another one took the clinic.
+  return retried ? "stale" : applySubscriptionSnapshot(config, subscription, occurredAt, true);
 }

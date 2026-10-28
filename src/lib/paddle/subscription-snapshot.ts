@@ -13,6 +13,8 @@ export type PaddleSubscription = {
   current_billing_period: { starts_at: string; ends_at: string } | null;
   scheduled_change: { action: string; effective_at: string } | null;
   canceled_at: string | null;
+  /** When Paddle last changed it; absent from older payloads. */
+  updated_at?: string;
   items: Array<{ price: { id: string }; trial_dates: { starts_at: string; ends_at: string } | null }>;
 };
 
