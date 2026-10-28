@@ -15,8 +15,8 @@ import { getRedis, noteRedisFailure, noteRedisStoreSucceeded } from "@/lib/redis
 const CURSOR_KEY = "vela:follow-up-cursor";
 // Same rotation for the automatic sends (api/cron/automations).
 const AUTOMATIONS_CURSOR_KEY = "vela:automations-cursor";
-// The billing reconcile's turn through paused subscriptions (lib/paddle/reconcile.ts).
-const PAUSED_RECONCILE_CURSOR_KEY = "vela:paused-reconcile-cursor";
+// The billing reconcile's turn through the subscriptions it re-reads (lib/paddle/reconcile.ts).
+const RECONCILE_CURSOR_KEY = "vela:billing-reconcile-cursor";
 
 async function readCursor(key: string): Promise<string | null> {
   const redis = getRedis();
@@ -63,10 +63,10 @@ export function setAutomationsCursor(businessId: string): Promise<void> {
   return writeCursor(AUTOMATIONS_CURSOR_KEY, businessId);
 }
 
-export function getPausedReconcileCursor(): Promise<string | null> {
-  return readCursor(PAUSED_RECONCILE_CURSOR_KEY);
+export function getReconcileCursor(): Promise<string | null> {
+  return readCursor(RECONCILE_CURSOR_KEY);
 }
 
-export function setPausedReconcileCursor(businessId: string): Promise<void> {
-  return writeCursor(PAUSED_RECONCILE_CURSOR_KEY, businessId);
+export function setReconcileCursor(businessId: string): Promise<void> {
+  return writeCursor(RECONCILE_CURSOR_KEY, businessId);
 }
