@@ -29,6 +29,7 @@ vi.mock("@/lib/automation-dispatch-soon", () => ({ dispatchSoon: mocks.dispatchS
 
 import { Prisma } from "@prisma/client";
 
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import {
   expirePastSlotOffers,
@@ -747,9 +748,10 @@ describe("expirePastSlotOffers", () => {
     const { businessId: firstWorkspace, ...perWorkspaceWhere } = mocks.prisma.followUpDraft.findMany.mock.calls[0][0].where;
     expect(firstWorkspace).toBe("biz_old");
     expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledTimes(1);
+    // Only usable workspaces: a read-only one's offers stay as they are.
     expect(mocks.prisma.followUpDraft.groupBy).toHaveBeenCalledWith({
       by: ["businessId"],
-      where: perWorkspaceWhere,
+      where: { AND: [perWorkspaceWhere, { business: workspaceUsableWhere() }] },
       _min: { createdAt: true },
       orderBy: { _min: { createdAt: "asc" } },
       take: 200,
