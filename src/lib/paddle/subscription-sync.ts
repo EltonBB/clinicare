@@ -95,7 +95,8 @@ export async function applySubscriptionSnapshot(
       return refuseSubscription(config, subscription, business.id, "another_live_subscription");
     }
     const hasTrial = subscription.status === "trialing" || subscription.items.some((item) => item.trial_dates);
-    if (hasTrial && business.trialUsedAt) {
+    // Its own earlier webhook may have attached it (and marked the trial used) since.
+    if (hasTrial && business.trialUsedAt && business.paddleSubscriptionId !== subscription.id) {
       return refuseSubscription(config, subscription, business.id, "trial_already_used");
     }
   }
