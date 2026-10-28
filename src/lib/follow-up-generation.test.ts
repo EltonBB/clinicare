@@ -41,6 +41,7 @@ vi.mock("@/lib/workflow-generators", async (importOriginal) => {
   };
 });
 
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { expireStaleFollowUpDrafts, generateFollowUpDrafts } from "@/lib/follow-up-generation";
 import { DEFAULT_WORKFLOW_SETTINGS, type FollowUpDraftInput } from "@/lib/workflow-generators";
@@ -114,12 +115,13 @@ afterEach(() => {
 });
 
 describe("generateFollowUpDrafts — business selection and settings", () => {
-  it("loads every business with WhatsApp set up, linked or not (drafts wait for the link), in stable id order", async () => {
+  it("loads every usable business with WhatsApp set up, linked or not (drafts wait for the link), in stable id order", async () => {
     await generateFollowUpDrafts(NOW);
 
     expect(mocks.prisma.business.findMany).toHaveBeenCalledTimes(1);
     const args = mocks.prisma.business.findMany.mock.calls[0][0];
-    expect(args.where).toEqual({ whatsappEnabled: true });
+    // A read-only workspace (its plan ended) gets no new drafts.
+    expect(args.where).toEqual({ AND: [{ whatsappEnabled: true }, workspaceUsableWhere()] });
     expect(args.orderBy).toEqual({ id: "asc" });
     expect(args.select).toMatchObject({ id: true, plan: true, workflowSettings: expect.anything() });
   });
@@ -756,6 +758,8 @@ describe("expireStaleFollowUpDrafts", () => {
     ]);
     for (const arg of calls) {
       expect(arg.where.status).toBe("PENDING");
+      // A read-only workspace's drafts stay as they are.
+      expect(arg.where.business).toEqual(workspaceUsableWhere());
       expect(arg.data).toEqual({ status: "EXPIRED" });
       expect(JSON.stringify(arg.where)).not.toContain("SENT");
     }
@@ -768,6 +772,7 @@ describe("expireStaleFollowUpDrafts", () => {
       where: {
         kind: "PAYMENT",
         status: "PENDING",
+        business: workspaceUsableWhere(),
         OR: [
           { paymentId: null },
           { payment: { status: { notIn: ["Unpaid", "Partially Paid"] } } },
@@ -785,6 +790,7 @@ describe("expireStaleFollowUpDrafts", () => {
       where: {
         kind: "REBOOK",
         status: "PENDING",
+        business: workspaceUsableWhere(),
         OR: [
           {
             client: {
@@ -842,6 +848,7 @@ describe("expireStaleFollowUpDrafts", () => {
       where: {
         kind: "THANK_YOU",
         status: "PENDING",
+        business: workspaceUsableWhere(),
         OR: [
           { createdAt: { lt: new Date(NOW.getTime() - 3 * DAY_MS) } },
           { appointmentId: null },
