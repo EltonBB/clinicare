@@ -113,6 +113,17 @@ describe("applySubscriptionSnapshot", () => {
     expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
   });
 
+  it("keeps a first trial whose own earlier webhook already attached it and marked the trial used", async () => {
+    // Two webhooks for one trial overlap: by the second read, the first has attached this very subscription.
+    const trial = { ...SUB, status: "trialing", items: [{ price: { id: "pri_bm_t" }, trial_dates: { starts_at: "2026-10-26T12:00:00Z", ends_at: "2026-11-09T12:00:00Z" } }] };
+    mocks.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_new", subscriptionStatus: "TRIALING", trialUsedAt: OCCURRED });
+
+    expect(await applySubscriptionSnapshot(CONFIG, trial, OCCURRED)).toBe("applied");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
+  });
+
   it("cancels a paused subscription a new checkout replaces, so it can't resume and bill too", async () => {
     mocks.findUnique
       .mockResolvedValueOnce(null)
