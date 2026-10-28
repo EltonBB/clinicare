@@ -60,8 +60,8 @@ import * as business from "@/lib/business";
 
 import { discardUnsavedLogoAction, getSettingsDataAction, saveWorkflowSettingsAction } from "./actions";
 
-const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const };
-const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const };
+const PRO_BUSINESS = { id: "biz_1", plan: "PRO" as const, billingMode: "COMPLIMENTARY" as const };
+const BASIC_BUSINESS = { id: "biz_1", plan: "BASIC" as const, billingMode: "COMPLIMENTARY" as const };
 
 const VALID_PAYLOAD: WorkflowSettingsValues = {
   rebookEnabled: true,

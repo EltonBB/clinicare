@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   appointment: { findFirst: vi.fn(), count: vi.fn() },
@@ -267,6 +267,16 @@ describe("queueVisitMessage", () => {
 
 describe("replaceRefusedVisitMessage", () => {
   const OWED = { businessId: "biz_1", appointmentId: "appt_1", clientId: "client_1", generation: 1 };
+
+  // It reads the real clock (it takes no `now`), so pin it: the fixture visit
+  // is two days after NOW, and stopped being upcoming once that date passed.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("drafts the confirmation again for the visit as it now is", async () => {
     expect(await replaceRefusedVisitMessage({ ...OWED, event: "booked" })).toBeUndefined();

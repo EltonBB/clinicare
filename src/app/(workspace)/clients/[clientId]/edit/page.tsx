@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 
 import { EditClientForm } from "@/components/clients/edit-client-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
+import { canUseWorkspace } from "@/lib/billing-access";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
@@ -17,6 +19,13 @@ export default async function EditClientPage({
   const { business } = await requireCurrentWorkspace("/clients", {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return (
+      <CreatePageShell title="Edit client">
+        <WorkspaceLockedState />
+      </CreatePageShell>
+    );
+  }
   const { clientId } = await params;
 
   const client = await prisma.client.findFirst({

@@ -16,6 +16,7 @@ import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 import type { AppointmentStatus } from "@prisma/client";
 
 import { allowReplyAck } from "./send-limits";
+import { isWorkspaceLockedForSending } from "./workspace-gate";
 import type { MessageDeliveryStatus } from "./types";
 
 export type InboundMessage = {
@@ -195,7 +196,9 @@ export type ApplyReplyIntentResult =
         | "open_offer"
         | "already_handled"
         | "in_progress"
-        | "offer_sending";
+        | "offer_sending"
+        // The clinic's plan ended (read-only): a reply can't confirm or cancel.
+        | "workspace_locked";
     }
   | { applied: true; intent: "confirm" | "cancel"; appointmentId: string };
 
@@ -426,6 +429,11 @@ async function applyInboundReplyIntentCore(
   }
   if (!clientId) {
     return { applied: false, reason: "no_client" };
+  }
+  // A read-only workspace (its plan ended) changes nothing on a patient's
+  // reply; the message itself is still stored for the clinic to read.
+  if (await isWorkspaceLockedForSending(businessId)) {
+    return { applied: false, reason: "workspace_locked" };
   }
 
   // While a waiting-list slot offer to this client is open, a "yes" most

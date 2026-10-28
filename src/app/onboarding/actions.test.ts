@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const business = { upsert: vi.fn() };
+  const business = { findUnique: vi.fn(), upsert: vi.fn() };
   const whatsAppConnection = { findUnique: vi.fn(), upsert: vi.fn() };
   const businessHours = { upsert: vi.fn() };
   const staffMember = { findFirst: vi.fn(), create: vi.fn() };
@@ -46,6 +46,7 @@ vi.mock("@/lib/auth", () => ({
 import { saveOnboardingStateAction } from "./actions";
 import { createDefaultOnboardingState } from "@/lib/onboarding";
 import { mediaBucket } from "@/lib/media-storage";
+import { WORKSPACE_LOCKED_ERROR } from "@/lib/billing-access";
 
 const USER = { id: "user_1", email: "owner@clinic.example", user_metadata: {} };
 
@@ -65,6 +66,7 @@ beforeEach(() => {
   mocks.getCurrentUser.mockResolvedValue(USER);
   mocks.updateCurrentUserMetadata.mockResolvedValue({ error: false });
   mocks.whatsAppConnection.findUnique.mockResolvedValue(null);
+  mocks.business.findUnique.mockResolvedValue(null);
   mocks.staffMember.findFirst.mockResolvedValue(null);
   mocks.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
@@ -119,5 +121,29 @@ describe("saveOnboardingStateAction — workspace-shell revalidation", () => {
     expect(result.error).toBe("Upload the clinic logo again before completing onboarding.");
     expect(mocks.$transaction).not.toHaveBeenCalled();
     expect(mocks.updateCurrentUserMetadata).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveOnboardingStateAction — read-only workspaces", () => {
+  const billing = { billingMode: "SUBSCRIPTION", cancelAt: null, trialEndsAt: null, lockedAt: null };
+
+  it("refuses to re-bootstrap a workspace whose plan has ended", async () => {
+    mocks.business.findUnique.mockResolvedValue({ ...billing, subscriptionStatus: "CANCELED" });
+
+    const result = await saveOnboardingStateAction(completedState());
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe(WORKSPACE_LOCKED_ERROR);
+    expect(mocks.$transaction).not.toHaveBeenCalled();
+    expect(mocks.updateCurrentUserMetadata).not.toHaveBeenCalled();
+  });
+
+  it("still finishes onboarding for a clinic that hasn't chosen a plan yet", async () => {
+    mocks.business.findUnique.mockResolvedValue({ ...billing, subscriptionStatus: "NONE" });
+
+    const result = await saveOnboardingStateAction(completedState());
+
+    expect(result.ok).toBe(true);
+    expect(mocks.$transaction).toHaveBeenCalled();
   });
 });

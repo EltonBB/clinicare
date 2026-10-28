@@ -675,7 +675,10 @@ export type MobileAccessResult = {
   code?: string;
 };
 
-async function requireOwnedStaff(rawStaffId: unknown, options?: { budget?: "actions" | "background" }) {
+async function requireOwnedStaff(
+  rawStaffId: unknown,
+  options?: { budget?: "actions" | "background"; access?: "read" | "write" }
+) {
   const staffId = parseRecordId(rawStaffId);
   if (!staffId) {
     return { error: "Staff member not found." } as const;
@@ -749,7 +752,9 @@ export async function generateMobileAccessCodeAction(
 export async function revokeMobileAccessAction(
   staffId: string
 ): Promise<MobileAccessResult> {
-  const owned = await requireOwnedStaff(staffId);
+  // Taking a phone's access away is a security step, so it works even while
+  // the workspace is read-only (its plan ended).
+  const owned = await requireOwnedStaff(staffId, { access: "read" });
   if ("error" in owned) {
     return { ok: false, error: owned.error };
   }
@@ -881,7 +886,7 @@ export type RecentCheckIn = {
  * is actually present when they check in from the mobile app. Read-only.
  */
 export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
-  const context = await getAuthedBusinessContext();
+  const context = await getAuthedBusinessContext(undefined, { access: "read" });
   if ("error" in context) {
     // Over the action budget, reject rather than answer "nothing recent": the
     // toaster would take an empty first answer as its baseline and later show
@@ -929,7 +934,7 @@ export type RecentStaffMessage = {
  * generic notice only (no message body — they open the staff page to read it).
  */
 export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
-  const context = await getAuthedBusinessContext();
+  const context = await getAuthedBusinessContext(undefined, { access: "read" });
   if ("error" in context) {
     // Same as getRecentStaffCheckInsAction: a throttled poll must not become
     // the toaster's baseline (Codex #140).

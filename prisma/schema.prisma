@@ -26,6 +26,27 @@ model Business {
   whatsappNumber         String?
   whatsappEnabled        Boolean                 @default(false)
   trialEndsAt            DateTime?
+  // Billing (lib/billing-access.ts). COMPLIMENTARY by default so a workspace
+  // that predates billing keeps working; onboarding writes SUBSCRIPTION for new
+  // clinics, and the owner page switches a pilot clinic over. The subscription
+  // fields are a snapshot of Paddle's, written only by its signed webhook and
+  // the hourly reconcile (lib/billing/subscription-sync.ts). Non-PHI.
+  billingMode            BillingMode             @default(COMPLIMENTARY)
+  subscriptionStatus     SubscriptionStatus      @default(NONE)
+  billingInterval        BillingInterval?
+  paddleCustomerId       String?
+  paddleSubscriptionId   String?                 @unique
+  currentPeriodEndsAt    DateTime?
+  // When a cancellation Paddle has scheduled takes effect.
+  cancelAt               DateTime?
+  // Set the first time a subscription is seen trialing: one trial per clinic.
+  trialUsedAt            DateTime?
+  // When the workspace stopped being usable (locked, or sent to choose a plan).
+  // Its data is kept for RETENTION_DAYS from here; cleared when it is usable again.
+  lockedAt               DateTime?
+  // occurred_at of the last Paddle event applied, so an older event that arrives
+  // late can never overwrite a newer state.
+  billingSyncedAt        DateTime?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   staffMembers           StaffMember[]
@@ -859,6 +880,25 @@ enum BusinessPlanStatus {
   ACTIVE
   INACTIVE
   CANCELED
+}
+
+enum BillingMode {
+  COMPLIMENTARY
+  SUBSCRIPTION
+}
+
+enum SubscriptionStatus {
+  NONE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  PAUSED
+  CANCELED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
 }
 
 enum WhatsAppProvider {

@@ -49,6 +49,7 @@ import {
 import { loadSettingsState, WORKFLOW_SETTINGS_SELECT } from "@/lib/settings-server";
 import type { WorkflowSettingsValues } from "@/lib/workflow-generators";
 import { isProBusinessPlan } from "@/lib/billing";
+import { canUseWorkspace, WORKSPACE_LOCKED_ERROR } from "@/lib/billing-access";
 import { weekdayOrder } from "@/lib/onboarding";
 import { acquireBusinessFinancialLock } from "@/lib/business-financial-lock";
 
@@ -199,6 +200,9 @@ export async function saveSettingsAction(
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return { ok: false, error: WORKSPACE_LOCKED_ERROR };
+  }
   const normalizedWhatsAppNumber = normalizePhone(payload.whatsapp.phoneNumber);
   const customAccentHex = normalizeBrandHexColor(payload.appearance.accentHex);
   const accentPreset = resolveBrandAccentPreset(payload.appearance.accentColor);
@@ -459,6 +463,9 @@ export async function saveWorkflowSettingsAction(
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return { ok: false, error: WORKSPACE_LOCKED_ERROR };
+  }
   const isPro = isProBusinessPlan(business.plan);
 
   if (!isPro && values.rebookEnabled) {
@@ -616,6 +623,9 @@ export async function connectBaileysWhatsAppAction(options?: {
   const business = await requireCurrentBusiness(user, {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return { ok: false, error: WORKSPACE_LOCKED_ERROR };
+  }
 
   // Each call restarts pairing on the worker, and a forced one wipes the
   // stored link: a few a minute per clinic is plenty for a person.

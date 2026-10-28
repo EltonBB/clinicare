@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { FOLLOW_UP_KIND_TO_AUTOMATION } from "@/lib/automations";
 import { getAutomationSettings } from "@/lib/automations-data";
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { replaceRefusedVisitMessage, suppressOpenReminders } from "@/lib/automation-events";
 import {
   confirmFollowUpDraftDispatch,
@@ -291,6 +292,8 @@ export async function dispatchDueAutomaticDrafts(args: {
     createdAt: { lte: new Date(now.getTime() - AUTO_SEND_GRACE_MS), gte: staleBefore },
     OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
     business: {
+      // A read-only workspace (its plan ended) sends nothing automatically.
+      ...workspaceUsableWhere(),
       whatsappEnabled: true,
       whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
     },
@@ -351,6 +354,7 @@ export async function dispatchRecentAutomaticDrafts(businessId: string, now: Dat
       createdAt: { gte: new Date(now.getTime() - RECENT_DRAFT_MS) },
       OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
       business: {
+        ...workspaceUsableWhere(),
         whatsappEnabled: true,
         whatsappConnection: { is: { status: { in: ["CONNECTED", "ERRORED"] } } },
       },

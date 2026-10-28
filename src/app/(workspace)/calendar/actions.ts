@@ -951,7 +951,10 @@ export async function getNoShowRiskAction(
     return {};
   }
 
-  const context = await getAuthedBusiness();
+  const context = await getAuthedBusinessContext(
+    "Your session expired. Log in again to manage appointments.",
+    { access: "read" }
+  );
 
   if ("error" in context) {
     // Over the action budget, reject rather than answer "no risk": the calendar
@@ -1047,7 +1050,8 @@ export type LoadCalendarMonthResult =
 // outside the first window.
 export async function loadCalendarMonthAction(monthKey: string): Promise<LoadCalendarMonthResult> {
   const context = await getAuthedBusinessContext(
-    "Your session expired. Log in again to view the calendar."
+    "Your session expired. Log in again to view the calendar.",
+    { access: "read" }
   );
 
   if ("error" in context) {

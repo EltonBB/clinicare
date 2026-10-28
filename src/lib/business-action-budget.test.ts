@@ -11,6 +11,7 @@ vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.checkRateLimit }));
 vi.mock("@/lib/prisma", () => ({ prisma: { business: { findFirst: mocks.businessFindFirst, findUnique: mocks.businessFindFirst } } }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
+import { WORKSPACE_LOCKED_ERROR } from "./billing-access";
 import { ACTION_RATE_LIMIT_ERROR, getAuthedBusiness } from "./business";
 
 beforeEach(() => {
@@ -62,5 +63,31 @@ describe("getAuthedBusiness action budget", () => {
 
     expect(result).toEqual({ error: expect.stringContaining("session expired") });
     expect(mocks.checkRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+// Billing: a workspace whose plan ended is read-only (billing-access.ts).
+describe("getAuthedBusiness billing gate", () => {
+  const LOCKED = { id: "biz_1", billingMode: "SUBSCRIPTION", subscriptionStatus: "CANCELED", lockedAt: null };
+
+  beforeEach(() => {
+    mocks.checkRateLimit.mockResolvedValue({ allowed: true, remaining: 10, retryAfterSeconds: 0 });
+  });
+
+  it("refuses a write for a locked workspace", async () => {
+    mocks.businessFindFirst.mockResolvedValue(LOCKED);
+    await expect(getAuthedBusiness()).resolves.toEqual({ error: WORKSPACE_LOCKED_ERROR, locked: true });
+  });
+
+  it("lets a locked workspace read, and acknowledge in the background", async () => {
+    mocks.businessFindFirst.mockResolvedValue(LOCKED);
+    await expect(getAuthedBusiness(undefined, { access: "read" })).resolves.toMatchObject({ business: LOCKED });
+    await expect(getAuthedBusiness(undefined, { budget: "background" })).resolves.toMatchObject({ business: LOCKED });
+  });
+
+  it("lets a free account write", async () => {
+    const free = { id: "biz_1", billingMode: "COMPLIMENTARY", subscriptionStatus: "NONE" };
+    mocks.businessFindFirst.mockResolvedValue(free);
+    await expect(getAuthedBusiness()).resolves.toMatchObject({ business: free });
   });
 });

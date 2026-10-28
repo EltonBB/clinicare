@@ -3,6 +3,8 @@ import { format } from "date-fns";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
+import { canUseWorkspace } from "@/lib/billing-access";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { isRealDateKey } from "@/lib/time-zone";
@@ -42,6 +44,13 @@ export default async function NewAppointmentPage({
   const { user, business } = await requireCurrentWorkspace("/calendar/new", {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return (
+      <CreatePageShell title="New booking">
+        <WorkspaceLockedState />
+      </CreatePageShell>
+    );
+  }
   const { ownerName } = toBusinessIdentity(business, user);
   const {
     client: requestedClientId,

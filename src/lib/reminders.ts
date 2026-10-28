@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 
 import { renderAutomationMessage } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
 import { normalizePhone, phoneLookupKey } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
@@ -424,6 +425,12 @@ export async function syncAppointmentRemindersForBusiness(
       result = await send();
     }
 
+    if (!result.ok && result.reason === "workspace_locked") {
+      // The plan ended between picking this clinic and sending: nothing went
+      // out and nothing should, so stop its run without recording a failure.
+      break;
+    }
+
     if (!result.ok && result.reason === "rate_limited") {
       // Still refused (the hourly ceiling, or a wait that wouldn't fit): stop
       // this clinic's run without recording a failure. Reminders go soonest
@@ -684,6 +691,8 @@ export async function syncAppointmentRemindersJob(
 ): Promise<ReminderCronResult> {
   const businesses = await prisma.business.findMany({
     where: {
+      // A read-only workspace (its plan ended) sends no reminders.
+      ...workspaceUsableWhere(),
       whatsappEnabled: true,
       whatsappConnection: {
         is: {

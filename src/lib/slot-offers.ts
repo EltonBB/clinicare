@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { renderAutomationMessage } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
 import { dispatchSoon } from "@/lib/automation-dispatch-soon";
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { timeToMinutes } from "@/lib/calendar";
 import { ELIGIBLE_CLIENT_WHERE, INELIGIBLE_CLIENT_WHERE } from "@/lib/client-eligibility";
 import { isSlotInsideOperatingHours, operatingWeekday } from "@/lib/operating-hours";
@@ -550,7 +551,8 @@ export async function retireSlotOffersForAppointments(
 async function workspacesWithStaleOffers(openStale: Prisma.FollowUpDraftWhereInput): Promise<string[]> {
   const groups = await prisma.followUpDraft.groupBy({
     by: ["businessId"],
-    where: openStale,
+    // A read-only workspace's offers stay as they are: nothing in it changes.
+    where: { AND: [openStale, { business: workspaceUsableWhere() }] },
     _min: { createdAt: true },
     orderBy: { _min: { createdAt: "asc" } },
     take: MAX_EXPIRE_BATCH,

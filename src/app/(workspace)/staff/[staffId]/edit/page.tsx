@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 
 import { NewStaffForm } from "@/components/staff/new-staff-form";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
+import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
+import { canUseWorkspace } from "@/lib/billing-access";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildStaffRecord, staffRecordAppointmentWindow } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +28,13 @@ export default async function EditStaffPage({
   const { business } = await requireCurrentWorkspace("/staff", {
     missingBusinessRedirect: "/onboarding",
   });
+  if (!canUseWorkspace(business)) {
+    return (
+      <CreatePageShell title="Edit staff member">
+        <WorkspaceLockedState />
+      </CreatePageShell>
+    );
+  }
   const { staffId } = await params;
 
   const [staff, businessHours] = await Promise.all([

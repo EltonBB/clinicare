@@ -69,7 +69,7 @@ const MESSAGE_TOO_LONG_ERROR = `Messages can be up to ${MAX_MESSAGE_BODY_LENGTH.
 const INBOX_DELIVERY_UNCERTAIN_ERROR =
   "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.";
 
-function getAuthedBusiness(options?: { budget?: "actions" | "background" }) {
+function getAuthedBusiness(options?: { budget?: "actions" | "background"; access?: "read" | "write" }) {
   return getAuthedBusinessContext(
     "Your session expired. Log in again to manage the inbox.",
     options
@@ -128,7 +128,7 @@ async function loadInboxView(businessId: string) {
 }
 
 export async function refreshInboxAction(): Promise<RefreshInboxResult> {
-  const context = await getAuthedBusiness();
+  const context = await getAuthedBusiness({ access: "read" });
 
   if ("error" in context) {
     return {
@@ -152,7 +152,7 @@ export async function refreshInboxAction(): Promise<RefreshInboxResult> {
 export async function hydrateConversationAction(
   rawConversationId: string
 ): Promise<HydrateConversationResult> {
-  const context = await getAuthedBusiness();
+  const context = await getAuthedBusiness({ access: "read" });
 
   if ("error" in context) {
     return {

@@ -1,3 +1,4 @@
+import { WORKSPACE_LOCKED_ERROR } from "@/lib/billing-access";
 import { normalizePhone } from "@/lib/inbox";
 import { logger } from "@/lib/logger";
 
@@ -10,6 +11,7 @@ import {
 import { ChannelRegistry } from "./registry";
 import { renderReminder } from "./render";
 import { clinicSendRefusal } from "./send-limits";
+import { isWorkspaceLockedForSending } from "./workspace-gate";
 import {
   SendOutcomeUnknownError,
   type AdapterSendInput,
@@ -138,6 +140,17 @@ export async function sendMessage(
         kind: input.message.kind,
       });
     }
+  }
+
+  // A read-only workspace (its plan ended) sends nothing to its patients. The
+  // crons already skip such workspaces; this is the backstop every send hits.
+  if (await isWorkspaceLockedForSending(input.businessId)) {
+    logger.warn("Outbound message held back: the workspace is read-only.", {
+      businessId: input.businessId,
+      channel: input.channel,
+      kind: input.message.kind,
+    });
+    return { ok: false, reason: "workspace_locked", error: WORKSPACE_LOCKED_ERROR };
   }
 
   // One ceiling for everything the clinic's number sends (send-limits.ts).

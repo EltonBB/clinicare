@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { cancelOwnAppointment } from "@/lib/mobile/appointments";
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, mobileWriteBlocked, staffAuthResponse } from "@/lib/mobile/guard";
 import { requireStaffContext } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -14,6 +14,9 @@ export async function POST(
   if ("error" in ctx) {
     return staffAuthResponse(ctx);
   }
+
+  const blocked = mobileWriteBlocked(ctx.business);
+  if (blocked) return blocked;
 
   const limited = await mobileRateLimit(ctx.device.id, "cancel", { limit: 20, windowMs: 60_000 });
   if (limited) {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { LogOut, Settings, TriangleAlert } from "lucide-react";
+import { LockKeyhole, LogOut, Settings, TriangleAlert } from "lucide-react";
 
 import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction, type ReminderWarning } from "@/app/(workspace)/actions";
@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { BillingBanner } from "@/lib/billing-banner";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -79,6 +80,8 @@ type AppShellProps = {
   planStatus?: string;
   brandAccentColor?: string | null;
   logoUrl?: string | null;
+  // The plan-ended / payment-failed line above every page (lib/billing-banner.ts).
+  billingBanner?: BillingBanner | null;
   // Combined bell total (inbox + staff messages + check-ins) — the bell badge only.
   unreadCount?: number;
   // Patient-inbox-only unread — feeds WorkspaceLiveContext (dashboard KPI, Messages card).
@@ -96,6 +99,7 @@ export function AppShell({
   ownerPhone = "",
   brandAccentColor = null,
   logoUrl = null,
+  billingBanner = null,
   unreadCount = 0,
   inboxUnreadCount = 0,
   notifications = [],
@@ -153,14 +157,18 @@ export function AppShell({
   useEffect(() => {
     if (sectionMovedToAutomations) router.replace("/automations");
   }, [sectionMovedToAutomations, router]);
-  // Opens the settings dialog on WhatsApp in place (the same ?settings= link
+  // Opens the settings dialog on a section in place (the same ?settings= link
   // a /settings?section= redirect lands on), without leaving the page.
-  const openWhatsAppSettings = useCallback(() => {
-    const params = new URLSearchParams(searchParams);
-    params.set("settings", "whatsapp");
-    params.delete("notice");
-    window.history.pushState(null, "", `${pathname}?${params}`);
-  }, [pathname, searchParams]);
+  const openSettingsSection = useCallback(
+    (section: "whatsapp" | "billing") => {
+      const params = new URLSearchParams(searchParams);
+      params.set("settings", section);
+      params.delete("notice");
+      window.history.pushState(null, "", `${pathname}?${params}`);
+    },
+    [pathname, searchParams]
+  );
+  const openWhatsAppSettings = useCallback(() => openSettingsSection("whatsapp"), [openSettingsSection]);
   const settingsNotice =
     searchParams.get("notice") === "email_updated" ? "Your email address was confirmed and updated." : "";
   const [searchOpen, setSearchOpen] = useState(false);
@@ -395,6 +403,33 @@ export function AppShell({
           </header>
 
           <main className="relative flex-1 bg-background px-4 py-3 pb-28 sm:px-5 lg:px-6 lg:py-4 lg:pb-4">
+            {billingBanner ? (
+              <div
+                role="status"
+                className={cn(
+                  "mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-(--radius-card) border px-3.5 py-2.5 text-sm",
+                  billingBanner.tone === "locked"
+                    ? "border-border bg-muted/60 text-foreground"
+                    : "border-amber-200 bg-amber-50 text-amber-900"
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  {billingBanner.tone === "locked" ? (
+                    <LockKeyhole className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  ) : (
+                    <TriangleAlert className="size-4 shrink-0 text-amber-600" aria-hidden="true" />
+                  )}
+                  {billingBanner.message}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => openSettingsSection("billing")}
+                  className="font-semibold underline-offset-4 transition-colors duration-(--duration-base) hover:underline"
+                >
+                  {billingBanner.action}
+                </button>
+              </div>
+            ) : null}
             {reminderWarning ? (
               <div
                 role="status"
