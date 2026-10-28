@@ -1,4 +1,5 @@
 import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
+import { getPausedReconcileCursor, setPausedReconcileCursor } from "@/lib/follow-up-cursor";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
@@ -20,6 +21,8 @@ const GRACE_MS = 60 * 60 * 1000;
  * would leave a clinic working for free. Paused subscriptions have no period
  * to run out, so they are re-read too, with the room the overdue ones leave:
  * a missed `resumed` event would otherwise keep the clinic read-only for good.
+ * An unchanged paused one isn't written, so they take turns by id from where
+ * the last run stopped instead of by when they last changed.
  */
 export async function reconcileOverdueSubscriptions(
   config: PaddleConfig,
@@ -39,15 +42,22 @@ export async function reconcileOverdueSubscriptions(
     orderBy: { currentPeriodEndsAt: "asc" },
     take: RECONCILE_BATCH,
   });
-  const paused =
-    overdue.length < RECONCILE_BATCH
-      ? await prisma.business.findMany({
-          where: { ...synced, subscriptionStatus: "PAUSED" },
-          select,
-          orderBy: { billingSyncedAt: "asc" },
-          take: RECONCILE_BATCH - overdue.length,
-        })
-      : [];
+  const paused: typeof overdue = [];
+  if (overdue.length < RECONCILE_BATCH) {
+    const after = await getPausedReconcileCursor();
+    const pausedPage = (id: { gt: string } | { lte: string } | undefined, take: number) =>
+      prisma.business.findMany({
+        where: { ...synced, subscriptionStatus: "PAUSED", ...(id ? { id } : {}) },
+        select,
+        orderBy: { id: "asc" },
+        take,
+      });
+    const room = RECONCILE_BATCH - overdue.length;
+    paused.push(...(await pausedPage(after ? { gt: after } : undefined, room)));
+    // Reached the end with room left: round again from the start.
+    if (after && paused.length < room) paused.push(...(await pausedPage({ lte: after }, room - paused.length)));
+    if (paused.length > 0) await setPausedReconcileCursor(paused[paused.length - 1].id);
+  }
   const due = [...overdue, ...paused];
 
   let applied = 0;
