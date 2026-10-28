@@ -126,6 +126,7 @@ type SettingsWorkspaceData = {
   logoDisplayUrl?: string;
   /** Paddle is configured here (lib/paddle/paddle-config.ts): billing can be managed. */
   billingEnabled?: boolean;
+  paddle?: { env: "sandbox" | "production"; clientToken: string } | null;
 };
 
 export function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
@@ -216,6 +217,7 @@ export function buildSettingsStateFromWorkspace({
   whatsappConnection,
   logoDisplayUrl: resolvedLogoDisplayUrl,
   billingEnabled = false,
+  paddle = null,
 }: SettingsWorkspaceData): SettingsState {
   const businessType = businessTypes.includes(business.businessType as BusinessType)
     ? (business.businessType as BusinessType)
@@ -260,7 +262,7 @@ export function buildSettingsStateFromWorkspace({
       template: reminderTemplate,
     },
     workflows,
-    billing: buildBillingSummary(business, { billingEnabled }),
+    billing: buildBillingSummary(business, { billingEnabled, paddle }),
   };
 }
 

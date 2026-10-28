@@ -9,6 +9,8 @@ export type PaddleSubscription = {
   id: string;
   status: string;
   customer_id: string;
+  address_id?: string | null;
+  business_id?: string | null;
   custom_data: Record<string, unknown> | null;
   current_billing_period: { starts_at: string; ends_at: string } | null;
   scheduled_change: { action: string; effective_at: string } | null;

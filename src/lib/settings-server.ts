@@ -60,6 +60,7 @@ export async function loadSettingsState(
     ]);
 
   const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
+  const config = paddleConfig();
 
   return buildSettingsStateFromWorkspace({
     business,
@@ -72,6 +73,7 @@ export async function loadSettingsState(
     // fallback the workflows cron applies.
     workflows: workflowSettings ?? DEFAULT_WORKFLOW_SETTINGS,
     whatsappConnection,
-    billingEnabled: paddleConfig() !== null,
+    billingEnabled: config !== null,
+    paddle: config ? { env: config.env, clientToken: config.clientToken } : null,
   });
 }
