@@ -48,7 +48,8 @@ export default async function WorkspaceLayout({
     redirect("/checkout");
   }
 
-  after(async () => {
+  // Both sweeps write records, so a read-only workspace skips them.
+  if (access.kind === "full") after(async () => {
     await getCached(`workspace-sweep:${business.id}`, SWEEP_THROTTLE_SECONDS, async () => {
       try {
         await completePastConfirmedAppointments(business.id);

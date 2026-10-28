@@ -1,3 +1,4 @@
+import { workspaceUsableWhere } from "@/lib/billing-access";
 import { prisma } from "@/lib/prisma";
 import { CHECK_IN_EARLY_GRACE_MS } from "@/lib/staff";
 
@@ -15,7 +16,8 @@ import { planStaleEntryCloses } from "./staff-clock-core";
  * Runs in the daily reminders cron (global sweep) and opportunistically per
  * business on workspace render (mirrors `completePastConfirmedAppointments`).
  * Best-effort and idempotent — only entries already past their boundary close,
- * and a legitimately-open current session is left untouched.
+ * and a legitimately-open current session is left untouched. A read-only
+ * workspace (its plan ended) is skipped: nothing in it changes.
  */
 export async function autoCloseStaleTimeEntries(
   businessId?: string,
@@ -25,6 +27,7 @@ export async function autoCloseStaleTimeEntries(
     where: {
       checkedOutAt: null,
       ...(businessId ? { businessId } : {}),
+      staffMember: { business: workspaceUsableWhere() },
     },
     select: { id: true, businessId: true, staffMemberId: true, checkedInAt: true },
     // Bounded: at any moment only currently-checked-in or forgotten entries are

@@ -16,6 +16,7 @@ import {
   type OnboardingState,
 } from "@/lib/onboarding";
 import { getCurrentUser, updateCurrentUserMetadata } from "@/lib/auth";
+import { WORKSPACE_LOCKED_ERROR, workspaceAccess } from "@/lib/billing-access";
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget } from "@/lib/business";
 
 export type SaveOnboardingStateResult = {
@@ -267,6 +268,16 @@ export async function saveOnboardingStateAction(
   }
 
   if (normalizedState.completed) {
+    // Finishing again re-bootstraps an existing workspace (details, hours,
+    // staff), so a read-only one is refused. A clinic still choosing a plan may
+    // finish again: a failed metadata save below sends it back here.
+    const existing = await prisma.business.findUnique({
+      where: { ownerId: user.id },
+      select: { billingMode: true, subscriptionStatus: true, cancelAt: true, trialEndsAt: true, lockedAt: true },
+    });
+    if (existing && workspaceAccess(existing).kind === "locked") {
+      return { ok: false, error: WORKSPACE_LOCKED_ERROR };
+    }
     const validationError = validateOnboardingForBootstrap(normalizedState);
     if (validationError) {
       return { ok: false, error: validationError, state: normalizedState };
