@@ -250,7 +250,9 @@ export async function ensureInboxSeedData(businessId: string) {
 
 export async function ensureConversationForClient(
   businessId: string,
-  clientId: string
+  clientId: string,
+  // A read-only workspace (its plan ended) only finds an existing conversation.
+  { readOnly = false }: { readOnly?: boolean } = {}
 ) {
   const client = await prisma.client.findFirst({
     where: {
@@ -273,6 +275,13 @@ export async function ensureConversationForClient(
 
   if (!clientPhoneKey) {
     return null;
+  }
+
+  if (readOnly) {
+    return prisma.conversation.findUnique({
+      where: { businessId_phoneKey: { businessId, phoneKey: clientPhoneKey } },
+      select: { id: true },
+    });
   }
 
   return prisma.conversation.upsert({

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { after } from "next/server";
 
+import { canUseWorkspace } from "@/lib/billing-access";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
@@ -28,7 +29,7 @@ export default async function InboxPage({
 
   const ensuredConversation =
     typeof client === "string" && client.length > 0
-      ? await ensureConversationForClient(business.id, client)
+      ? await ensureConversationForClient(business.id, client, { readOnly: !canUseWorkspace(business) })
       : null;
 
   after(async () => {
