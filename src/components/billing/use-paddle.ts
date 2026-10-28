@@ -19,18 +19,46 @@ type PricePreviewResult = {
   };
 };
 
+/** The parts of a Paddle.js checkout event this app reads (amounts are in major units, e.g. 39.5). */
+export type PaddleCheckoutData = {
+  currency_code?: string;
+  totals?: { subtotal?: number; tax?: number; total?: number };
+  recurring_totals?: { subtotal?: number; tax?: number; total?: number } | null;
+  items?: Array<{
+    trial_period?: { interval: string; frequency: number } | null;
+    billing_cycle?: { interval: string; frequency: number } | null;
+  }>;
+};
+
+export type PaddleEvent = { name?: string; data?: PaddleCheckoutData };
+
+type CheckoutItems = Array<{ priceId: string; quantity: number }>;
+
 export type PaddleJs = {
   Environment: { set(env: string): void };
-  Initialize(options: { token: string; eventCallback?: (event: { name?: string }) => void }): void;
+  Initialize(options: { token: string; eventCallback?: (event: PaddleEvent) => void }): void;
   Checkout: {
     open(options: {
-      items: Array<{ priceId: string; quantity: number }>;
+      items?: CheckoutItems;
+      transactionId?: string;
       customer?: { email: string };
       customData?: Record<string, string>;
-      settings?: { displayMode?: "overlay"; theme?: "light"; locale?: string; successUrl?: string };
+      settings?: {
+        displayMode?: "overlay" | "inline";
+        frameTarget?: string;
+        frameInitialHeight?: number;
+        frameStyle?: string;
+        variant?: "one-page" | "multi-page";
+        allowLogout?: boolean;
+        showAddDiscounts?: boolean;
+        theme?: "light";
+        locale?: string;
+      };
     }): void;
+    updateItems(items: CheckoutItems): void;
+    close(): void;
   };
-  PricePreview(request: { items: Array<{ priceId: string; quantity: number }> }): Promise<PricePreviewResult>;
+  PricePreview(request: { items: CheckoutItems }): Promise<PricePreviewResult>;
 };
 
 declare global {
@@ -42,6 +70,17 @@ declare global {
 const PADDLE_JS_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
 let loading: Promise<PaddleJs> | null = null;
 
+// Paddle.js takes one event callback, at Initialize; components subscribe here.
+const listeners = new Set<(event: PaddleEvent) => void>();
+
+/** Calls `listener` for every Paddle.js event (checkout loaded, updated, completed…) until the returned cleanup runs. */
+export function onPaddleEvent(listener: (event: PaddleEvent) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 function loadPaddle(config: PaddleClientConfig): Promise<PaddleJs> {
   if (loading) return loading;
   loading = new Promise<PaddleJs>((resolve, reject) => {
@@ -52,7 +91,12 @@ function loadPaddle(config: PaddleClientConfig): Promise<PaddleJs> {
         return;
       }
       if (config.env === "sandbox") paddle.Environment.set("sandbox");
-      paddle.Initialize({ token: config.clientToken });
+      paddle.Initialize({
+        token: config.clientToken,
+        eventCallback: (event) => {
+          for (const listener of listeners) listener(event);
+        },
+      });
       resolve(paddle);
     };
     if (window.Paddle) {

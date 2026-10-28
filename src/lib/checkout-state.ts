@@ -36,28 +36,12 @@ export function checkoutStage(args: { signedIn: boolean; business: CheckoutBusin
   return { kind: "subscribe", trialAvailable: access.kind === "needs_plan" && !business.trialUsedAt };
 }
 
-/** Whether choosing a plan from here still starts with the free trial. */
-export function offersTrial(stage: CheckoutStage): boolean {
-  if (stage.kind === "sign_up" || stage.kind === "onboarding") return true;
-  return stage.kind === "subscribe" && stage.trialAvailable;
-}
-
 export function checkoutPriceId(prices: PriceTable, plan: PaidPlan, interval: PaidInterval, trialAvailable: boolean): string {
   const pair = prices[plan][interval];
   return trialAvailable ? pair.trial : pair.noTrial;
 }
 
-/** The plain sentence under the pay button: when the first charge comes, and how much. */
-export function firstChargeLine(args: {
-  trialAvailable: boolean;
-  price: string;
-  interval: PaidInterval;
-  now?: Date;
-  timeZone?: string;
-}): string {
-  const per = args.interval === "YEAR" ? "year" : "month";
-  if (!args.trialAvailable) return `${args.price} today, then every ${per} until you cancel.`;
-  const now = args.now ?? new Date();
-  const trialEnds = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-  return `Free until ${formatZonedFullDate(trialEnds, args.timeZone)}, then ${args.price} a ${per}. Cancel any time before and you pay nothing.`;
+/** The day a trial started now ends, for the checkout's order ("From November 10, 2026"). */
+export function trialEndLabel(now = new Date(), timeZone?: string): string {
+  return formatZonedFullDate(new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000), timeZone);
 }

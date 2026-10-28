@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkoutPriceId, checkoutStage, firstChargeLine, offersTrial } from "./checkout-state";
+import { checkoutPriceId, checkoutStage, trialEndLabel } from "./checkout-state";
 
 const PRICES = {
   BASIC: { MONTH: { trial: "pri_bm_t", noTrial: "pri_bm" }, YEAR: { trial: "pri_by_t", noTrial: "pri_by" } },
@@ -51,17 +51,6 @@ describe("checkoutStage", () => {
   });
 });
 
-describe("offersTrial", () => {
-  it("promises the trial only to someone who can still get it", () => {
-    expect(offersTrial({ kind: "sign_up" })).toBe(true);
-    expect(offersTrial({ kind: "onboarding" })).toBe(true);
-    expect(offersTrial({ kind: "subscribe", trialAvailable: true })).toBe(true);
-    expect(offersTrial({ kind: "subscribe", trialAvailable: false })).toBe(false);
-    expect(offersTrial({ kind: "subscribed", plan: "PRO" })).toBe(false);
-    expect(offersTrial({ kind: "free_account" })).toBe(false);
-  });
-});
-
 describe("checkoutPriceId", () => {
   it("picks the trial price only while the trial is available", () => {
     expect(checkoutPriceId(PRICES, "PRO", "YEAR", true)).toBe("pri_py_t");
@@ -70,21 +59,8 @@ describe("checkoutPriceId", () => {
   });
 });
 
-describe("firstChargeLine", () => {
-  const NOW = new Date("2026-10-26T12:00:00Z");
-
-  it("says when the first charge happens and how much it is", () => {
-    expect(firstChargeLine({ trialAvailable: true, price: "€39", interval: "MONTH", now: NOW, timeZone: "Europe/Budapest" })).toBe(
-      "Free until November 9, 2026, then €39 a month. Cancel any time before and you pay nothing."
-    );
-    expect(firstChargeLine({ trialAvailable: true, price: "$869", interval: "YEAR", now: NOW, timeZone: "Europe/Budapest" })).toBe(
-      "Free until November 9, 2026, then $869 a year. Cancel any time before and you pay nothing."
-    );
-  });
-
-  it("says a clinic without a trial is charged today", () => {
-    expect(firstChargeLine({ trialAvailable: false, price: "€429", interval: "YEAR", now: NOW, timeZone: "Europe/Budapest" })).toBe(
-      "€429 today, then every year until you cancel."
-    );
+describe("trialEndLabel", () => {
+  it("is fourteen days from now, in the clinic's zone", () => {
+    expect(trialEndLabel(new Date("2026-10-27T12:00:00Z"), "Europe/Budapest")).toBe("November 10, 2026");
   });
 });
