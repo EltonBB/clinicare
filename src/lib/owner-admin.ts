@@ -1,7 +1,7 @@
 import type { Business } from "@prisma/client";
 
 import { planDisplayName } from "@/lib/billing";
-import { USABLE_SUBSCRIPTION_STATUSES, workspaceAccess } from "@/lib/billing-access";
+import { retentionEndsAt, USABLE_SUBSCRIPTION_STATUSES, workspaceAccess } from "@/lib/billing-access";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
 /**
@@ -78,15 +78,12 @@ export function ownerBillingRow(business: OwnerBillingSource, now: Date, timeZon
   }
 
   const access = workspaceAccess(business, now);
-  const keptUntil = access.kind === "locked" ? access.keptUntil : null;
+  // A clinic made paying that never subscribes is kept 90 days too: its clock
+  // starts when the owner made it paying.
+  const keptUntil = access.kind !== "full" && business.lockedAt ? retentionEndsAt(business.lockedAt) : null;
+  const kept = keptUntil ? `, kept until ${date(keptUntil)}` : "";
   const accessLabel =
-    access.kind === "full"
-      ? "Usable"
-      : access.kind === "needs_plan"
-        ? "Choosing a plan"
-        : keptUntil
-          ? `Read-only, kept until ${date(keptUntil)}`
-          : "Read-only";
+    access.kind === "full" ? "Usable" : access.kind === "needs_plan" ? `Choosing a plan${kept}` : `Read-only${kept}`;
 
   return {
     id: business.id,

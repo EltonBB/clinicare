@@ -73,10 +73,23 @@ describe("ownerBillingRow", () => {
   });
 
   it("describes a clinic still choosing a plan", () => {
-    expect(ownerBillingRow(row({ subscriptionStatus: "NONE", lockedAt: NOW }), NOW, ZONE)).toMatchObject({
+    expect(ownerBillingRow(row({ subscriptionStatus: "NONE" }), NOW, ZONE)).toMatchObject({
       billing: "No plan yet",
       access: "Choosing a plan",
       canMakeFree: true,
+      dueForDeletion: false,
+    });
+  });
+
+  it("keeps a clinic made paying that never subscribed for 90 days, like a locked one", () => {
+    const choosing = { subscriptionStatus: "NONE" as const };
+    expect(ownerBillingRow(row({ ...choosing, lockedAt: new Date("2026-09-01T00:00:00Z") }), NOW, ZONE)).toMatchObject({
+      access: "Choosing a plan, kept until November 30, 2026",
+      dueForDeletion: false,
+    });
+    expect(ownerBillingRow(row({ ...choosing, lockedAt: new Date("2026-07-01T00:00:00Z") }), NOW, ZONE)).toMatchObject({
+      access: "Choosing a plan, kept until September 29, 2026",
+      dueForDeletion: true,
     });
   });
 
