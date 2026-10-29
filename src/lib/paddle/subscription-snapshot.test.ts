@@ -139,13 +139,22 @@ describe("subscriptionSnapshotUpdate", () => {
   });
 
   it("keeps a running Pro trial on Pro while Paddle bills Basic, and drops it once it has ended", () => {
+    const basic = sub({ status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] });
     const active = { ...EXISTING, proTrialEndsAt: new Date("2026-11-01T00:00:00Z") };
-    expect(subscriptionSnapshotUpdate(sub({ status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] }), OCCURRED, LOOKUP, active)).toMatchObject({
+    expect(subscriptionSnapshotUpdate(basic, OCCURRED, LOOKUP, active, OCCURRED)).toMatchObject({
       data: { plan: "PRO", subscribedPlan: "BASIC" },
     });
     const ended = { ...EXISTING, proTrialEndsAt: new Date("2026-10-20T00:00:00Z") };
-    expect(subscriptionSnapshotUpdate(sub({ status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] }), OCCURRED, LOOKUP, ended)).toMatchObject({
+    expect(subscriptionSnapshotUpdate(basic, OCCURRED, LOOKUP, ended, OCCURRED)).toMatchObject({
       data: { plan: "BASIC", subscribedPlan: "BASIC" },
+    });
+  });
+
+  it("judges a Pro trial at processing time, so a late event from before its end can't restore Pro", () => {
+    const basic = sub({ status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] });
+    const endedSince = { ...EXISTING, proTrialEndsAt: new Date("2026-10-27T00:00:00Z") };
+    expect(subscriptionSnapshotUpdate(basic, OCCURRED, LOOKUP, endedSince, new Date("2026-10-28T00:00:00Z"))).toMatchObject({
+      data: { plan: "BASIC", billingSyncedAt: OCCURRED },
     });
   });
 });

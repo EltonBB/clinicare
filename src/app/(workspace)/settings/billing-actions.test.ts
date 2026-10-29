@@ -140,6 +140,7 @@ describe("the owner-offered Pro trial", () => {
     const { where, data } = mocks.businessUpdateMany.mock.calls[0][0];
     expect(where).toEqual({ id: "biz_1", proTrialStartedAt: null });
     expect(data.plan).toBe("PRO");
+    expect(data.subscribedPlan).toBe("BASIC");
     expect(data.proTrialEndsAt.getTime() - data.proTrialStartedAt.getTime()).toBe(14 * 86_400_000);
 
     mocks.businessUpdateMany.mockResolvedValue({ count: 0 });
