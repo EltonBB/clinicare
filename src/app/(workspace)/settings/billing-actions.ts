@@ -71,10 +71,11 @@ export async function changeBillingPlanAction(input: z.input<typeof changeSchema
 
   // Keep the trial: a trialing subscription moves to the new plan's trial price.
   const pair = config.prices[parsed.data.plan][parsed.data.interval];
-  const priceId = business.subscriptionStatus === "TRIALING" ? pair.trial : pair.noTrial;
+  const trialing = business.subscriptionStatus === "TRIALING";
+  const priceId = trialing ? pair.trial : pair.noTrial;
 
   try {
-    const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId);
+    const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId, { trialing });
     await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
   } catch (error) {
     logger.error("Couldn't change the subscription's plan.", error, { businessId: business.id });
