@@ -55,6 +55,7 @@ export function BillingControls({
       if (result.ok) {
         setMessage({ tone: "done", text: done });
         router.refresh();
+        await onChanged();
       } else {
         setMessage({ tone: "error", text: result.error });
       }
