@@ -119,3 +119,13 @@ export function subscriptionSnapshotUpdate(
     },
   };
 }
+
+/**
+ * When Paddle last changed this subscription, by Paddle's own clock: the time to
+ * date a snapshot read from its API (a webhook carries its own). Dating it by
+ * when the read finished would let it outrank a change made meanwhile.
+ */
+export function subscriptionChangedAt(subscription: PaddleSubscription, fallback: Date): Date {
+  const changedAt = subscription.updated_at ? new Date(subscription.updated_at) : null;
+  return changedAt && !Number.isNaN(changedAt.getTime()) ? changedAt : fallback;
+}
