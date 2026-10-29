@@ -21,8 +21,8 @@ export const termsSections: LegalSection[] = [
   {
     title: "1. Agreement to these terms",
     body: [
-      `Vela / Clinicare is provided by ${LEGAL_ENTITY.name}, ${LEGAL_ENTITY.address} ("we", "us"). When you use Vela, your agreement is with us.`,
-      "These Terms of Service govern access to and use of Vela / Clinicare, including the web app, the Vela Staff mobile app, onboarding, clinic workspace, appointment tools, client records, staff tools, messaging inbox, reminders, reports, and related services.",
+      `Vela is provided by ${LEGAL_ENTITY.name}, ${LEGAL_ENTITY.address} ("we", "us"). When you use Vela, your agreement is with us.`,
+      "These Terms of Service govern access to and use of Vela, including the web app, the Vela Staff mobile app, onboarding, clinic workspace, appointment tools, client records, staff tools, messaging inbox, reminders, reports, and related services.",
       "By creating an account, using the service, or using the service on behalf of a clinic or business, you confirm that you can enter into this agreement and bind that clinic or business to these terms. Continuing to use Vela means you agree to these terms.",
     ],
   },
@@ -82,7 +82,7 @@ export const termsSections: LegalSection[] = [
   {
     title: "9. Intellectual property",
     body: [
-      "Vela, Clinicare, the app design, software, workflows, text, reports, and product materials are owned by us or our licensors. These terms give you the right to use the service, not ownership of the service itself.",
+      "Vela, the app design, software, workflows, text, reports, and product materials are owned by us or our licensors. These terms give you the right to use the service, not ownership of the service itself.",
       "Your clinic keeps ownership of the information and media it enters into the service. You give us permission to host, process, display, transmit, back up, and otherwise handle that content as needed to provide and improve the service.",
     ],
   },
@@ -118,7 +118,7 @@ export const privacySections: LegalSection[] = [
   {
     title: "1. Who we are",
     body: [
-      `This Privacy Policy explains how ${LEGAL_ENTITY.name}, ${LEGAL_ENTITY.address}, which provides Vela / Clinicare, collects, uses, stores, and shares information. For privacy questions or requests, contact ${SUPPORT_EMAIL}.`,
+      `This Privacy Policy explains how ${LEGAL_ENTITY.name}, ${LEGAL_ENTITY.address}, which provides Vela, collects, uses, stores, and shares information. For privacy questions or requests, contact ${SUPPORT_EMAIL}.`,
       "We are the controller of account, billing, and website information about clinic owners and their staff. Clinics control the client and patient information they enter into Vela; for that information the clinic is the controller, and we process it on the clinic's behalf to provide the software, support the account, maintain security, and operate the product.",
     ],
   },
@@ -218,7 +218,7 @@ export const refundSections: LegalSection[] = [
   {
     title: "1. Overview",
     body: [
-      `This Refund Policy explains refunds, cancellations, and free trials for Vela / Clinicare subscriptions. ${MERCHANT_OF_RECORD_NOTICE}`,
+      `This Refund Policy explains refunds, cancellations, and free trials for Vela subscriptions. ${MERCHANT_OF_RECORD_NOTICE}`,
     ],
   },
   {
