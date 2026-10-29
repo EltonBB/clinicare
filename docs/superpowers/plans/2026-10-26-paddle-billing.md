@@ -17,7 +17,7 @@
 - Plan/interval changes: immediate, `proration_billing_mode: "prorated_immediately"`.
 - Lock = read-only; data kept 90 days from `lockedAt`; deletion only by the owner from `/owner`.
 - Locked/needs-plan workspaces send **nothing** to patients.
-- Env: `PADDLE_ENV` (`sandbox` | `production`), `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PADDLE_ENV`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `PADDLE_PRICE_IDS` (JSON, see Task 4), `VELA_ADMIN_EMAILS` (comma list). Server secrets never reach the client or logs.
+- Env: `PADDLE_ENV` (`sandbox` | `production`), `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` (public; the server passes it and the env to the browser as props), `PADDLE_PRICE_IDS` (JSON, see Task 4), `VELA_ADMIN_EMAILS` (comma list). Server secrets never reach the client or logs.
 - Customer-facing copy never names Paddle internals or raw errors; no em-dashes in visible copy; sentence case.
 - No patient data to Paddle: only the business name, owner email, `custom_data.businessId`.
 - Schema: `npm run db:push` only, never `--accept-data-loss`. New columns default so existing rows keep today's behaviour (no backfill writes).
