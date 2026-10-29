@@ -6,7 +6,7 @@ import { legalLastUpdated, termsSections } from "@/lib/legal-content";
 export const metadata: Metadata = {
   title: "Terms of Service | Vela",
   description:
-    "Terms of Service for Vela / Clinicare clinic operations software.",
+    "Terms of Service for Vela clinic operations software.",
 };
 
 export default function TermsAndConditionsPage() {
