@@ -20,7 +20,7 @@ const faqs: Faq[] = [
   },
   {
     q: "Can I switch plans or pay yearly?",
-    a: "Yes. Switch between Basic and Pro, or monthly and yearly, any time in Settings. Yearly gives you twelve months for the price of eleven. A move up is charged for the rest of the period; a move down is credited to your next bill.",
+    a: "Yes. Switch between Basic and Pro, or monthly and yearly, any time in Settings. Yearly gives you twelve months for the price of eleven. A move up is charged for the rest of the period; a move down is credited to your next bill. Switching between monthly and yearly starts a new period that day, less the unused part of the old one.",
   },
   {
     q: "Which currency will I pay in?",

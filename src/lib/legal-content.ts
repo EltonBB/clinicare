@@ -68,7 +68,7 @@ export const termsSections: LegalSection[] = [
       "Vela is offered as Basic and Pro plans, billed monthly or yearly. The price, currency, and billing period are shown before you pay, and prices include VAT or the sales tax that applies where you are.",
       "Every plan starts with a 14-day free trial, once per clinic. A payment card is required to start it, and nothing is charged during the trial. Unless you cancel before the trial ends, your subscription begins and the card is charged automatically. You will be reminded by email before the trial ends.",
       "Subscriptions renew automatically at the end of each billing period until cancelled. You can cancel any time in Settings › Billing; cancellation takes effect at the end of the current period or trial, and you keep full access until then.",
-      "You can change plan or billing period in Settings › Billing. A change takes effect immediately: a move to a higher price is charged for the rest of the current period, and a move to a lower price is credited to your next bill. A move between monthly and yearly billing starts a new period that day, and the unused part of the old one is counted toward it.",
+      "You can change plan or billing period in Settings › Billing, and a change takes effect immediately. A move to a higher plan is charged for the rest of the current period, and a move to a lower plan is credited to your next bill. Switching between monthly and yearly starts a new billing period that day: you pay for it then, less the unused part of the old one. During a free trial, nothing is charged until the trial ends.",
       "If a payment fails, it is retried for a period of time and you can update your card in Settings › Billing. If payment is not completed, the subscription ends.",
     ],
   },
@@ -242,7 +242,7 @@ export const refundSections: LegalSection[] = [
   {
     title: "5. Plan changes",
     body: [
-      "Moving to a higher plan or billing period charges the difference for the rest of the current period; moving to a lower one credits the unused part to your next bill.",
+      "Moving to a higher plan charges the difference for the rest of the current period; moving to a lower one credits the unused part to your next bill. Switching between monthly and yearly starts a new billing period that day, and the unused part of the old one is taken off what you pay.",
     ],
   },
   {
