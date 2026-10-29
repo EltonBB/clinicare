@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ArrowUpRight } from "lucide-react";
 
-import { changeBillingPlanAction, openBillingPortalAction } from "@/app/(workspace)/settings/billing-actions";
+import {
+  changeBillingPlanAction,
+  endProTrialAction,
+  keepProAction,
+  openBillingPortalAction,
+  startProTrialAction,
+  type BillingActionResult,
+} from "@/app/(workspace)/settings/billing-actions";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { fieldSelectClass } from "@/components/workspace/workspace-layout";
@@ -41,6 +48,20 @@ export function BillingControls({
     });
   }
 
+  function runProTrial(action: () => Promise<BillingActionResult>, done: string) {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await action();
+      if (result.ok) {
+        setMessage({ tone: "done", text: done });
+        router.refresh();
+        await onChanged();
+      } else {
+        setMessage({ tone: "error", text: result.error });
+      }
+    });
+  }
+
   function switchPlan() {
     if (!option) return;
     setMessage(null);
@@ -62,6 +83,56 @@ export function BillingControls({
 
   return (
     <div className="space-y-3 pt-1">
+      {billing.proTrial ? (
+        <div className="space-y-2 rounded-(--radius-card) bg-primary/6 p-3.5">
+          {billing.proTrial.state === "offered" ? (
+            <>
+              <p className="text-sm font-semibold text-foreground">Try Pro free for 14 days</p>
+              <p className="text-sm text-muted-foreground">
+                Reports, no-show tracking and every automation, on us. Your Basic plan and billing stay the same.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => runProTrial(startProTrialAction, "Your Pro trial has started.")}
+                disabled={pending}
+                className="h-9 rounded-(--radius-card)"
+              >
+                Start Pro trial
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-foreground">Pro trial until {billing.proTrial.endsOn}</p>
+              <p className="text-sm text-muted-foreground">
+                After that you go back to Basic, unless you keep Pro. Keeping it charges the difference for the rest
+                of this period now.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => runProTrial(keepProAction, "You're on Pro now.")}
+                  disabled={pending || !billing.canManage}
+                  className="h-9 rounded-(--radius-card)"
+                >
+                  Keep Pro
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => runProTrial(endProTrialAction, "You're back on Basic.")}
+                  disabled={pending}
+                  className="h-9 rounded-(--radius-card)"
+                >
+                  Back to Basic
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {billing.kind === "needs_plan" || billing.kind === "locked" ? (
           <Link href="/checkout" className={cn(buttonVariants({ size: "sm" }), "h-9 rounded-(--radius-card)")}>

@@ -23,6 +23,7 @@ export type SnapshotData = {
   subscriptionStatus: SubscriptionStatus;
   planStatus: BusinessPlanStatus;
   plan: BusinessPlan;
+  subscribedPlan: BusinessPlan;
   billingInterval: BillingInterval;
   paddleSubscriptionId: string;
   paddleCustomerId: string;
@@ -66,7 +67,11 @@ function date(value: string | null | undefined): Date | null {
  * What a Paddle subscription snapshot means for the clinic it belongs to. Pure:
  * the caller finds the clinic, guards event order, and writes `data`.
  *
- * - The plan and interval come from the price (only this app's eight prices).
+ * - The plan and interval come from the price (only this app's eight prices),
+ *   except that an owner-offered Pro trial still running keeps the clinic on
+ *   Pro while Paddle bills Basic (`subscribedPlan` is what Paddle bills).
+ *   "Still running" is judged at `now`, not when the event happened: a late
+ *   event must not hand back Pro after the trial ended.
  * - `trialUsedAt` is set once, the first time a trial is seen: one per clinic.
  * - `lockedAt` starts the 90-day retention clock when the subscription stops
  *   being usable, keeps an earlier start, and clears once it is usable again.
@@ -79,7 +84,8 @@ export function subscriptionSnapshotUpdate(
   subscription: PaddleSubscription,
   occurredAt: Date,
   prices: Map<string, PriceInfo>,
-  existing: { billingMode: BillingMode; trialUsedAt: Date | null; lockedAt: Date | null }
+  existing: { billingMode: BillingMode; trialUsedAt: Date | null; lockedAt: Date | null; proTrialEndsAt?: Date | null },
+  now: Date = new Date()
 ): SnapshotUpdate {
   const status = STATUS[subscription.status];
   if (!status) return { kind: "unmatched", reason: "unknown_status" };
@@ -99,7 +105,8 @@ export function subscriptionSnapshotUpdate(
       billingMode,
       subscriptionStatus: status,
       planStatus: PLAN_STATUS[status],
-      plan: price.plan,
+      plan: usable && existing.proTrialEndsAt && existing.proTrialEndsAt > now ? "PRO" : price.plan,
+      subscribedPlan: price.plan,
       billingInterval: price.interval,
       paddleSubscriptionId: subscription.id,
       paddleCustomerId: subscription.customer_id,

@@ -2,6 +2,7 @@ import type { Business } from "@prisma/client";
 
 import { planDisplayName } from "@/lib/billing";
 import { retentionEndsAt, USABLE_SUBSCRIPTION_STATUSES, workspaceAccess } from "@/lib/billing-access";
+import { proTrialState } from "@/lib/pro-trial";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
 /**
@@ -35,6 +36,10 @@ export type OwnerBillingSource = Pick<
   | "cancelAt"
   | "trialEndsAt"
   | "lockedAt"
+  | "subscribedPlan"
+  | "proTrialOfferedAt"
+  | "proTrialStartedAt"
+  | "proTrialEndsAt"
 >;
 
 export type OwnerBillingRow = {
@@ -49,6 +54,8 @@ export type OwnerBillingRow = {
   isFree: boolean;
   /** A clinic Paddle is billing can't be made free here: cancel it there first. */
   canMakeFree: boolean;
+  /** The free Pro trial: can be offered, or how far it has got. */
+  proTrial: "offerable" | "offered" | "active" | null;
 };
 
 const STATUS_LABEL = {
@@ -85,6 +92,8 @@ export function ownerBillingRow(business: OwnerBillingSource, now: Date, timeZon
   const accessLabel =
     access.kind === "full" ? "Usable" : access.kind === "needs_plan" ? `Choosing a plan${kept}` : `Read-only${kept}`;
 
+  const proTrial = proTrialState(business, now).kind;
+
   return {
     id: business.id,
     name: business.name,
@@ -96,5 +105,6 @@ export function ownerBillingRow(business: OwnerBillingSource, now: Date, timeZon
     dueForDeletion: !!keptUntil && keptUntil <= now,
     isFree,
     canMakeFree: !billedByPaddle,
+    proTrial: proTrial === "none" ? null : proTrial,
   };
 }

@@ -7,6 +7,12 @@ const mocks = vi.hoisted(() => ({
   changePaddleSubscriptionPrice: vi.fn(),
   applySubscriptionSnapshot: vi.fn(),
   revalidatePath: vi.fn(),
+  businessUpdate: vi.fn(),
+  businessUpdateMany: vi.fn(),
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: { business: { update: mocks.businessUpdate, updateMany: mocks.businessUpdateMany } },
 }));
 
 vi.mock("@/lib/business", () => ({ getAuthedBusiness: mocks.getAuthedBusiness }));
@@ -19,7 +25,13 @@ vi.mock("@/lib/paddle/subscription-sync", () => ({ applySubscriptionSnapshot: mo
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
-import { changeBillingPlanAction, openBillingPortalAction } from "./billing-actions";
+import {
+  changeBillingPlanAction,
+  endProTrialAction,
+  keepProAction,
+  openBillingPortalAction,
+  startProTrialAction,
+} from "./billing-actions";
 
 const CONFIG = {
   prices: {
@@ -107,6 +119,56 @@ describe("changeBillingPlanAction", () => {
     expect(await changeBillingPlanAction({ plan: "PRO", interval: "MONTH" })).toEqual({
       ok: false,
       error: "We couldn't change your plan. Please try again.",
+    });
+  });
+});
+
+describe("the owner-offered Pro trial", () => {
+  const BASIC = { ...PAYING, plan: "BASIC", subscribedPlan: "BASIC", billingInterval: "YEAR", proTrialOfferedAt: new Date(), proTrialStartedAt: null, proTrialEndsAt: null };
+  const ON_TRIAL = {
+    ...BASIC,
+    plan: "PRO",
+    proTrialStartedAt: new Date(),
+    proTrialEndsAt: new Date(Date.now() + 7 * 86_400_000),
+  };
+
+  it("starts once: Pro for 14 days, guarded against a double click", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: BASIC, user: { id: "u" } });
+    mocks.businessUpdateMany.mockResolvedValue({ count: 1 });
+
+    expect(await startProTrialAction()).toEqual({ ok: true });
+    const { where, data } = mocks.businessUpdateMany.mock.calls[0][0];
+    expect(where).toEqual({ id: "biz_1", proTrialStartedAt: null });
+    expect(data.plan).toBe("PRO");
+    expect(data.subscribedPlan).toBe("BASIC");
+    expect(data.proTrialEndsAt.getTime() - data.proTrialStartedAt.getTime()).toBe(14 * 86_400_000);
+
+    mocks.businessUpdateMany.mockResolvedValue({ count: 0 });
+    expect(await startProTrialAction()).toMatchObject({ ok: false });
+  });
+
+  it("can't be started without an offer", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...BASIC, proTrialOfferedAt: null }, user: { id: "u" } });
+    expect(await startProTrialAction()).toMatchObject({ ok: false });
+    expect(mocks.businessUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("keeping Pro moves the subscription to Pro at its billing period, then ends the trial", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: ON_TRIAL, user: { id: "u" } });
+
+    expect(await keepProAction()).toEqual({ ok: true });
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_py", { trialing: false });
+    expect(mocks.businessUpdate).toHaveBeenCalledWith({ where: { id: "biz_1" }, data: { proTrialEndsAt: expect.any(Date) } });
+  });
+
+  it("going back to Basic changes nothing in billing", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: ON_TRIAL, user: { id: "u" } });
+
+    expect(await endProTrialAction()).toEqual({ ok: true });
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
+    expect(mocks.businessUpdate).toHaveBeenCalledWith({
+      where: { id: "biz_1" },
+      data: { plan: "BASIC", proTrialEndsAt: expect.any(Date) },
     });
   });
 });

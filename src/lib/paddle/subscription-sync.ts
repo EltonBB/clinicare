@@ -15,6 +15,7 @@ const BUSINESS_SELECT = {
   paddleSubscriptionId: true,
   trialUsedAt: true,
   lockedAt: true,
+  proTrialEndsAt: true,
 } as const;
 
 // Paddle statuses that are, or can become, billable again.

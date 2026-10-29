@@ -18,6 +18,10 @@ function row(overrides: Partial<OwnerBillingSource>): OwnerBillingSource {
     cancelAt: null,
     trialEndsAt: null,
     lockedAt: null,
+    subscribedPlan: "PRO",
+    proTrialOfferedAt: null,
+    proTrialStartedAt: null,
+    proTrialEndsAt: null,
     ...overrides,
   };
 }
@@ -103,5 +107,11 @@ describe("ownerBillingRow", () => {
       access: "Read-only, kept until September 29, 2026",
       dueForDeletion: true,
     });
+  });
+
+  it("shows whether a paying Basic clinic can be offered the Pro trial", () => {
+    expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC" }), NOW, ZONE).proTrial).toBe("offerable");
+    expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC", proTrialOfferedAt: NOW }), NOW, ZONE).proTrial).toBe("offered");
+    expect(ownerBillingRow(row({}), NOW, ZONE).proTrial).toBeNull();
   });
 });

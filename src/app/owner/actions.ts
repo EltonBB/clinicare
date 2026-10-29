@@ -9,6 +9,7 @@ import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import { isOwnerAdmin } from "@/lib/owner-admin";
 import { prisma } from "@/lib/prisma";
+import { proTrialState } from "@/lib/pro-trial";
 import { recordIdSchema } from "@/lib/record-id";
 
 export type OwnerActionResult = { ok: true } | { ok: false; error: string };
@@ -71,6 +72,26 @@ export async function setClinicBillingAction(input: z.input<typeof billingChoice
   logger.info("Owner changed a clinic's billing.", { businessId, choice });
   revalidatePath("/owner");
   // The clinic's own workspace (plan badge, banner, access) renders on every page.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Owner page: offer a paying Basic clinic one free Pro trial (it starts it in Settings › Billing). */
+export async function offerProTrialAction(input: { businessId: string }): Promise<OwnerActionResult> {
+  const user = await getCurrentUser();
+  if (!user || !isOwnerAdmin(user)) return { ok: false, error: "Not found." };
+  if (!(await isWithinActionBudget(user.id))) return { ok: false, error: ACTION_RATE_LIMIT_ERROR };
+  const businessId = recordIdSchema.safeParse(input?.businessId);
+  if (!businessId.success) return { ok: false, error: "That clinic isn't valid." };
+
+  const business = await prisma.business.findUnique({ where: { id: businessId.data } });
+  if (!business) return { ok: false, error: "That clinic no longer exists." };
+  if (proTrialState(business).kind !== "offerable") {
+    return { ok: false, error: "Only a clinic paying for Basic, never offered before, can get a Pro trial." };
+  }
+  await prisma.business.update({ where: { id: business.id }, data: { proTrialOfferedAt: new Date() } });
+  logger.info("Owner offered a clinic a Pro trial.", { businessId: business.id });
+  revalidatePath("/owner");
   revalidatePath("/", "layout");
   return { ok: true };
 }
