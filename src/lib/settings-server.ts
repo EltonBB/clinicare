@@ -2,6 +2,7 @@ import type { Business } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
+import { paddleConfig } from "@/lib/paddle/paddle-config";
 import { buildSettingsStateFromWorkspace, type SettingsState } from "@/lib/settings";
 import { DEFAULT_WORKFLOW_SETTINGS } from "@/lib/workflow-generators";
 
@@ -71,5 +72,6 @@ export async function loadSettingsState(
     // fallback the workflows cron applies.
     workflows: workflowSettings ?? DEFAULT_WORKFLOW_SETTINGS,
     whatsappConnection,
+    billingEnabled: paddleConfig() !== null,
   });
 }

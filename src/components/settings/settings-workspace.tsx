@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -11,7 +10,6 @@ import {
 } from "react";
 import { m } from "framer-motion";
 import {
-  ArrowUpRight,
   Building2,
   Check,
   ChevronRight,
@@ -27,11 +25,13 @@ import {
   connectBaileysWhatsAppAction,
   discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
+  getSettingsDataAction,
   saveSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
 import { currencyLabel, SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
+import { BillingControls } from "@/components/settings/billing-controls";
 import { cn } from "@/lib/utils";
 import { isStorageReference } from "@/lib/media-storage";
 import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storage-client";
@@ -43,7 +43,6 @@ import {
   type SettingsState,
 } from "@/lib/settings";
 import { weekdayOrder, type WeekdayKey } from "@/lib/onboarding";
-import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Toggle } from "@/components/settings/settings-toggle";
@@ -270,6 +269,18 @@ export function SettingsWorkspace({
     account.newPassword.length > 0 ||
     account.confirmPassword.length > 0;
   const hasUnsavedChanges = settingsDirty || accountDirty;
+
+  // A plan change happens at Paddle, not through Save: take only the new billing
+  // summary, into both copies, so unsaved edits elsewhere stay and nothing turns dirty.
+  const refreshBilling = useCallback(async () => {
+    try {
+      const { billing } = await getSettingsDataAction();
+      setState((current) => ({ ...current, billing }));
+      setSavedState((current) => ({ ...current, billing }));
+    } catch {
+      // Reopening Settings loads it fresh.
+    }
+  }, []);
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -1361,7 +1372,7 @@ export function SettingsWorkspace({
           <SectionCard
             id="billing"
             title="Billing"
-            description="Your workspace plan and what's included."
+            description="Your plan, billing and what's included."
             active={activeSection === "billing"}
           >
             <div className="space-y-4">
@@ -1404,19 +1415,7 @@ export function SettingsWorkspace({
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3.5">
-                <p className="text-sm text-muted-foreground">{state.billing.nextStep}</p>
-                <Link
-                  href={state.billing.checkoutHref}
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "sm" }),
-                    "h-9 w-fit rounded-(--radius-card) bg-white"
-                  )}
-                >
-                  {state.billing.ctaLabel}
-                  <ArrowUpRight className="size-3.5" />
-                </Link>
-              </div>
+              <BillingControls billing={state.billing} onChanged={refreshBilling} />
             </div>
           </SectionCard>
         </m.div>
