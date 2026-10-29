@@ -71,6 +71,13 @@ describe("changeBillingPlanAction", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
   });
 
+  it("dates the snapshot by Paddle's own change time, so it can't outrank a newer webhook", async () => {
+    const subscription = { id: "sub_1", updated_at: "2026-10-29T10:00:00Z" };
+    mocks.changePaddleSubscriptionPrice.mockResolvedValue(subscription);
+    await changeBillingPlanAction({ plan: "PRO", interval: "YEAR" });
+    expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, subscription, new Date("2026-10-29T10:00:00Z"));
+  });
+
   it("keeps a trial going by moving to the new plan's trial price", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, subscriptionStatus: "TRIALING" }, user: { id: "u" } });
     await changeBillingPlanAction({ plan: "PRO", interval: "MONTH" });
