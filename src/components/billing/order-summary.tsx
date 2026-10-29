@@ -44,7 +44,9 @@ export function OrderSummary({
   const money = moneyFormatter(checkout?.currency_code);
   const recurring = checkout?.recurring_totals ?? null;
   const dueToday = money && checkout?.totals?.total !== undefined ? money(checkout.totals.total) : null;
-  const thenAmount = money && recurring?.total !== undefined ? money(recurring.total) : listPrice;
+  // The price per period: Paddle's live amount (the currency it will charge, tax
+  // worked out) once checkout reports it, the preview until then.
+  const price = money && recurring?.total !== undefined ? money(recurring.total) : listPrice;
   const tax = money ? (trial ? recurring?.tax : checkout?.totals?.tax) : undefined;
 
   return (
@@ -55,14 +57,14 @@ export function OrderSummary({
         <p className="text-sm text-white/55">{interval === "YEAR" ? "Billed yearly" : "Billed monthly"}</p>
       </div>
       <p className="mt-5 flex items-baseline gap-2">
-        <span className="text-[3.25rem] font-semibold leading-none tracking-[-0.04em] tabular-nums">{listPrice}</span>
+        <span className="text-[3.25rem] font-semibold leading-none tracking-[-0.04em] tabular-nums">{price}</span>
         <span className="text-sm text-white/55">per {per}</span>
       </p>
 
       {trial !== null ? (
         <dl className="mt-8 divide-y divide-white/10 border-y border-white/10 text-sm">
           <Row label="Due today" value={dueToday ?? (trial ? "Nothing" : listPrice)} />
-          {trial && trialEndsOn ? <Row label={`From ${trialEndsOn}`} value={`${thenAmount} a ${per}`} /> : null}
+          {trial && trialEndsOn ? <Row label={`From ${trialEndsOn}`} value={`${price} a ${per}`} /> : null}
           {tax !== undefined && money ? <Row label="VAT included" value={money(tax)} /> : null}
         </dl>
       ) : null}

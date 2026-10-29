@@ -3,6 +3,7 @@ import type { Business, BillingInterval } from "@prisma/client";
 import { isProBusinessPlan, normalizeBusinessPlan, planDisplayName } from "@/lib/billing";
 import { workspaceAccess } from "@/lib/billing-access";
 import { proTrialState } from "@/lib/pro-trial";
+import { proAddedFeatures } from "@/lib/public-plans";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
 export type BillingSummarySource = Pick<
@@ -34,6 +35,8 @@ export type BillingSummary = {
   // Server-computed (isProBusinessPlan) — gates the Pro-only rebooking row.
   isPro: boolean;
   planName: string;
+  /** What Pro adds over Basic: "Included in your plan" on Pro, "Unlock with Pro" otherwise. */
+  proFeatures: string[];
   kind: "free" | "needs_plan" | "locked" | "subscribed";
   statusLabel: string;
   note: string;
@@ -73,6 +76,7 @@ export function buildBillingSummary(
     isPro: isProBusinessPlan(business.plan),
     paddle: options.paddle ?? null,
     planName: planDisplayName(business.plan),
+    proFeatures: proAddedFeatures,
     proTrial:
       trial.kind === "offered"
         ? ({ state: "offered" } as const)

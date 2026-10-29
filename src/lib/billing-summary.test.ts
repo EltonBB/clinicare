@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildBillingSummary, type BillingSummarySource } from "./billing-summary";
+import { proAddedFeatures } from "./public-plans";
 
 const NOW = new Date("2026-10-26T12:00:00Z");
 const ZONE = "Europe/Budapest";
@@ -55,6 +56,12 @@ describe("buildBillingSummary", () => {
     expect(result.changeOptions.find((option) => option.label === "Pro, billed monthly")?.effect).toBe(
       "You pay the difference for the rest of this period now."
     );
+  });
+
+  it("lists what Pro adds, for the checklist under the plan, on every kind of plan", () => {
+    expect(summary({}).proFeatures).toEqual(proAddedFeatures);
+    expect(summary({ plan: "PRO", subscribedPlan: "PRO" }).proFeatures).toEqual(proAddedFeatures);
+    expect(proAddedFeatures.length).toBeGreaterThan(0);
   });
 
   it("says a move between monthly and yearly starts a new period today, paid from the old one first", () => {

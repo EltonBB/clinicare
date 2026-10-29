@@ -122,6 +122,20 @@ export function BillingControls({
         ) : null}
       </div>
 
+      <section className="space-y-2.5">
+        <SectionTitle>{billing.isPro ? "Included in your plan" : "Unlock with Pro"}</SectionTitle>
+        <ul className="space-y-2">
+          {billing.proFeatures.map((feature) => (
+            <li key={feature} className="flex items-start gap-2.5 text-sm text-foreground">
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <Check className="size-3" aria-hidden />
+              </span>
+              {feature}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {billing.proTrial ? <ProTrial billing={billing} pending={pending} run={run} /> : null}
 
       {billing.current && billing.changeOptions.length > 0 ? (
