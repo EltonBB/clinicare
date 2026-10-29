@@ -122,7 +122,7 @@ export async function keepProAction(): Promise<BillingActionResult> {
   try {
     const priceId = config.prices.PRO[business.billingInterval ?? "MONTH"].noTrial;
     const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId);
-    await applySubscriptionSnapshot(config, subscription, new Date());
+    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
     await prisma.business.update({ where: { id: business.id }, data: { proTrialEndsAt: new Date() } });
   } catch (error) {
     logger.error("Couldn't move the subscription to Pro.", error, { businessId: business.id });
