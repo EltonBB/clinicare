@@ -8,6 +8,7 @@ import { normalizeStorageReference } from "@/lib/media-storage";
 import { normalizeOptionalPublicUrl } from "@/lib/safe-url";
 import { normalizeBrandHexColor, resolveBrandAccentPreset } from "@/lib/branding";
 import { sanitizeAuthMetadataForSession } from "@/lib/auth-metadata";
+import { paddleConfig } from "@/lib/paddle/paddle-config";
 import { defaultReminderTemplate } from "@/lib/settings";
 import {
   weekdayOrder,
@@ -86,6 +87,14 @@ async function bootstrapWorkspaceFromOnboarding(user: {
         plan: "BASIC",
         planStatus: "ACTIVE",
         trialEndsAt: null,
+        // With billing switched on, a new clinic chooses a plan (and starts
+        // its free trial) before it can use the workspace; the 90-day clock
+        // covers one that never does. With it off (no Paddle settings, or
+        // broken ones) it stays a free account, as every clinic was before,
+        // rather than being sent to a checkout that can't take a payment.
+        ...(paddleConfig()
+          ? { billingMode: "SUBSCRIPTION" as const, subscriptionStatus: "NONE" as const, lockedAt: new Date() }
+          : {}),
       },
     });
 
