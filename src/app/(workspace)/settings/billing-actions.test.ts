@@ -66,7 +66,7 @@ describe("openBillingPortalAction", () => {
 describe("changeBillingPlanAction", () => {
   it("moves a paying clinic to the new plan's regular price and applies the result now", async () => {
     expect(await changeBillingPlanAction({ plan: "PRO", interval: "YEAR" })).toEqual({ ok: true });
-    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_py");
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_py", { trialing: false });
     expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, { id: "sub_1" }, expect.any(Date));
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
   });
@@ -78,10 +78,10 @@ describe("changeBillingPlanAction", () => {
     expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, subscription, new Date("2026-10-29T10:00:00Z"));
   });
 
-  it("keeps a trial going by moving to the new plan's trial price", async () => {
+  it("keeps a trial going by moving to the new plan's trial price, billing nothing now", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, subscriptionStatus: "TRIALING" }, user: { id: "u" } });
     await changeBillingPlanAction({ plan: "PRO", interval: "MONTH" });
-    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm_t");
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm_t", { trialing: true });
   });
 
   it("refuses a clinic with no live subscription, one set to end, a failing payment, or a free one", async () => {
