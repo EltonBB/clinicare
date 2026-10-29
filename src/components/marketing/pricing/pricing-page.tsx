@@ -38,11 +38,11 @@ const faqs: Faq[] = [
     q: "Do you offer refunds?",
     a: (
       <>
-        See our{" "}
+        Yes, within 14 days of your first payment. See our{" "}
         <Link href="/refund" className="font-medium text-primary underline-offset-4 hover:underline">
           refund policy
         </Link>{" "}
-        for the full details on plan changes and cancellations.
+        for the details.
       </>
     ),
   },
