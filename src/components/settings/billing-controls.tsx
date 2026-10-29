@@ -436,15 +436,21 @@ function Invoices({ history, error }: { history: BillingHistory | null; error: s
                 </span>
               )}
               <span className="w-24 text-right font-medium tabular-nums text-foreground">{row.amount}</span>
-              <a
-                href={`/api/billing/invoices/${encodeURIComponent(row.id)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Download the invoice of ${row.date}`}
-                className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors hover:bg-white hover:text-foreground"
-              >
-                <Download className="size-3.5" aria-hidden />
-              </a>
+              {/* Paddle has a PDF only for a completed charge: not a free trial's
+                  zero-value one, nor a failed payment. The slot keeps amounts aligned. */}
+              {row.status === "Paid" ? (
+                <a
+                  href={`/api/billing/invoices/${encodeURIComponent(row.id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Download the invoice of ${row.date}`}
+                  className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors hover:bg-white hover:text-foreground"
+                >
+                  <Download className="size-3.5" aria-hidden />
+                </a>
+              ) : (
+                <span className="size-8" aria-hidden />
+              )}
             </li>
           ))}
         </ul>
