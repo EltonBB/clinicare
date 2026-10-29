@@ -55,7 +55,7 @@
 - (Encryption in transit/at rest already covered.)
 
 ### Step 4 — Finish the product on the current stack
-- Billing (Paddle) behind `/checkout`: checkout session, webhooks, plan activation.
+- ~~Billing (Paddle) behind `/checkout`: checkout session, webhooks, plan activation.~~ Built 2026-10-26 (sandbox-tested before live; spec `docs/superpowers/specs/2026-10-26-paddle-billing-design.md`).
 - Reusable signed-in test session (unblocks signed-in QA — long-standing blocker).
 - UI/UX + performance polish over the completed surface.
 

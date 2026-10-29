@@ -33,7 +33,7 @@ export const publicPlans: PublicPlan[] = [
       "Documents, images, and scans",
       "Payments and invoice tracking",
       "WhatsApp-ready inbox context",
-      "Payment reminders and thank-you messages, drafted for you to review and send",
+      "A reminder before each visit and a thank-you after, sent automatically",
       "A daily dashboard of visits, revenue, and today's schedule",
     ],
   },

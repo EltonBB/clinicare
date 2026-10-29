@@ -111,7 +111,7 @@ const settingsNav: Array<{
   { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
   { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
   { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Pairing and connection" },
-  { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan and checkout" },
+  { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan, card and invoices" },
 ];
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -1372,51 +1372,10 @@ export function SettingsWorkspace({
           <SectionCard
             id="billing"
             title="Billing"
-            description="Your plan, billing and what's included."
+            description="Your plan, payment and invoices."
             active={activeSection === "billing"}
           >
-            <div className="space-y-4">
-              <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
-                <div className="flex items-center gap-2.5">
-                  <p className="text-lg font-semibold leading-6 text-foreground">
-                    Vela {state.billing.planName}
-                  </p>
-                  <span className="rounded-full bg-primary/8 px-2 py-0.5 text-xs font-semibold text-primary">
-                    {state.billing.statusLabel}
-                  </span>
-                </div>
-                {state.billing.note ? (
-                  <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
-                    {state.billing.note}
-                  </p>
-                ) : null}
-              </div>
-
-              {state.billing.lockedFeatures.length > 0 ? (
-                <div className="space-y-2.5">
-                  <p className="text-xs font-semibold text-muted-foreground">
-                    {state.billing.planName === "Pro" ? "Included in your plan" : "Unlock with Pro"}
-                  </p>
-                  <ul className="space-y-2">
-                    {state.billing.lockedFeatures.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2.5 text-sm text-foreground">
-                        <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                          <Check className="size-3" />
-                        </span>
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2.5 rounded-(--radius-card) border border-emerald-200/70 bg-emerald-50/60 px-3.5 py-2.5 text-sm text-emerald-700">
-                  <Check className="mt-0.5 size-4 shrink-0" />
-                  You&apos;re on Pro — every analytics and automation feature is included.
-                </div>
-              )}
-
-              <BillingControls billing={state.billing} onChanged={refreshBilling} />
-            </div>
+            <BillingControls billing={state.billing} active={activeSection === "billing"} onChanged={refreshBilling} />
           </SectionCard>
         </m.div>
       </div>

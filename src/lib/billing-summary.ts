@@ -35,32 +35,48 @@ export type BillingSummary = {
   // Server-computed (isProBusinessPlan) — gates the Pro-only rebooking row.
   isPro: boolean;
   planName: string;
+  /** What Pro adds over Basic: "Included in your plan" on Pro, "Unlock with Pro" otherwise. */
+  proFeatures: string[];
   kind: "free" | "needs_plan" | "locked" | "subscribed";
   statusLabel: string;
   note: string;
-  /** Paddle's portal (card, invoices, cancel) is available. */
+  /** The clinic has a Paddle customer: invoices and billing details can be read. */
   canManage: boolean;
+  /** Paddle.js settings (public) for the in-app card form; null while billing is off. */
+  paddle: { env: "sandbox" | "production"; clientToken: string } | null;
+  /** The plan Paddle bills and its period, while a subscription runs. */
+  current: { plan: "BASIC" | "PRO"; interval: BillingInterval } | null;
+  /** In-app actions on the running subscription. */
+  canCancel: boolean;
+  canResume: boolean;
+  canUpdateCard: boolean;
   changeOptions: BillingChangeOption[];
-  lockedFeatures: string[];
   /** The owner-offered free Pro trial: waiting to be started, or running until a date. */
   proTrial: { state: "offered" } | { state: "active"; endsOn: string } | null;
 };
 
 const PLAN_NAME = { BASIC: "Basic", PRO: "Pro" } as const;
+const NO_SUBSCRIPTION = { current: null, canCancel: false, canResume: false, canUpdateCard: false };
 const BILLED = { MONTH: "monthly", YEAR: "yearly" } as const;
 
 /** Settings › Billing: where the clinic stands, and what it can do about it. */
 export function buildBillingSummary(
   business: BillingSummarySource,
-  options: { billingEnabled: boolean; now?: Date; timeZone?: string }
+  options: {
+    billingEnabled: boolean;
+    paddle?: { env: "sandbox" | "production"; clientToken: string } | null;
+    now?: Date;
+    timeZone?: string;
+  }
 ): BillingSummary {
   const now = options.now ?? new Date();
   const date = (value: Date) => formatZonedFullDate(value, options.timeZone);
   const trial = proTrialState(business, now);
   const base = {
     isPro: isProBusinessPlan(business.plan),
+    paddle: options.paddle ?? null,
     planName: planDisplayName(business.plan),
-    lockedFeatures: proAddedFeatures,
+    proFeatures: proAddedFeatures,
     proTrial:
       trial.kind === "offered"
         ? ({ state: "offered" } as const)
@@ -72,16 +88,17 @@ export function buildBillingSummary(
   const portal = options.billingEnabled && !!business.paddleCustomerId;
 
   if (business.billingMode === "COMPLIMENTARY") {
-    return { ...base, kind: "free", statusLabel: "Free account", note: "Your clinic uses Vela free of charge.", canManage: false, changeOptions: [] };
+    return { ...base, kind: "free", statusLabel: "Free account", note: "Your clinic uses Vela free of charge.", canManage: false, changeOptions: [], ...NO_SUBSCRIPTION };
   }
   if (access.kind === "needs_plan") {
     return {
       ...base,
       kind: "needs_plan",
       statusLabel: "No plan yet",
-      note: "Choose a plan to start using Vela. Every plan starts with a 14-day free trial.",
+      note: "Choose a plan to start. Every plan begins with a 14-day free trial.",
       canManage: false,
       changeOptions: [],
+      ...NO_SUBSCRIPTION,
     };
   }
   if (access.kind === "locked") {
@@ -93,6 +110,7 @@ export function buildBillingSummary(
       note: `Your plan has ended, so the workspace is read-only.${kept}`,
       canManage: portal,
       changeOptions: [],
+      ...NO_SUBSCRIPTION,
     };
   }
 
@@ -106,10 +124,10 @@ export function buildBillingSummary(
     : `Billed ${BILLED[interval]}.`;
   if (ending) {
     statusLabel = "Ending";
-    note = `Your plan ends on ${date(ending)}. Resume it from Manage billing to keep using Vela.`;
+    note = `Ends on ${date(ending)}. Resume before then to keep it.`;
   } else if (business.subscriptionStatus === "PAST_DUE") {
     statusLabel = "Payment failed";
-    note = "Your last payment didn't go through. Update your card to keep using Vela.";
+    note = "Your last payment didn't go through. Update your card below.";
   } else if (trialing) {
     statusLabel = "Free trial";
     note = business.trialEndsAt
@@ -132,12 +150,23 @@ export function buildBillingSummary(
             effect: trialing
               ? "Nothing is charged before your trial ends."
               : option.interval !== interval
-                ? "A new billing period starts today. You pay for it now, less the unused part of this one."
+                ? "Starts a new billing period today. What's left of this one goes toward it."
                 : option.plan === "PRO"
-                  ? "You're charged the difference for the rest of this period now."
-                  : "The unused part of this period is credited to your next bill.",
+                  ? "You pay the difference for the rest of this period now."
+                  : "The unused part is credited to your next bill.",
           }))
       : [];
 
-  return { ...base, kind: "subscribed", statusLabel, note, canManage: portal, changeOptions };
+  return {
+    ...base,
+    kind: "subscribed",
+    statusLabel,
+    note,
+    canManage: portal,
+    changeOptions,
+    current: { plan: currentPlan, interval },
+    canCancel: portal && !ending,
+    canResume: portal && Boolean(ending),
+    canUpdateCard: portal,
+  };
 }

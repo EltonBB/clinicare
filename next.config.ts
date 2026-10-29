@@ -28,8 +28,8 @@ function devAllowedOrigins() {
 }
 
 function contentSecurityPolicy() {
-  // Paddle (billing): Paddle.js from its CDN, its checkout in a frame, and its
-  // checkout/pricing APIs (live and sandbox).
+  // Paddle (billing): Paddle.js and its stylesheet from its CDN, its checkout in
+  // a frame, and its checkout/pricing APIs (live and sandbox).
   const connectSrc = ["'self'", ...supabaseConnectSources(), "https://*.paddle.com"];
 
   if (isDev) {
@@ -45,7 +45,8 @@ function contentSecurityPolicy() {
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
+    // Paddle.js loads its overlay stylesheet from its CDN.
+    "style-src 'self' 'unsafe-inline' https://cdn.paddle.com https://sandbox-cdn.paddle.com",
     // Next/React inject inline bootstrap scripts; without per-request nonces this
     // needs 'unsafe-inline'. Dev additionally needs 'unsafe-eval' for HMR.
     `script-src 'self' 'unsafe-inline' https://cdn.paddle.com${isDev ? " 'unsafe-eval'" : ""}`,
@@ -87,8 +88,9 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Permissions-Policy",
+            // Paddle's checkout frame may use the Payment Request API (Apple Pay, Google Pay).
             value:
-              "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)",
+              'camera=(), microphone=(), geolocation=(), payment=(self "https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=(), fullscreen=(self)',
           },
           {
             key: "Strict-Transport-Security",

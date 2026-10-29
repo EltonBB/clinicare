@@ -3,12 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getAuthedBusiness: vi.fn(),
   paddleConfig: vi.fn(),
-  createPaddlePortalUrl: vi.fn(),
+  getPaddleSubscription: vi.fn(),
+  getPaddleAddress: vi.fn(),
+  getPaddleBusiness: vi.fn(),
+  updatePaddleAddress: vi.fn(),
+  savePaddleBusiness: vi.fn(),
+  setPaddleSubscriptionBusiness: vi.fn(),
   changePaddleSubscriptionPrice: vi.fn(),
   applySubscriptionSnapshot: vi.fn(),
   revalidatePath: vi.fn(),
   businessUpdate: vi.fn(),
   businessUpdateMany: vi.fn(),
+  listPaddleTransactions: vi.fn(),
+  getPaddleTransaction: vi.fn(),
+  getPaddleInvoiceUrl: vi.fn(),
+  schedulePaddleCancel: vi.fn(),
+  resumePaddleSubscription: vi.fn(),
+  getCardUpdateTransactionId: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -18,18 +29,44 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/business", () => ({ getAuthedBusiness: mocks.getAuthedBusiness }));
 vi.mock("@/lib/paddle/paddle-config", () => ({ paddleConfig: mocks.paddleConfig }));
 vi.mock("@/lib/paddle/paddle-api", () => ({
-  createPaddlePortalUrl: mocks.createPaddlePortalUrl,
+  getPaddleSubscription: mocks.getPaddleSubscription,
+  getPaddleAddress: mocks.getPaddleAddress,
+  getPaddleBusiness: mocks.getPaddleBusiness,
+  updatePaddleAddress: mocks.updatePaddleAddress,
+  savePaddleBusiness: mocks.savePaddleBusiness,
+  setPaddleSubscriptionBusiness: mocks.setPaddleSubscriptionBusiness,
+  PaddleApiError: class PaddleApiError extends Error {
+    constructor(
+      readonly status: number,
+      readonly code: string | null,
+      readonly fields: string[] = []
+    ) {
+      super("paddle");
+    }
+  },
   changePaddleSubscriptionPrice: mocks.changePaddleSubscriptionPrice,
+  listPaddleTransactions: mocks.listPaddleTransactions,
+  getPaddleTransaction: mocks.getPaddleTransaction,
+  getPaddleInvoiceUrl: mocks.getPaddleInvoiceUrl,
+  schedulePaddleCancel: mocks.schedulePaddleCancel,
+  resumePaddleSubscription: mocks.resumePaddleSubscription,
+  getCardUpdateTransactionId: mocks.getCardUpdateTransactionId,
 }));
 vi.mock("@/lib/paddle/subscription-sync", () => ({ applySubscriptionSnapshot: mocks.applySubscriptionSnapshot }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 import {
+  cancelPlanAction,
   changeBillingPlanAction,
   endProTrialAction,
+  getBillingHistoryAction,
+  getInvoiceLinkAction,
   keepProAction,
-  openBillingPortalAction,
+  getBillingDetailsAction,
+  saveBillingDetailsAction,
+  resumePlanAction,
+  startCardUpdateAction,
   startProTrialAction,
 } from "./billing-actions";
 
@@ -53,25 +90,72 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.paddleConfig.mockReturnValue(CONFIG);
   mocks.getAuthedBusiness.mockResolvedValue({ business: PAYING, user: { id: "u" } });
-  mocks.createPaddlePortalUrl.mockResolvedValue("https://customer-portal.paddle.com/x");
+  mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", address_id: "add_1", business_id: null });
   mocks.changePaddleSubscriptionPrice.mockResolvedValue({ id: "sub_1" });
   mocks.applySubscriptionSnapshot.mockResolvedValue("applied");
 });
 
-describe("openBillingPortalAction", () => {
-  it("opens the portal for the clinic's own customer and subscription, even while read-only", async () => {
-    expect(await openBillingPortalAction()).toEqual({ ok: true, url: "https://customer-portal.paddle.com/x" });
-    expect(mocks.getAuthedBusiness).toHaveBeenCalledWith(expect.any(String), { access: "read" });
-    expect(mocks.createPaddlePortalUrl).toHaveBeenCalledWith(CONFIG, "ctm_1", ["sub_1"]);
+describe("billing details", () => {
+  it("reads the address and company of the clinic's own subscription", async () => {
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", address_id: "add_1", business_id: "biz_1" });
+    mocks.getPaddleAddress.mockResolvedValue({ id: "add_1", first_line: "Rruga 1", city: "Prishtina", postal_code: "10000", country_code: "XK" });
+    mocks.getPaddleBusiness.mockResolvedValue({ id: "biz_1", name: "Clinic LLC", tax_identifier: "XK123" });
+    expect(await getBillingDetailsAction()).toEqual({
+      ok: true,
+      details: { companyName: "Clinic LLC", taxNumber: "XK123", street: "Rruga 1", city: "Prishtina", postalCode: "10000", countryCode: "XK" },
+    });
+    expect(mocks.getPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_1");
+    expect(mocks.getPaddleAddress).toHaveBeenCalledWith(CONFIG, "ctm_1", "add_1");
   });
 
-  it("is unavailable without billing or a Paddle customer", async () => {
-    mocks.paddleConfig.mockReturnValue(null);
-    expect(await openBillingPortalAction()).toMatchObject({ ok: false });
-    mocks.paddleConfig.mockReturnValue(CONFIG);
-    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, paddleCustomerId: null }, user: { id: "u" } });
-    expect(await openBillingPortalAction()).toMatchObject({ ok: false });
-    expect(mocks.createPaddlePortalUrl).not.toHaveBeenCalled();
+  it("saves the address and creates the company on first save", async () => {
+    mocks.savePaddleBusiness.mockResolvedValue({ id: "biz_new" });
+    const input = { companyName: "Clinic LLC", taxNumber: "", street: " Rruga 1 ", city: "Prishtina", postalCode: "" };
+    expect(await saveBillingDetailsAction(input)).toEqual({ ok: true });
+    expect(mocks.updatePaddleAddress).toHaveBeenCalledWith(CONFIG, "ctm_1", "add_1", { first_line: "Rruga 1", city: "Prishtina", postal_code: null });
+    expect(mocks.savePaddleBusiness).toHaveBeenCalledWith(CONFIG, "ctm_1", null, { name: "Clinic LLC", tax_identifier: null });
+    expect(mocks.setPaddleSubscriptionBusiness).toHaveBeenCalledWith(CONFIG, "sub_1", "biz_new");
+  });
+
+  it("drops the company when its name is cleared", async () => {
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", address_id: "add_1", business_id: "biz_1" });
+    await saveBillingDetailsAction({ companyName: "", taxNumber: "", street: "", city: "", postalCode: "" });
+    expect(mocks.savePaddleBusiness).not.toHaveBeenCalled();
+    expect(mocks.setPaddleSubscriptionBusiness).toHaveBeenCalledWith(CONFIG, "sub_1", null);
+  });
+
+  it("asks for a company name with a VAT number, and names a VAT number Paddle refuses", async () => {
+    expect(await saveBillingDetailsAction({ companyName: "", taxNumber: "XK1", street: "", city: "", postalCode: "" })).toEqual({
+      ok: false,
+      error: "Add the company name that goes with the VAT number.",
+    });
+    const { PaddleApiError } = await import("@/lib/paddle/paddle-api");
+    mocks.savePaddleBusiness.mockRejectedValue(new PaddleApiError(400, "bad_request", ["tax_identifier"]));
+    expect(await saveBillingDetailsAction({ companyName: "Clinic", taxNumber: "nope", street: "", city: "", postalCode: "" })).toEqual({
+      ok: false,
+      error: "That VAT number isn't valid. Check it, or leave it empty.",
+    });
+  });
+
+  it("changes nothing when Paddle refuses the VAT number", async () => {
+    const { PaddleApiError } = await import("@/lib/paddle/paddle-api");
+    mocks.savePaddleBusiness.mockRejectedValue(new PaddleApiError(400, "bad_request", ["tax_identifier"]));
+    await saveBillingDetailsAction({ companyName: "Clinic", taxNumber: "nope", street: "New street", city: "", postalCode: "" });
+    expect(mocks.updatePaddleAddress).not.toHaveBeenCalled();
+  });
+
+  it("says so instead of dropping an address Paddle has no record for", async () => {
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", address_id: null, business_id: null });
+    expect(await saveBillingDetailsAction({ companyName: "", taxNumber: "", street: "Rruga 1", city: "", postalCode: "" })).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it("does nothing for a clinic without a running plan", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, subscriptionStatus: "CANCELED" }, user: { id: "u" } });
+    expect(await getBillingDetailsAction()).toMatchObject({ ok: false });
+    expect(await saveBillingDetailsAction({ companyName: "A", taxNumber: "", street: "", city: "", postalCode: "" })).toMatchObject({ ok: false });
+    expect(mocks.updatePaddleAddress).not.toHaveBeenCalled();
   });
 });
 
@@ -170,5 +254,74 @@ describe("the owner-offered Pro trial", () => {
       where: { id: "biz_1" },
       data: { plan: "BASIC", proTrialEndsAt: expect.any(Date) },
     });
+  });
+});
+
+describe("getBillingHistoryAction", () => {
+  it("reads the clinic's own customer's charges", async () => {
+    mocks.listPaddleTransactions.mockResolvedValue([]);
+    expect(await getBillingHistoryAction()).toEqual({ ok: true, history: { card: null, rows: [] } });
+    expect(mocks.listPaddleTransactions).toHaveBeenCalledWith(CONFIG, "ctm_1");
+  });
+
+  it("says so when Paddle can't be reached", async () => {
+    mocks.listPaddleTransactions.mockRejectedValue(new Error("timeout"));
+    expect(await getBillingHistoryAction()).toEqual({ ok: false, error: "We couldn't load your invoices right now." });
+  });
+});
+
+describe("getInvoiceLinkAction", () => {
+  it("links an invoice of the clinic's own customer", async () => {
+    mocks.getPaddleTransaction.mockResolvedValue({ customer_id: "ctm_1" });
+    mocks.getPaddleInvoiceUrl.mockResolvedValue("https://paddle.example/invoice.pdf");
+    expect(await getInvoiceLinkAction("txn_01abcdefghij")).toEqual({ ok: true, url: "https://paddle.example/invoice.pdf" });
+  });
+
+  it("refuses another customer's invoice and anything that isn't a transaction id", async () => {
+    mocks.getPaddleTransaction.mockResolvedValue({ customer_id: "ctm_someone_else" });
+    expect(await getInvoiceLinkAction("txn_01abcdefghij")).toEqual({ ok: false, error: "That invoice isn't available." });
+    expect(await getInvoiceLinkAction({ not: "" })).toEqual({ ok: false, error: "That invoice isn't available." });
+    expect(await getInvoiceLinkAction("../subscriptions/sub_1")).toEqual({ ok: false, error: "That invoice isn't available." });
+    expect(mocks.getPaddleInvoiceUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelPlanAction / resumePlanAction", () => {
+  it("schedules the end of a running plan and applies Paddle's answer now", async () => {
+    mocks.schedulePaddleCancel.mockResolvedValue({ id: "sub_1" });
+    expect(await cancelPlanAction()).toEqual({ ok: true });
+    expect(mocks.schedulePaddleCancel).toHaveBeenCalledWith(CONFIG, "sub_1");
+    expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, { id: "sub_1" }, expect.any(Date));
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("resumes only a plan that is set to end", async () => {
+    expect(await resumePlanAction()).toEqual({ ok: true });
+    expect(mocks.resumePaddleSubscription).not.toHaveBeenCalled();
+
+    mocks.getAuthedBusiness.mockResolvedValue({
+      business: { ...PAYING, cancelAt: new Date(Date.now() + 86_400_000) },
+      user: { id: "u" },
+    });
+    mocks.resumePaddleSubscription.mockResolvedValue({ id: "sub_1" });
+    expect(await resumePlanAction()).toEqual({ ok: true });
+    expect(mocks.resumePaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_1");
+  });
+
+  it("does nothing for a free clinic or one without a running plan", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, billingMode: "COMPLIMENTARY" }, user: { id: "u" } });
+    expect(await cancelPlanAction()).toMatchObject({ ok: false });
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, subscriptionStatus: "CANCELED" }, user: { id: "u" } });
+    expect(await cancelPlanAction()).toMatchObject({ ok: false });
+    expect(mocks.schedulePaddleCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe("startCardUpdateAction", () => {
+  it("opens a card update for the running subscription, a failing one included", async () => {
+    mocks.getCardUpdateTransactionId.mockResolvedValue("txn_update");
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, subscriptionStatus: "PAST_DUE" }, user: { id: "u" } });
+    expect(await startCardUpdateAction()).toEqual({ ok: true, transactionId: "txn_update" });
+    expect(mocks.getCardUpdateTransactionId).toHaveBeenCalledWith(CONFIG, "sub_1");
   });
 });

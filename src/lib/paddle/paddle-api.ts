@@ -12,7 +12,9 @@ const PADDLE_TIMEOUT_MS = 10_000;
 export class PaddleApiError extends Error {
   constructor(
     readonly status: number,
-    readonly code: string | null
+    readonly code: string | null,
+    /** The request fields Paddle rejected (e.g. "tax_identifier"), never their values. */
+    readonly fields: string[] = []
   ) {
     super(`Paddle API request failed (${status}${code ? `, ${code}` : ""}).`);
     this.name = "PaddleApiError";
@@ -30,9 +32,13 @@ async function paddleRequest<T>(config: PaddleConfig, path: string, init: { meth
     signal: AbortSignal.timeout(PADDLE_TIMEOUT_MS),
     cache: "no-store",
   });
-  const json = (await response.json().catch(() => null)) as { data?: T; error?: { code?: string } } | null;
+  const json = (await response.json().catch(() => null)) as {
+    data?: T;
+    error?: { code?: string; errors?: Array<{ field?: string }> };
+  } | null;
   if (!response.ok || !json || json.data === undefined) {
-    throw new PaddleApiError(response.status, json?.error?.code ?? null);
+    const fields = (json?.error?.errors ?? []).flatMap((item) => (item.field ? [item.field] : []));
+    throw new PaddleApiError(response.status, json?.error?.code ?? null, fields);
   }
   return json.data;
 }
@@ -73,16 +79,139 @@ export function cancelPaddleSubscription(config: PaddleConfig, subscriptionId: s
   });
 }
 
-/** A short-lived link to Paddle's customer portal: card, invoices, cancel. */
-export async function createPaddlePortalUrl(
+/**
+ * Ends a subscription when its current period (or trial) runs out: the clinic
+ * keeps everything until then. Undone by {@link resumePaddleSubscription}.
+ */
+export function schedulePaddleCancel(config: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
+  return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {
+    method: "POST",
+    body: { effective_from: "next_billing_period" },
+  });
+}
+
+/** Drops a scheduled cancellation, so the subscription renews as before. */
+export function resumePaddleSubscription(config: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
+  return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: "PATCH",
+    body: { scheduled_change: null },
+  });
+}
+
+/**
+ * The transaction Paddle.js opens to replace a subscription's card (and, while
+ * a payment is failing, to retry it with the new one).
+ */
+export async function getCardUpdateTransactionId(config: PaddleConfig, subscriptionId: string): Promise<string> {
+  const transaction = await paddleRequest<{ id: string }>(
+    config,
+    `/subscriptions/${encodeURIComponent(subscriptionId)}/update-payment-method-transaction`,
+    { method: "GET" }
+  );
+  return transaction.id;
+}
+
+/** The fields of a Paddle transaction the billing history reads. */
+export type PaddleTransaction = {
+  id: string;
+  status: string;
+  /** "web", "subscription_recurring", "subscription_update", "subscription_payment_method_change"… */
+  origin: string;
+  customer_id: string | null;
+  billed_at: string | null;
+  created_at: string;
+  currency_code: string;
+  details: { totals: { grand_total: string } };
+  payments: Array<{
+    status: string;
+    method_details?: { type: string; card?: { type: string; last4: string; expiry_month: number; expiry_year: number } | null } | null;
+  }>;
+};
+
+/** A customer's billed transactions (paid or failing), newest first. */
+export function listPaddleTransactions(config: PaddleConfig, customerId: string): Promise<PaddleTransaction[]> {
+  const query = new URLSearchParams({
+    customer_id: customerId,
+    status: "completed,past_due",
+    order_by: "billed_at[DESC]",
+    per_page: "24",
+  });
+  return paddleRequest(config, `/transactions?${query}`, { method: "GET" });
+}
+
+export function getPaddleTransaction(config: PaddleConfig, transactionId: string): Promise<PaddleTransaction> {
+  return paddleRequest(config, `/transactions/${encodeURIComponent(transactionId)}`, { method: "GET" });
+}
+
+/** A short-lived link to a transaction's invoice PDF. */
+export async function getPaddleInvoiceUrl(config: PaddleConfig, transactionId: string): Promise<string> {
+  const invoice = await paddleRequest<{ url: string }>(
+    config,
+    `/transactions/${encodeURIComponent(transactionId)}/invoice`,
+    { method: "GET" }
+  );
+  return invoice.url;
+}
+
+/** The billing address Paddle keeps for a subscription (the country sets the tax). */
+export type PaddleAddress = {
+  id: string;
+  first_line: string | null;
+  city: string | null;
+  postal_code: string | null;
+  country_code: string;
+};
+
+/** The company a subscription is billed to, when there is one: its name and VAT number print on invoices. */
+export type PaddleBusiness = { id: string; name: string; tax_identifier: string | null };
+
+function customerPath(customerId: string, rest: string): string {
+  return `/customers/${encodeURIComponent(customerId)}/${rest}`;
+}
+
+export function getPaddleAddress(config: PaddleConfig, customerId: string, addressId: string): Promise<PaddleAddress> {
+  return paddleRequest(config, customerPath(customerId, `addresses/${encodeURIComponent(addressId)}`), { method: "GET" });
+}
+
+export function updatePaddleAddress(
   config: PaddleConfig,
   customerId: string,
-  subscriptionIds: string[]
-): Promise<string> {
-  const session = await paddleRequest<{ urls: { general: { overview: string } } }>(
-    config,
-    `/customers/${encodeURIComponent(customerId)}/portal-sessions`,
-    { method: "POST", body: { subscription_ids: subscriptionIds } }
-  );
-  return session.urls.general.overview;
+  addressId: string,
+  fields: { first_line: string | null; city: string | null; postal_code: string | null }
+): Promise<PaddleAddress> {
+  return paddleRequest(config, customerPath(customerId, `addresses/${encodeURIComponent(addressId)}`), {
+    method: "PATCH",
+    body: fields,
+  });
+}
+
+export function getPaddleBusiness(config: PaddleConfig, customerId: string, businessId: string): Promise<PaddleBusiness> {
+  return paddleRequest(config, customerPath(customerId, `businesses/${encodeURIComponent(businessId)}`), { method: "GET" });
+}
+
+/** Creates the company, or renames it and sets its VAT number when `businessId` is given. */
+export function savePaddleBusiness(
+  config: PaddleConfig,
+  customerId: string,
+  businessId: string | null,
+  fields: { name: string; tax_identifier: string | null }
+): Promise<PaddleBusiness> {
+  return businessId
+    ? paddleRequest(config, customerPath(customerId, `businesses/${encodeURIComponent(businessId)}`), {
+        method: "PATCH",
+        body: fields,
+      })
+    : paddleRequest(config, customerPath(customerId, "businesses"), { method: "POST", body: fields });
+}
+
+/** Bills a subscription to a company from now on, or to the person again with `null`. */
+export function setPaddleSubscriptionBusiness(
+  config: PaddleConfig,
+  subscriptionId: string,
+  businessId: string | null
+): Promise<PaddleSubscription> {
+  return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    method: "PATCH",
+    body: { business_id: businessId },
+  });
 }

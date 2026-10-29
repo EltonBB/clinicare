@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildBillingSummary, type BillingSummarySource } from "./billing-summary";
+import { proAddedFeatures } from "./public-plans";
 
 const NOW = new Date("2026-10-26T12:00:00Z");
 const ZONE = "Europe/Budapest";
@@ -53,12 +54,19 @@ describe("buildBillingSummary", () => {
       "Pro, billed yearly",
     ]);
     expect(result.changeOptions.find((option) => option.label === "Pro, billed monthly")?.effect).toBe(
-      "You're charged the difference for the rest of this period now."
+      "You pay the difference for the rest of this period now."
     );
   });
 
-  it("says a move between monthly and yearly starts a new, paid period today", () => {
-    const yearly = "A new billing period starts today. You pay for it now, less the unused part of this one.";
+  it("lists what Pro adds, for the checklist under the plan, on every kind of plan", () => {
+    expect(summary({}).proFeatures).toEqual(proAddedFeatures);
+    expect(summary({ plan: "PRO", subscribedPlan: "PRO" }).proFeatures).toEqual(proAddedFeatures);
+    expect(proAddedFeatures.length).toBeGreaterThan(0);
+  });
+
+  it("says a move between monthly and yearly starts a new period today, paid from the old one first", () => {
+    const yearly =
+      "Starts a new billing period today. What's left of this one goes toward it.";
     expect(summary({}).changeOptions.find((option) => option.label === "Basic, billed yearly")?.effect).toBe(yearly);
     const pro = summary({ plan: "PRO", billingInterval: "YEAR" });
     expect(pro.changeOptions.find((option) => option.label === "Basic, billed monthly")?.effect).toBe(yearly);
@@ -67,7 +75,7 @@ describe("buildBillingSummary", () => {
   it("credits a move to a cheaper plan", () => {
     const pro = summary({ plan: "PRO", subscribedPlan: "PRO" });
     expect(pro.changeOptions.find((option) => option.plan === "BASIC" && option.interval === "MONTH")?.effect).toBe(
-      "The unused part of this period is credited to your next bill."
+      "The unused part is credited to your next bill."
     );
   });
 
@@ -80,7 +88,7 @@ describe("buildBillingSummary", () => {
   it("asks for a new card while a payment is failing", () => {
     expect(summary({ subscriptionStatus: "PAST_DUE" })).toMatchObject({
       statusLabel: "Payment failed",
-      note: "Your last payment didn't go through. Update your card to keep using Vela.",
+      note: "Your last payment didn't go through. Update your card below.",
       canManage: true,
       changeOptions: [],
     });
@@ -89,8 +97,28 @@ describe("buildBillingSummary", () => {
   it("shows a scheduled end and offers no switch until it's resumed", () => {
     expect(summary({ cancelAt: new Date("2026-11-20T10:00:00Z") })).toMatchObject({
       statusLabel: "Ending",
-      note: "Your plan ends on November 20, 2026. Resume it from Manage billing to keep using Vela.",
+      note: "Ends on November 20, 2026. Resume before then to keep it.",
       changeOptions: [],
+      canCancel: false,
+      canResume: true,
+    });
+  });
+
+  it("lets a running plan be cancelled, its card updated, and names the plan Paddle bills", () => {
+    expect(summary({ plan: "PRO", subscribedPlan: "PRO", billingInterval: "YEAR" })).toMatchObject({
+      current: { plan: "PRO", interval: "YEAR" },
+      canCancel: true,
+      canResume: false,
+      canUpdateCard: true,
+    });
+  });
+
+  it("offers no subscription actions to a free clinic", () => {
+    expect(summary({ billingMode: "COMPLIMENTARY" })).toMatchObject({
+      current: null,
+      canCancel: false,
+      canResume: false,
+      canUpdateCard: false,
     });
   });
 
