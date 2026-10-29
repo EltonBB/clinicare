@@ -43,19 +43,21 @@ export function getPaddleSubscription(config: PaddleConfig, subscriptionId: stri
 
 /**
  * Moves a subscription to another of this app's prices (plan or interval),
- * charging or crediting the difference now (immediate, prorated). During a
- * trial Paddle keeps the trial end; nothing is charged before it.
+ * charging or crediting the difference now (immediate, prorated). Paddle
+ * refuses that during a trial and only accepts `do_not_bill`, which keeps the
+ * trial end: nothing is charged before it, then the new price.
  */
 export function changePaddleSubscriptionPrice(
   config: PaddleConfig,
   subscriptionId: string,
-  priceId: string
+  priceId: string,
+  { trialing }: { trialing: boolean }
 ): Promise<PaddleSubscription> {
   return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     method: "PATCH",
     body: {
       items: [{ price_id: priceId, quantity: 1 }],
-      proration_billing_mode: "prorated_immediately",
+      proration_billing_mode: trialing ? "do_not_bill" : "prorated_immediately",
     },
   });
 }
