@@ -6,7 +6,7 @@ import { legalLastUpdated, privacySections } from "@/lib/legal-content";
 export const metadata: Metadata = {
   title: "Privacy Policy | Vela",
   description:
-    "Privacy Policy for Vela / Clinicare clinic operations software.",
+    "Privacy Policy for Vela clinic operations software.",
 };
 
 export default function PrivacyPage() {

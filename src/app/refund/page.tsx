@@ -6,7 +6,7 @@ import { legalLastUpdated, refundSections } from "@/lib/legal-content";
 export const metadata: Metadata = {
   title: "Refund Policy | Vela",
   description:
-    "Refund Policy for Vela / Clinicare subscriptions and billing.",
+    "Refund Policy for Vela subscriptions and billing.",
 };
 
 export default function RefundPage() {
