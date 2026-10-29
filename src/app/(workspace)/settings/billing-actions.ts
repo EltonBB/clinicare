@@ -320,6 +320,9 @@ export async function startProTrialAction(): Promise<BillingActionResult> {
     where: { id: context.business.id, proTrialStartedAt: null },
     data: {
       plan: "PRO",
+      // What Paddle bills (Basic, checked above); a clinic from before this
+      // field existed has none yet, and the expiry sweep matches on it.
+      subscribedPlan: "BASIC",
       proTrialStartedAt: now,
       proTrialEndsAt: new Date(now.getTime() + PRO_TRIAL_DAYS * 24 * 60 * 60 * 1000),
     },
