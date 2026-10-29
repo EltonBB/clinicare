@@ -23,6 +23,7 @@ import { onPaddleEvent, usePaddle } from "@/components/billing/use-paddle";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import type { BillingHistory } from "@/lib/billing-history";
 import type { BillingSummary } from "@/lib/billing-summary";
 import { cn } from "@/lib/utils";
@@ -399,8 +400,10 @@ function Payment({
 function Row({ label, value, muted, action }: { label: string; value: string; muted?: boolean; action: React.ReactNode }) {
   return (
     <div className="flex min-h-12 items-center gap-3 px-3 py-1.5">
-      <span className="w-20 shrink-0 text-sm text-muted-foreground">{label}</span>
-      <span className={cn("min-w-0 flex-1 truncate text-sm", muted ? "text-muted-foreground" : "text-foreground")}>{value}</span>
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-right text-sm", muted ? "text-muted-foreground" : "text-foreground")}>
+        {value}
+      </span>
       {action}
     </div>
   );
@@ -421,7 +424,7 @@ function Invoices({ history, error }: { history: BillingHistory | null; error: s
           Loading
         </p>
       ) : history.rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No invoices yet.</p>
+        <WorkspaceEmptyState compact title="No invoices yet" />
       ) : (
         <ul className="-mx-2">
           {rows.map((row) => (
