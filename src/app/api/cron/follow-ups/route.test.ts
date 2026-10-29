@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const acquireCronLock = vi.fn();
-const releaseCronLock = vi.fn();
-const isAuthorizedCronRequest = vi.fn();
-const generateFollowUpDrafts = vi.fn();
-const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+const { acquireCronLock, releaseCronLock, isAuthorizedCronRequest, generateFollowUpDrafts, logger } = vi.hoisted(() => ({
+  acquireCronLock: vi.fn(),
+  releaseCronLock: vi.fn(),
+  isAuthorizedCronRequest: vi.fn(),
+  generateFollowUpDrafts: vi.fn(),
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
 
 vi.mock("@/lib/cron-lock", () => ({ acquireCronLock, releaseCronLock }));
 vi.mock("@/lib/cron-auth", () => ({ isAuthorizedCronRequest }));
 vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/follow-up-generation", () => ({ generateFollowUpDrafts }));
+
+// Imported once, after the mocks: a cold import inside a test can outlast its timeout on a loaded machine.
+import { GET, maxDuration } from "./route";
 
 function request() {
   return new Request("https://x.test/api/cron/follow-ups", {
@@ -35,8 +40,6 @@ describe("follow-ups cron route", () => {
 
   it("returns 401 without a valid cron secret, without touching the lock or the job", async () => {
     isAuthorizedCronRequest.mockReturnValue(false);
-    const { GET } = await import("./route");
-
     const res = await GET(request());
 
     expect(res.status).toBe(401);
@@ -46,8 +49,6 @@ describe("follow-ups cron route", () => {
 
   it("skips the run, never calls the job, and releases nothing when the lock is held", async () => {
     acquireCronLock.mockResolvedValue({ proceed: false, token: null });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -66,8 +67,6 @@ describe("follow-ups cron route", () => {
       errors: 0,
       abandonedBusinesses: 0,
     });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -88,8 +87,6 @@ describe("follow-ups cron route", () => {
   });
 
   it("holds the lock for longer than the function can run, so a killed run's lock expires by TTL and never overlaps a straggler", async () => {
-    const { GET, maxDuration } = await import("./route");
-
     await GET(request());
 
     const ttlSeconds = acquireCronLock.mock.calls[0][1];
@@ -104,8 +101,6 @@ describe("follow-ups cron route", () => {
       errors: 2,
       abandonedBusinesses: 0,
     });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
 
     expect(res.status).toBe(200);
@@ -129,8 +124,6 @@ describe("follow-ups cron route", () => {
       errors: 1,
       abandonedBusinesses: 1,
     });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -144,8 +137,6 @@ describe("follow-ups cron route", () => {
 
   it("answers a generic 500 (no internal detail) and still releases the lock when the job throws", async () => {
     generateFollowUpDrafts.mockRejectedValue(new Error("relation FollowUpDraft does not exist"));
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -157,8 +148,6 @@ describe("follow-ups cron route", () => {
 
   it("passes a null token through on a fail-open acquisition so nothing real is released", async () => {
     acquireCronLock.mockResolvedValue({ proceed: true, token: null });
-    const { GET } = await import("./route");
-
     await GET(request());
 
     expect(generateFollowUpDrafts).toHaveBeenCalledTimes(1);
