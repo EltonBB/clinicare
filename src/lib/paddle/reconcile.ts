@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 import { getPaddleSubscription } from "./paddle-api";
 import type { PaddleConfig } from "./paddle-config";
+import { subscriptionChangedAt } from "./subscription-snapshot";
 import { applySubscriptionSnapshot } from "./subscription-sync";
 
 /** Re-read at most this many subscriptions per run (each is one API call). */
@@ -62,10 +63,7 @@ export async function reconcileOverdueSubscriptions(
     if (!business.paddleSubscriptionId) continue;
     try {
       const subscription = await getPaddleSubscription(config, business.paddleSubscriptionId);
-      // Dated by Paddle's own last change, not when this run started: an event
-      // older than the state read then arrives stale and changes nothing.
-      const changedAt = subscription.updated_at ? new Date(subscription.updated_at) : null;
-      const observedAt = changedAt && !Number.isNaN(changedAt.getTime()) ? changedAt : now;
+      const observedAt = subscriptionChangedAt(subscription, now);
       if ((await applySubscriptionSnapshot(config, subscription, observedAt)) === "applied") applied += 1;
     } catch (error) {
       failed += 1;

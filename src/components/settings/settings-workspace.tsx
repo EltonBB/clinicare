@@ -25,6 +25,7 @@ import {
   connectBaileysWhatsAppAction,
   discardUnsavedLogoAction,
   getBaileysPairingStatusAction,
+  getSettingsDataAction,
   saveSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
@@ -268,6 +269,18 @@ export function SettingsWorkspace({
     account.newPassword.length > 0 ||
     account.confirmPassword.length > 0;
   const hasUnsavedChanges = settingsDirty || accountDirty;
+
+  // A plan change happens at Paddle, not through Save: take only the new billing
+  // summary, into both copies, so unsaved edits elsewhere stay and nothing turns dirty.
+  const refreshBilling = useCallback(async () => {
+    try {
+      const { billing } = await getSettingsDataAction();
+      setState((current) => ({ ...current, billing }));
+      setSavedState((current) => ({ ...current, billing }));
+    } catch {
+      // Reopening Settings loads it fresh.
+    }
+  }, []);
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -1402,7 +1415,7 @@ export function SettingsWorkspace({
                 </div>
               )}
 
-              <BillingControls billing={state.billing} />
+              <BillingControls billing={state.billing} onChanged={refreshBilling} />
             </div>
           </SectionCard>
         </m.div>
