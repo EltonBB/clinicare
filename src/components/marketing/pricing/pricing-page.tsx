@@ -11,20 +11,24 @@ import { PlanFinder } from "./plan-finder";
 
 const faqs: Faq[] = [
   {
-    q: "How do I get started?",
-    a: "Create a free account and set up your workspace. You can explore Vela and organize your clinic before choosing a paid plan.",
+    q: "How does the free trial work?",
+    a: "Every plan starts with 14 days free. You add a card when you start, and nothing is charged during the trial. If you don't cancel before it ends, your plan begins and you're billed. We email you before that happens.",
   },
   {
     q: "What's the difference between Basic and Pro?",
     a: "Basic covers daily operations: scheduling, records, documents, payments, and inbox. Pro adds reports with AI-assisted insights, staff utilization, no-show tracking, and priority support.",
   },
   {
-    q: "Can I switch plans later?",
-    a: "Yes. You can move between Basic and Pro as your clinic grows, and your workspace and data stay exactly as they are.",
+    q: "Can I switch plans or pay yearly?",
+    a: "Yes. Switch between Basic and Pro, or monthly and yearly, any time in Settings. Yearly gives you twelve months for the price of eleven. A move up is charged for the rest of the period; a move down is credited to your next bill.",
   },
   {
-    q: "How is billing handled?",
-    a: "Online card checkout is being prepared. For now, we help activate the right plan for your workspace during setup, so nothing is charged automatically.",
+    q: "Which currency will I pay in?",
+    a: "Prices show in your own currency, based on where you are, and already include VAT. What you see is what you pay.",
+  },
+  {
+    q: "What happens if I stop paying?",
+    a: "Your workspace becomes read-only: you can still see every record, but you can't add or change anything, and no messages go to your patients. We keep your records for 90 days, and renewing unlocks everything at once.",
   },
   {
     q: "Is my clinic data private?",
