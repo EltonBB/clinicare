@@ -24,6 +24,7 @@ import {
   updatePaddleAddress,
 } from "@/lib/paddle/paddle-api";
 import { paddleConfig } from "@/lib/paddle/paddle-config";
+import { subscriptionChangedAt } from "@/lib/paddle/subscription-snapshot";
 import { applySubscriptionSnapshot } from "@/lib/paddle/subscription-sync";
 import { prisma } from "@/lib/prisma";
 import { PRO_TRIAL_DAYS, proTrialState } from "@/lib/pro-trial";
@@ -175,7 +176,7 @@ export async function changeBillingPlanAction(input: z.input<typeof changeSchema
 
   try {
     const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId, { trialing });
-    await applySubscriptionSnapshot(config, subscription, new Date());
+    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
   } catch (error) {
     logger.error("Couldn't change the subscription's plan.", error, { businessId: business.id });
     return { ok: false, error: "We couldn't change your plan. Please try again." };
@@ -254,7 +255,7 @@ export async function cancelPlanAction(): Promise<BillingActionResult> {
 
   try {
     const subscription = await schedulePaddleCancel(config, live.subscriptionId);
-    await applySubscriptionSnapshot(config, subscription, new Date());
+    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
   } catch (error) {
     logger.error("Couldn't schedule the plan's end.", error, { businessId: business.id });
     return { ok: false, error: "We couldn't cancel your plan. Please try again." };
@@ -276,7 +277,7 @@ export async function resumePlanAction(): Promise<BillingActionResult> {
 
   try {
     const subscription = await resumePaddleSubscription(config, live.subscriptionId);
-    await applySubscriptionSnapshot(config, subscription, new Date());
+    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
   } catch (error) {
     logger.error("Couldn't resume the plan.", error, { businessId: business.id });
     return { ok: false, error: "We couldn't resume your plan. Please try again." };
@@ -343,7 +344,7 @@ export async function keepProAction(): Promise<BillingActionResult> {
     const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId, {
       trialing: false,
     });
-    await applySubscriptionSnapshot(config, subscription, new Date());
+    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
     await prisma.business.update({ where: { id: business.id }, data: { proTrialEndsAt: new Date() } });
   } catch (error) {
     logger.error("Couldn't move the subscription to Pro.", error, { businessId: business.id });
