@@ -2,13 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HARD_RESPONSE_DEADLINE_MS, REMINDER_RUN_BUDGET_MS } from "@/lib/reminder-timing";
 
-const acquireCronLock = vi.fn();
-const releaseCronLock = vi.fn();
-const syncAppointmentRemindersJob = vi.fn();
-const autoCloseStaleTimeEntries = vi.fn();
-const handOffAbandonedReplyIntents = vi.fn();
-const isAuthorizedCronRequest = vi.fn();
-const isWhatsAppWorkerDown = vi.fn();
+const { acquireCronLock, releaseCronLock, syncAppointmentRemindersJob, autoCloseStaleTimeEntries, handOffAbandonedReplyIntents, isAuthorizedCronRequest, isWhatsAppWorkerDown } = vi.hoisted(() => ({
+  acquireCronLock: vi.fn(),
+  releaseCronLock: vi.fn(),
+  syncAppointmentRemindersJob: vi.fn(),
+  autoCloseStaleTimeEntries: vi.fn(),
+  handOffAbandonedReplyIntents: vi.fn(),
+  isAuthorizedCronRequest: vi.fn(),
+  isWhatsAppWorkerDown: vi.fn(),
+}));
 
 vi.mock("@/lib/cron-lock", () => ({ acquireCronLock, releaseCronLock }));
 vi.mock("@/lib/cron-auth", () => ({ isAuthorizedCronRequest }));
@@ -32,6 +34,9 @@ vi.mock("@/lib/reminders", () => ({
     abandoned: 0,
   }),
 }));
+
+// Imported once, after the mocks: a cold import inside a test can outlast its timeout on a loaded machine.
+import { GET } from "./route";
 
 function request() {
   return new Request("https://x.test/api/cron/reminders", {
@@ -61,8 +66,6 @@ describe("reminders cron route", () => {
 
   it("skips the run and never calls the job when the lock is held", async () => {
     acquireCronLock.mockResolvedValue({ proceed: false, token: null });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -80,8 +83,6 @@ describe("reminders cron route", () => {
       skippedBusinesses: 0,
       abandonedBusinesses: 0,
     });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -112,8 +113,6 @@ describe("reminders cron route", () => {
       vi.setSystemTime(Date.now() + 20_000);
       return { handedOff: 2 };
     });
-    const { GET } = await import("./route");
-
     const before = Date.now();
     expect(await (await GET(request())).json()).toMatchObject({ ok: true, sent: 1, handedOffReplies: 2 });
 
@@ -140,8 +139,6 @@ describe("reminders cron route", () => {
       skippedBusinesses: 0,
       abandonedBusinesses: 0,
     });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -156,8 +153,6 @@ describe("reminders cron route", () => {
    */
   it("does NOT release the lock when the job hangs past the hard deadline", async () => {
     syncAppointmentRemindersJob.mockReturnValue(new Promise(() => {})); // never resolves
-    const { GET } = await import("./route");
-
     const responsePromise = GET(request());
     await vi.advanceTimersByTimeAsync(HARD_RESPONSE_DEADLINE_MS + 10_000); // past the hard deadline
     const res = await responsePromise;
@@ -190,8 +185,6 @@ describe("reminders cron route", () => {
         abandonedBusinesses: 1,
       };
     });
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     const body = await res.json();
 
@@ -210,8 +203,6 @@ describe("reminders cron route", () => {
       progress.skipped = 0;
       return new Promise(() => {}); // then hang forever
     });
-    const { GET } = await import("./route");
-
     const responsePromise = GET(request());
     await vi.advanceTimersByTimeAsync(HARD_RESPONSE_DEADLINE_MS + 10_000);
     const res = await responsePromise;
@@ -236,8 +227,6 @@ describe("reminders cron route", () => {
       skippedBusinesses: 0,
       abandonedBusinesses: 0,
     });
-    const { GET } = await import("./route");
-
     isWhatsAppWorkerDown.mockResolvedValueOnce(true);
     expect(await (await GET(request())).json()).toMatchObject({ ok: true, workerDown: true, degraded: true });
 
@@ -259,8 +248,6 @@ describe("reminders cron route", () => {
       abandonedBusinesses: 0,
     });
     isWhatsAppWorkerDown.mockReturnValueOnce(new Promise(() => {}));
-    const { GET } = await import("./route");
-
     const pending = GET(request());
     await vi.advanceTimersByTimeAsync(5_000);
     const res = await pending;
@@ -271,8 +258,6 @@ describe("reminders cron route", () => {
 
   it("returns 401 without a valid cron secret, without touching the lock", async () => {
     isAuthorizedCronRequest.mockReturnValue(false);
-    const { GET } = await import("./route");
-
     const res = await GET(request());
     expect(res.status).toBe(401);
     expect(acquireCronLock).not.toHaveBeenCalled();
