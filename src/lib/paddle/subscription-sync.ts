@@ -2,7 +2,7 @@ import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
-import { cancelPaddleSubscription } from "./paddle-api";
+import { cancelPaddleSubscription, PaddleApiError } from "./paddle-api";
 import { priceLookup, type PaddleConfig } from "./paddle-config";
 import { type PaddleSubscription, subscriptionSnapshotUpdate } from "./subscription-snapshot";
 
@@ -41,6 +41,11 @@ async function refuseSubscription(
     try {
       await cancelPaddleSubscription(config, subscription.id);
     } catch (error) {
+      // A late event can still say "active" for a subscription Paddle has
+      // since cancelled: that is the outcome we wanted, not a failure.
+      if (error instanceof PaddleApiError && error.code === "subscription_update_when_canceled") {
+        return "unmatched";
+      }
       logger.error("Couldn't cancel a refused Paddle subscription.", error, {
         businessId,
         subscriptionId: subscription.id,

@@ -747,8 +747,9 @@ export function SettingsWorkspace({
         markWhatsAppNotStarted();
         return;
       }
-      const result = await getBaileysPairingStatusAction();
-      if (!active || !result.ok) {
+      // A failed poll is skipped; the next tick retries until the timeout above.
+      const result = await getBaileysPairingStatusAction().catch(() => null);
+      if (!active || !result?.ok) {
         return;
       }
       if (result.status === "disconnected") {
