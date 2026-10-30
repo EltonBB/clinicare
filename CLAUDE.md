@@ -31,7 +31,7 @@ npm run db:push      # prisma db push  (apply schema to the DB)
 npm run db:setup-auth-sync       # scripts/setup-auth-delete-sync.mjs
 ```
 
-**Standard verification before pushing:** `npm run lint`, `npx tsc --noEmit`, and `npx vitest run`, then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). A Vitest unit suite now exists (co-located `*.test.ts`, e.g. the messaging seam) — keep it green and add cases for new pure logic; signed-in browser QA remains the manual gate for UI/integration (see PROJECT_STATUS.md "Testing Checklist"). A reusable signed-in test session does not exist yet, so unauthenticated browser checks can only verify `/login` redirects and public pages.
+**Standard verification before pushing:** `npm run lint`, `npx tsc --noEmit`, and `npx vitest run`, then `npm run build` (and `npm audit --omit=dev` for dependency hygiene). A Vitest unit suite now exists (co-located `*.test.ts`, e.g. the messaging seam) — keep it green and add cases for new pure logic; signed-in browser QA remains the manual gate for UI/integration (see PROJECT_STATUS.md "Testing Checklist"). Signed-in browser QA uses the dedicated test workspace account (credentials held by the owner, never committed).
 
 **Responding to code review — fix the _class_, not the flagged line.** When a reviewer (the Codex bot or a person) flags one instance of a pattern, grep the whole codebase for siblings and fix them all in the same push before re-pushing — and audit the privileged sink up front. Reactive one-line patches just feed the review loop: an un-timed-out `fetch` flagged on one bridge call meant *every* cross-process call needed the same `AbortSignal`; a server-side auth fix needed its client-side twin.
 
@@ -142,7 +142,6 @@ Everything is scoped to a `Business` (the workspace/tenant). Plan state lives on
 - **Twilio SMS** and **Resend email** channel adapters. The `sendMessage` seam and the **WhatsApp (Baileys) adapter** are built, and reminders + Inbox replies already flow through them; SMS/email are not wired yet.
 - Audit logging, auto-logoff/session timeout, role-based access (Step 3).
 - Deleting a whole clinic from `/owner` (it lists those due after 90 days; deletion is still done by hand) and retention reminder emails (needs the email adapter).
-- A reusable signed-in test session for browser QA (long-standing blocker).
 
 ## Gotchas
 

@@ -1,6 +1,6 @@
 # Project Status: Vela / Clinicare
 
-Last updated: 2026-10-12
+Last updated: 2026-10-30
 
 ## Product Overview
 
@@ -10,13 +10,14 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Technical Stack
 
-- Next.js 16.3.8 App Router with React 19.
-- TypeScript, Tailwind CSS 4, shadcn-style UI components, Radix primitives, Lucide icons.
+- Next.js 16.4.3 App Router with React 19.
+- TypeScript, Tailwind CSS 4, shadcn-style UI components on Base UI, Lucide icons.
 - Prisma with PostgreSQL via Supabase.
 - Supabase Auth for email/password authentication and email confirmation.
 - Vercel production deployment from Git.
 - WhatsApp via Baileys, run in an isolated always-on worker (Kosovo pilot, non-PHI, disposable) behind the `sendMessage()` messaging seam; paired by QR from Settings, with webhook-based inbound inbox messaging. Twilio is reserved for SMS/phone and is not wired yet.
 - OpenAI-backed analytics snapshots with rule-based fallback when AI is unavailable.
+- Paddle Billing (merchant of record) for plans and trials; Upstash Redis for shared rate limits, with an in-memory fallback.
 
 ## Completed Features
 
@@ -171,26 +172,20 @@ The core product direction is customer-first: clinics should not need to underst
 
 ## Current Working Flows
 
-- A new user can sign up, confirm email, complete onboarding, and enter the dashboard.
-- A clinic can configure branding, hours, and staff during onboarding or later in Settings.
-- A clinic can create a lightweight patient record first, then add deeper medical history from the patient edit page as the relationship develops.
-- A clinic can book appointments using those clients, record the expected or collected service payment during booking, and edit existing bookings from a dedicated page.
-- A clinic can open each patient from the directory into a dedicated full-page record with basic information, care summary, appointment context, medical information, current medications, media/document records, messages, and a payment ledger.
-- Appointments show on the dashboard/calendar and feed staff/client records when completed.
-- Staff can be managed from the Staff page, opened into full details pages, edited from full-page forms, and tracked with row-level check-in/check-out.
-- Client records can hold appointment history, notes, messages, and private Supabase-hosted gallery images.
-- The WhatsApp channel (Baileys, paired by QR in Settings) can receive inbound messages, create conversations, reply from Inbox, and convert unknown contacts to clients.
-- Reports can calculate core performance metrics, derive operational evidence from appointment status mix, demand windows, staff load, booking lead time, and client mix, refresh AI analysis across daily/weekly/monthly together when the OpenAI environment key is configured, score each timeframe from current clinic metrics, generate rule-based guidance from actual period data, handle sparse/unmeasured data without false zeros, and clearly show when rule-based insights are used instead.
-- Workspace page-to-page navigation keeps the shared shell interactive and shows a skeleton immediately while dynamic page data streams in.
-- Public visitors now land on the marketing homepage first, with signup/login CTAs routing into the existing auth flow.
-- Public visitors can browse Home, Product, Pricing, About, Checkout, and Contact pages without authentication, while legal pages remain available at `/terms-and-conditions`, `/privacy`, and `/refund`.
-- Marketing pages use supplied Vela-styled product scene imagery with sample names and data so prospects see realistic Vela workflows without exposing live customer information.
-- Patient detail tabs now align correctly above the Overview, Appointments, Medical Info, Documents, Messages, and Payments content instead of splitting the tabs and content into separate columns.
-- The top workspace toolbar now includes an authenticated global search API at `/api/search`; the desktop search box returns app records without exposing cross-clinic data.
-- Global search now supports keyboard result selection, client-side navigation, mobile search access, and message-result deep links to the matching inbox conversation.
-- Patient records can now store structured health items, provider notes, treatment plan rows, follow-up reminders, private PDF/image documents, and manual ledger entries from the client details page.
-- Calendar schedule blocks are stored in the database through server actions and rendered into calendar day/week/month views as blocked time.
-- Staff shift server actions now exist for business-scoped shift create/update/delete; the Staff page now derives the visible on-duty rail, table shift column, team schedule panel, and staff detail schedule summary from current staff status, time tracking, appointments, and StaffShift records.
+Rewritten 2026-10-30 to match the current product (older lines described layouts that have since been redesigned).
+
+- A new user can sign up, confirm email, complete onboarding (clinic, opening hours, team), choose a plan with a 14-day card-up-front trial, and enter the dashboard. Pilot clinics are made free from `/owner`.
+- A clinic manages branding, currency, working hours, WhatsApp and billing from the Settings popup.
+- A clinic creates a lightweight patient record, then adds medical records (medications, health alerts, treatment plan, provider notes, background) from the record's Medical Info tab, plus documents, gallery images and payments from their own tabs.
+- A clinic books appointments (client, service, staff, date, time, duration), records the payment amount, and edits, moves, cancels or marks no-shows (Pro) from the calendar.
+- Completed appointments show on the calendar and feed the dashboard, staff and client records.
+- Staff are managed from the Staff page, opened into detail pages with Today, Schedule and Messages, and checked in/out from the row or the detail header. Staff use the Vela Staff phone app (access code + device unlock) for their day, check-in and messages.
+- The WhatsApp channel (paired by QR in Settings) receives inbound messages into Inbox, sends replies, and converts unknown contacts to clients. A banner warns when WhatsApp is down while a visit is coming up.
+- Automations sends reminders, confirmations, thank-yous, payment reminders and the other follow-ups automatically or after review (To review), per the clinic's choice and plan, and logs every send under Activity. Patients can confirm or cancel from a reminder reply.
+- Reports (Pro) shows KPIs, the performance chart, the AI-assisted insight card (rule-based fallback, clearly labelled), staff performance, appointment status, highlights and booking patterns over daily/weekly/monthly/custom periods. Basic sees an upgrade card over a sample-clinic preview.
+- Global search in the top bar finds clients, staff, appointments and messages within the clinic, with keyboard navigation and inbox deep links.
+- A clinic that stops paying becomes read-only; its data is kept 90 days.
+- Public visitors browse Home, Product, Pricing, About, Contact, Checkout and the legal pages without signing in.
 
 ## Known Issues / Blockers
 
@@ -219,15 +214,16 @@ These came out of the second pre-launch review. The code-side fixes are merged; 
 - **Physical-device acceptance — Android passed 2026-10-13** (EAS preview build on the owner's phone): fingerprint unlock, idle lock, Android back, offline, process recovery, badges and sign-out revocation. Still open: push delivery (waits on the Firebase setup above) and iPhone (no Apple developer account).
 - **QA seed data in the "Vela Dent" workspace (2026-10-12).** `scripts/tmp-seed-next-two-weeks.mjs` (288 upcoming appointments, shifts, blocks, waiting list; every active one carries SENT reminder rows so the reminder cron never messages a demo patient) and `scripts/tmp-seed-past-weeks.mjs` (past visits, payments and new clients for Reports). Rescheduling a seeded appointment in the app can make it reminder-eligible again — cancel instead. The 22 older non-seed past visits were marked completed through the app on 2026-10-13.
 
-Original items (for reference):
+The original pre-launch items (custom SMTP, transaction pooler, schema indexes, `maxDuration`, error monitor, shared rate-limit store) are all done; see the 2026-06-15 update above. Two from that list are still open and belong to later work:
 
-- **Custom SMTP for Supabase Auth (launch blocker).** Supabase's built-in email sender is rate-limited (~2–4/hour, project-wide) and "not for production". Configure a real SMTP provider (Resend per ROADMAP) with a verified sender domain (SPF/DKIM) in Supabase Auth → SMTP **before** the onboarding burst, or ~most confirmation/reset emails in a 50-clinic signup wave will silently fail. (Code already surfaces a friendly "try again shortly" on 429 instead of faking success.)
-- **Use the Supabase transaction pooler (port 6543) for the runtime `DATABASE_URL`** on Vercel; keep the direct/session URL in `DIRECT_URL` for migrations. With `max: 1` per serverless instance, a direct/session (`:5432`) connection can exhaust Postgres connections under concurrency. Boot now logs a warning if the prod `DATABASE_URL` doesn't look like the transaction pooler.
-- **Apply the new schema indexes with `npm run db:push`**: `ClientPayment @@index([businessId, paidAt])` and `Message.providerMessageSid @unique`. The unique index can fail if duplicate provider SIDs already exist — dedupe those rows first. Plan to move from `db push` to committed `prisma migrate` migrations before the DB holds real PHI (auditability).
-- **Confirm the Vercel plan supports `maxDuration = 300`** for the analytics/reminders cron routes (now set in code); on a too-low limit the analytics cron is killed mid-batch.
-- ~~**Wire an error monitor** (Sentry/Logtail DSN) into `lib/logger.ts`~~ **Done (2026-06-16, PR #6):** Sentry error monitoring + tracing live behind the `lib/logger.ts` seam and a PHI scrubber.
-- **For cross-instance rate limiting at scale**, back `lib/rate-limit.ts` with a shared store (Upstash Redis / Vercel KV). The current in-memory limiter is per-instance (fine for the pilot; protects each instance + dev).
+- **Move from `db push` to committed `prisma migrate` migrations** before the database holds real patient data (auditability).
 - **Latent media-path authorization:** signed-URL storage paths are keyed by uploader `auth.uid()`, safe today under per-user storage RLS. When role-based / multi-staff access lands (ROADMAP Step 3), switch to a `businessId`-scoped path scheme + RLS policy, or cross-staff document access breaks and the server-side ownership check becomes the only barrier.
+
+### Found in the 2026-10-30 security and performance audit (owner action)
+
+- **The GitHub repository is public.** No live secret is in it: the only real credential in its history (a database password in two April 2026 commits) was rotated on 2026-10-22 and no longer works. Making the repository private is still recommended, since it holds the whole product.
+- **The Upstash Redis database is in `us-east-1`** while the app serves from Frankfurt (`fra1`), which adds about 150 ms to every rate-limited request (every server action). Moving it to `eu-central-1` means a new database and swapping `KV_REST_API_URL`/`KV_REST_API_TOKEN` in Vercel.
+- **WhatsApp is disconnected on purpose** since the October worker incident, so no reminders or automations reach patients until the owner relinks it from Settings › WhatsApp.
 
 - WhatsApp runs on Baileys in a separate always-on worker (`services/whatsapp-worker/`, deployed on Railway, root directory `services/whatsapp-worker`) that cannot run on Vercel. **Confirmed working end-to-end 2026-08-29** — deployed, QR-paired, and verified sending and receiving real messages. Official, customer-owned WhatsApp numbers (via an approved BSP) remain a later step, paused alongside the US market (ROADMAP.md §1) rather than actively gated.
 - AI reports need a valid server-side OpenAI API key in production; otherwise the app records an auditable fallback snapshot and clearly shows that rules are being used.
@@ -237,58 +233,50 @@ Original items (for reference):
 - Dependency audit is clean, dev dependencies included (2026-10-30: Next.js 16.4.3, `@sentry/nextjs` 10.78, Zod 4.6.7, vitest 4.1.12; `deepmerge-ts` 8 override for Prisma's config, PostCSS override). The WhatsApp worker's audit is clean too.
 - **Billing runs on the Paddle sandbox in production (owner decision, 2026-10-29).** Production's Paddle client token and webhook secret are sandbox ones, so a real clinic that signs up can't pay and stays on "choose a plan" until the live keys are set (`PADDLE_ENV`, `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `PADDLE_PRICE_IDS`; `scripts/paddle-setup.mjs` creates the live catalog and webhook). Pilot clinics are made free from `/owner` meanwhile.
 - **Leaked-password protection is off** in Supabase Auth: it needs the Supabase paid plan.
-- The workspace depth Prisma schema has been applied to the configured Supabase Postgres database with `npx prisma db push`, and the RLS enablement SQL has been run for the new public application tables.
-- Browser-render verification of authenticated workspace pages was limited by the Playwright context redirecting to `/login` without a signed-in workspace session. Static/type/build verification passed; signed-in visual QA should be run with a real test account after the database schema is applied.
-- ~~Latest browser verification still cannot inspect authenticated workspace visuals~~ **Resolved:** a dedicated signed-in test workspace account now exists (credentials held by the owner, never committed to the repo). Claude Code signed in with it during the design polish pass and visually verified dashboard, calendar, clients, client detail, staff, inbox, reports, settings, the onboarding flow, and auth states at desktop and mobile widths. Signed-in browser QA is now a repeatable part of the verification loop.
+- Every schema change so far has been applied to the configured Supabase Postgres database with `npx prisma db push`, with RLS enabled on each new public table.
+- Signed-in browser QA works: a dedicated test workspace account exists (credentials held by the owner, never committed to the repo), and it is part of the verification loop.
 
 ## Next Priorities
 
-0a. **Staff app release readiness (2026-10-12):** owner completes the Firebase/APNs push setup above, then run a preview build on a real iPhone and Android phone (unlock, push, keyboard/back) before store submission.
-0. ~~Vela Staff mobile integration — merge gate~~ **Resolved 2026-07-03:** merged as PR #35, live in production since. What's left is just store submission: run `eas init` and fill in real bundle ids + `EXPO_PUBLIC_API_BASE_URL` before any store submission — see "Vela Staff mobile integration — remaining store-submission items" above.
-1. ~~Add the framer-motion animation layer~~ **Done:** `src/lib/motion.ts` shared variants are live across Reports, Inbox, Settings, and the workspace-wide interaction polish pass (see Completed Features).
-2. Finish rolling the four AGENTS.md visual-language laws out to the remaining minor surfaces as they're touched. Dashboard, Clients, Staff, Reports, Inbox, and Settings are fully migrated; tonight's pass (2026-07-02) additionally fixed 4 stray circular-icon-chip/gradient-tile violations in Calendar's empty state, global search results, the notifications trigger, and the client payment-status chip — worth a periodic re-sweep rather than treating this as fully closed.
-3. Run signed-in desktop/mobile visual QA against dashboard, calendar, reports, staff, staff detail, clients, client detail tabs, inbox, settings, and create/edit forms with a real test workspace, comparing against the supplied reference screenshots and checking any remaining alignment, table, right-rail, and empty-space issues after the precision layout pass.
-4. Stabilize and test the full first-user flow on a clean account: signup, confirm email, onboarding, dashboard, tour, client, booking, staff, reports.
-5. Verify completed appointment automation end-to-end: completed appointments leave active calendar views and appear in staff/client records.
-6. Smoke-test private signed logo/gallery/document upload, display, download/preview, replacement cleanup, and client-delete media cleanup against the live production app.
-7. Continue hardening reports with any launch-specific wording, prompt evaluation, or plan-gating requirements that come out of user testing.
-8. Continue WhatsApp provider work only after business/provider requirements are ready; keep Settings flow customer-friendly in the meantime.
-9. ~~Implement the Paddle billing flow behind `/checkout`~~ Built and merged 2026-10-29 (#183–#190), sandbox-tested end to end; remaining: the switch to live Paddle keys and a lawyer's read of the legal pages.
-10. Keep production deployment to the GitHub integration path only; avoid direct Vercel CLI deploys so each pushed commit creates one deployment.
-11. ~~Build the storage-cleanup outbox's batch 2~~ **Resolved 2026-09-02:** the `/api/cron/storage-cleanup` retry sweep is live — see "Last Completed Task."
+Rewritten 2026-10-30. The earlier list (signed-in visual QA, first-user flow, completed-visit automation, upload smoke tests, the motion layer, Paddle) is done: the final launch sweep and the two October QA rounds covered it.
+
+1. **Owner launch items (no code):** a lawyer's read of the legal pages, then switch Paddle to the live keys (`PADDLE_ENV`, `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `PADDLE_PRICE_IDS`; `scripts/paddle-setup.mjs` creates the live catalog and webhook); make the GitHub repository private; move Upstash Redis to `eu-central-1`; relink WhatsApp. Pilot clinics are made free from `/owner` until Paddle is live.
+2. **Staff app store readiness:** the owner's Firebase/APNs push setup, then a preview build on a real iPhone and Android phone (unlock, push, keyboard/back), then `eas init`, the real bundle ids and `EXPO_PUBLIC_API_BASE_URL` before store submission. See "Vela Staff mobile integration" above.
+3. **Patient-data safeguards (ROADMAP Step 3), the next build:** audit logging of who viewed or changed which patient record first (it needs no product decision), then auto-logoff / session timeout, then role-based access. Role-based access has an open product question: staff have no web login today, so the roles it would separate must be decided first. Switch media paths to a `businessId` scheme when it lands (see above).
+4. **Smaller gaps:** deleting a clinic from `/owner` after its 90 days (done by hand today); an email channel adapter, which retention reminder emails also wait on; committed `prisma migrate` migrations before real patient data.
+5. **Ongoing:** re-sweep the AGENTS.md visual-language laws as surfaces are touched; deploy only through the GitHub integration so each commit is one deployment.
 
 ## Testing Checklist
 
-- `npm run lint`
-- `npm audit --omit=dev`
-- `npm run build`
-- `npm audit --omit=dev`
-- Signed-in browser visual QA for workspace depth redesign pages after schema apply.
+- `npm run lint`, `npx tsc --noEmit`, `npx vitest run`, `npm run build`
+- `npm audit` (dev dependencies included) and the WhatsApp worker's `npm audit`
+- Signed-in browser QA with the test workspace at desktop and phone widths for whatever the change touches.
 - New account signup and email confirmation.
-- Onboarding from owner step through completion.
+- Onboarding from the welcome through completion, then choosing a plan.
 - Dashboard loads with the correct local date and its curated overview sections.
 - First-user tour appears once, avoids modals/drawers, and stays completed after finishing.
 - Create client, edit client through `/clients/[clientId]/edit`, archive client.
-- Open a client details page from the directory and verify overview, appointment history, medical fields, medications, documents/images, messages, and booking-linked payments.
+- Open a client details page from the directory and verify overview, appointments, medical info, documents/images, and payments.
 - Create a booking with a payment amount and verify the payment appears in the patient's Payments tab.
-- Upload/add client gallery image record and caption.
+- Upload a client document (image and PDF) and a gallery image with a caption.
 - Create appointment inside operating hours and verify blocked behavior outside operating hours.
 - Verify completed appointment movement into staff/client records.
 - Staff add, details, edit, delete, and row-level check-in/check-out.
 - Calendar booking creation and `/calendar/[appointmentId]/edit` save/cancel/delete behavior.
 - Inbox inbound WhatsApp, outbound reply, unread count, and convert-to-client.
-- Settings: WhatsApp status, reminders, branding, logo, plan display.
-- Reports: daily, weekly, monthly metrics, metric-driven snapshot scores, sparse-data states, full three-timeframe AI refresh, diagnosis/root-cause/playbook sections, detailed suggestions, data-backed fallback copy, cooldown behavior, and AI/fallback snapshot states.
+- Automations: switch on/off, mode, wording with the live preview; To review (Edit / Skip / Send); Activity log; Pro automations locked on Basic.
+- Settings: business details, currency, appearance, working hours, WhatsApp status, Billing (plan, card, address, invoices against the Paddle sandbox).
+- Reports: daily, weekly, monthly and custom periods, sparse-data states, AI refresh and its cooldown, the rule-based fallback label, and the Basic upgrade state with the sample preview.
 - Public policies: `/terms-and-conditions`, `/privacy`, and `/refund` load without authentication and match the current Vela product scope.
-- Public homepage: `/` loads without authentication, shows the landing page, and routes `Start free` to `/sign-up` and `Log in` to `/login`.
-- Public marketing site: `/`, `/product`, `/pricing`, `/about`, and `/contact` load without authentication, render correctly at desktop and narrow viewport sizes, display Vela product visuals or code-native workspace mockups, and keep CTAs routed to `/sign-up`, `/login`, `/pricing`, `/product`, `/contact`, and the legal pages.
+- Public marketing site: `/`, `/product`, `/pricing`, `/about`, and `/contact` load without authentication, render correctly at desktop and phone widths, show prices in one currency, and keep CTAs routed to `/sign-up`, `/login`, `/pricing`, `/product`, `/contact`, and the legal pages.
 - Public checkout: `/checkout?plan=basic` and `/checkout?plan=pro` load without authentication, show the selected plan details, detect the signed-in workspace's plan, and open Paddle's checkout (sandbox until the live keys are set).
 - Security headers: every page's `Content-Security-Policy` carries a fresh `'nonce-…' 'strict-dynamic'` script source, every `<script>` in the HTML carries the nonce, and the console shows no CSP violations (Paddle.js and its card frame load).
 - Supabase security: public Prisma tables report RLS enabled and anon REST table access returns no rows.
-- Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/reports`, and `/settings` redirect unauthenticated users to login.
+- Route protection: `/dashboard`, `/calendar`, `/clients`, `/staff`, `/inbox`, `/automations`, `/reports`, `/settings` and `/owner` redirect unauthenticated users to login.
 
 ## Last Completed Task
 
+- **Security and performance audit (2026-10-30) — #195–#197 merged.** #195: the pricing page's plan finder and comparison table show the visitor's local currency like the plan strip, instead of mixing it with dollars. #196: background polls (unread counts, WhatsApp status, email verification) skip a failed request instead of throwing an unhandled error into Sentry, and Paddle refusing to change an already-cancelled subscription is treated as done rather than logged as an error. #197: Automations › To review filters each kind with only its own rule (median query 3.4 s → 0.2 s). Audit verified: 88 of 89 server actions reach a rate limit (log out is the only exception, by design); staff access codes are hashed, rate-limited and locked out; no secrets in tracked files, the build or the live bundles; private storage with size and type limits; no email enumeration; no unsafe raw SQL or server-side request forgery; timing-safe secret comparisons; body-size caps on every endpoint; no-store caching on pages and APIs; database healthy (100% cache hit, 19 of 60 connections). Owner items it surfaced are under Known Issues.
 - **QA round 2 and hardening (2026-10-29 → 2026-10-30) — #191–#194 merged.** #191: critical advisories in Next.js (server code execution, server-action overload), `@sentry/nextjs` (a sign-in bypass through the `/monitoring` tunnel route) and Zod, plus the worker's dependencies; flaky cron tests import their route once after `vi.hoisted` mocks. #192: a signed-out `/owner` redirects to log in; the unused `use-mobile` hook is gone. #193: nonce-based Content-Security-Policy on every page (`'unsafe-inline'` removed from `script-src`; see CLAUDE.md › Security model), images get a sandboxed policy. #194: the last dev-only advisory (vitest) and Sentry's config import path. Verified: auth and clinic isolation on every action, owner gating, Paddle webhook signature and replay window, invoice ownership, no raw-HTML rendering, https-only URL fields, RLS on all 38 tables; Settings › Billing against the sandbox (plan, card, address, invoices); production clean in Vercel and Sentry after the deploys.
 - **Paddle billing (2026-10-26, merged 2026-10-29 as #183–#190).** Card-up-front 14-day trials on Basic ($39/mo, $429/yr) and Pro ($79/mo, $869/yr), tax-inclusive, local currency; Paddle webhook + hourly reconcile write a billing snapshot onto `Business`; read-only lock with 90-day retention enforced on every write path; owner page `/owner` for free pilot clinics and the Pro-trial offer; Settings › Billing manages plan, card and invoices; pricing, checkout, sign-up and legal pages updated. Spec `docs/superpowers/specs/2026-10-26-paddle-billing-design.md`, plan `docs/superpowers/plans/2026-10-26-paddle-billing.md`. Schema applied, sandbox end-to-end test done, legal entity set (Birdz LLC). **Before taking real payments:** a lawyer's read of the legal pages, then switch env to the live Paddle account.
 - **Final launch sweep (2026-10-12 → 2026-10-13) — clinicare #150–#155, #157, #158 and vela-mobile-app #25 merged. Go for the pilot.** Plan: `docs/qa/final-launch-sweep-plan.md`; full ledger and go/no-go: `docs/qa/final-sweep-findings.md`; inventory: `docs/qa/final-sweep-inventory.md`; runbook: `docs/ops/launch-runbook.md`.
