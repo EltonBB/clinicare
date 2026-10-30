@@ -22,6 +22,10 @@ const protectedPrefixes = [
 
 const authRoutes = ["/sign-up", "/login", "/confirm-email", "/forgot-password"];
 const onboardingRoot = "/onboarding";
+// The owner page checks the admin list itself; signed out it only sends the
+// visitor to log in, like any private page, instead of rendering a not-found
+// shell (not added to protectedPrefixes: an admin needn't have a clinic).
+const ownerRoot = "/owner";
 
 function copyCookies(source: NextResponse, target: NextResponse) {
   source.cookies.getAll().forEach((cookie) => {
@@ -85,9 +89,10 @@ export async function updateSession(request: NextRequest) {
   );
   const isOnboardingRoute =
     pathname === onboardingRoot || pathname.startsWith(`${onboardingRoot}/`);
+  const isOwnerRoute = pathname === ownerRoot || pathname.startsWith(`${ownerRoot}/`);
   const onboardingCompleted = isOnboardingCompleted(user?.user_metadata);
 
-  if (!user && (isProtected || isOnboardingRoute)) {
+  if (!user && (isProtected || isOnboardingRoute || isOwnerRoute)) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", pathname);

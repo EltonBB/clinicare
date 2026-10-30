@@ -75,7 +75,7 @@ src/
   lib/                 # server-side business logic + view-model builders (see below)
   utils/supabase/      # SSR Supabase clients: client.ts (browser), server.ts (RSC/actions), middleware.ts
   proxy.ts             # Next "proxy" — protects all (workspace) routes, applies global security headers
-  hooks/               # e.g. use-mobile.ts
+  hooks/               # e.g. use-dismiss-on-outside-or-escape.ts
 prisma/schema.prisma   # data model (see "Data model")
 scripts/               # one-off ops scripts (.mjs)
 graphify-out/          # generated knowledge graph (graph.html / graph.json / GRAPH_REPORT.md)
