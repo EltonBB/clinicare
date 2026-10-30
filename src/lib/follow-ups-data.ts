@@ -26,118 +26,120 @@ import { checkupDedupeKey, rebookedAppointmentWhere } from "@/lib/workflow-gener
 // "What it's about still holds" is its own filter, without the status, because
 // Send checks it twice: when it claims a PENDING draft and again, on the claimed
 // SENT one, immediately before the message leaves (see confirmFollowUpDraftDispatch).
-function actionablePendingWhere(now: Date): Prisma.FollowUpDraftWhereInput {
+function actionablePendingWhere(now: Date, kind?: FollowUpDraftKind): Prisma.FollowUpDraftWhereInput {
   // A draft with a delay (a missed-visit message) is neither listed nor sent
   // before its time.
   return {
     status: "PENDING",
-    AND: [{ OR: [{ sendAfter: null }, { sendAfter: { lte: now } }] }, stillHoldsWhere(now)],
+    AND: [{ OR: [{ sendAfter: null }, { sendAfter: { lte: now } }] }, stillHoldsWhere(now, kind)],
   };
 }
 
-function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
-  return {
-    OR: [
-      // Entry still holds the offer, slot still cancelled and ahead. No plan
-      // check here — this same predicate feeds listableWhere below, and a
-      // downgraded workspace's staff must still be able to see and Skip a
-      // pending offer, matching Skip/Declined/Book's own "no plan check"
-      // (see passSlotOfferAction). Sending one is blocked separately, in
-      // markFollowUpDraftSent itself (Codex).
-      liveSlotOfferWhere(now),
-      // Not rebooked or back since (a future booking, or a recent confirmed/
-      // completed visit — a walk-in recorded after the draft was made), still a
-      // client the clinic wants to nudge, and the workspace is still on Pro
-      // (rebooking nudges are a Pro feature — a downgrade stops them at once,
-      // not only after the hourly sweep) with the rebooking workflow still
-      // switched on.
-      {
-        kind: "REBOOK",
-        business: automationEnabledWhere("REBOOK"),
-        client: {
-          ...ELIGIBLE_CLIENT_WHERE,
-          appointments: { none: rebookedAppointmentWhere(now) },
+// Given a kind, only that kind's rule: the others can never match it, and each
+// one adds its own joins (all of them together made To review's per-kind reads
+// take seconds).
+function stillHoldsWhere(now: Date, kind?: FollowUpDraftKind): Prisma.FollowUpDraftWhereInput {
+  const rules: Prisma.FollowUpDraftWhereInput[] = [
+    // Entry still holds the offer, slot still cancelled and ahead. No plan
+    // check here — this same predicate feeds listableWhere below, and a
+    // downgraded workspace's staff must still be able to see and Skip a
+    // pending offer, matching Skip/Declined/Book's own "no plan check"
+    // (see passSlotOfferAction). Sending one is blocked separately, in
+    // markFollowUpDraftSent itself (Codex).
+    liveSlotOfferWhere(now),
+    // Not rebooked or back since (a future booking, or a recent confirmed/
+    // completed visit — a walk-in recorded after the draft was made), still a
+    // client the clinic wants to nudge, and the workspace is still on Pro
+    // (rebooking nudges are a Pro feature — a downgrade stops them at once,
+    // not only after the hourly sweep) with the rebooking workflow still
+    // switched on.
+    {
+      kind: "REBOOK",
+      business: automationEnabledWhere("REBOOK"),
+      client: {
+        ...ELIGIBLE_CLIENT_WHERE,
+        appointments: { none: rebookedAppointmentWhere(now) },
+      },
+    },
+    // Still owed: never tell someone who just paid that they owe money. And
+    // the payment-reminder workflow is still switched on, and the client is
+    // one the clinic still contacts — an Inactive/Archived client gets no
+    // automated outreach suggestion of any kind (Codex #130).
+    {
+      kind: "PAYMENT",
+      business: automationEnabledWhere("PAYMENT_REMINDER"),
+      client: ELIGIBLE_CLIENT_WHERE,
+      payment: { status: { in: ["Unpaid", "Partially Paid"] } },
+    },
+    // The visit still stands as attended — not since recorded as a no-show,
+    // reverted, or deleted (a deleted appointment leaves appointmentId null)
+    // — and the thank-you workflow is still switched on and the client still
+    // one the clinic contacts.
+    {
+      kind: "THANK_YOU",
+      business: automationEnabledWhere("THANK_YOU"),
+      client: ELIGIBLE_CLIENT_WHERE,
+      appointment: { status: "COMPLETED" },
+    },
+    // The visit is still booked and still ahead — a confirmation or welcome
+    // for a visit since cancelled or past would only confuse.
+    {
+      kind: "BOOKING_CONFIRMATION",
+      business: automationEnabledWhere("BOOKING_CONFIRMATION"),
+      client: ELIGIBLE_CLIENT_WHERE,
+      appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+    },
+    {
+      kind: "NEW_PATIENT_WELCOME",
+      business: automationEnabledWhere("NEW_PATIENT_WELCOME"),
+      client: ELIGIBLE_CLIENT_WHERE,
+      appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
+    },
+    // A moved or cancelled notice, while the visit's time is still ahead and
+    // the visit still stands as the notice says: a "moved" notice while it is
+    // booked, a "cancelled" one while it is cancelled. A change the clinic
+    // makes dismisses the older notice when it drafts the new one; this
+    // covers a change it doesn't draft for (the patient cancelling by reply).
+    // The dedupe key names which notice it is (see queueVisitMessage).
+    {
+      kind: "VISIT_CHANGED",
+      business: automationEnabledWhere("VISIT_CHANGED"),
+      client: ELIGIBLE_CLIENT_WHERE,
+      OR: [
+        { dedupeKey: { contains: ":cancelled:" }, appointment: { status: "CANCELLED", startAt: { gt: now } } },
+        {
+          NOT: { dedupeKey: { contains: ":cancelled:" } },
+          appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
         },
+      ],
+    },
+    // Still recorded as missed (not since marked attended).
+    {
+      kind: "MISSED_VISIT",
+      business: automationEnabledWhere("MISSED_VISIT"),
+      client: ELIGIBLE_CLIENT_WHERE,
+      appointment: { status: "NO_SHOW" },
+    },
+    // A reminder waiting for review: only while the visit is still booked and ahead.
+    ...(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const).map((kind) => ({
+      kind,
+      business: automationEnabledWhere(kind),
+      client: ELIGIBLE_CLIENT_WHERE,
+      appointment: { status: { in: ["PENDING", "CONFIRMED"] as AppointmentStatus[] }, startAt: { gt: now } },
+    })),
+    // Not booked since: a check-up nudge to someone with a visit ahead is noise.
+    {
+      kind: "CHECKUP_DUE",
+      business: automationEnabledWhere("CHECKUP_DUE"),
+      // The follow-up reminder it came from is still scheduled and still due.
+      followUpReminder: { status: "Scheduled", remindAt: { lte: now } },
+      client: {
+        ...ELIGIBLE_CLIENT_WHERE,
+        appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
       },
-      // Still owed: never tell someone who just paid that they owe money. And
-      // the payment-reminder workflow is still switched on, and the client is
-      // one the clinic still contacts — an Inactive/Archived client gets no
-      // automated outreach suggestion of any kind (Codex #130).
-      {
-        kind: "PAYMENT",
-        business: automationEnabledWhere("PAYMENT_REMINDER"),
-        client: ELIGIBLE_CLIENT_WHERE,
-        payment: { status: { in: ["Unpaid", "Partially Paid"] } },
-      },
-      // The visit still stands as attended — not since recorded as a no-show,
-      // reverted, or deleted (a deleted appointment leaves appointmentId null)
-      // — and the thank-you workflow is still switched on and the client still
-      // one the clinic contacts.
-      {
-        kind: "THANK_YOU",
-        business: automationEnabledWhere("THANK_YOU"),
-        client: ELIGIBLE_CLIENT_WHERE,
-        appointment: { status: "COMPLETED" },
-      },
-      // The visit is still booked and still ahead — a confirmation or welcome
-      // for a visit since cancelled or past would only confuse.
-      {
-        kind: "BOOKING_CONFIRMATION",
-        business: automationEnabledWhere("BOOKING_CONFIRMATION"),
-        client: ELIGIBLE_CLIENT_WHERE,
-        appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
-      },
-      {
-        kind: "NEW_PATIENT_WELCOME",
-        business: automationEnabledWhere("NEW_PATIENT_WELCOME"),
-        client: ELIGIBLE_CLIENT_WHERE,
-        appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
-      },
-      // A moved or cancelled notice, while the visit's time is still ahead and
-      // the visit still stands as the notice says: a "moved" notice while it is
-      // booked, a "cancelled" one while it is cancelled. A change the clinic
-      // makes dismisses the older notice when it drafts the new one; this
-      // covers a change it doesn't draft for (the patient cancelling by reply).
-      // The dedupe key names which notice it is (see queueVisitMessage).
-      {
-        kind: "VISIT_CHANGED",
-        business: automationEnabledWhere("VISIT_CHANGED"),
-        client: ELIGIBLE_CLIENT_WHERE,
-        OR: [
-          { dedupeKey: { contains: ":cancelled:" }, appointment: { status: "CANCELLED", startAt: { gt: now } } },
-          {
-            NOT: { dedupeKey: { contains: ":cancelled:" } },
-            appointment: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } },
-          },
-        ],
-      },
-      // Still recorded as missed (not since marked attended).
-      {
-        kind: "MISSED_VISIT",
-        business: automationEnabledWhere("MISSED_VISIT"),
-        client: ELIGIBLE_CLIENT_WHERE,
-        appointment: { status: "NO_SHOW" },
-      },
-      // A reminder waiting for review: only while the visit is still booked and ahead.
-      ...(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"] as const).map((kind) => ({
-        kind,
-        business: automationEnabledWhere(kind),
-        client: ELIGIBLE_CLIENT_WHERE,
-        appointment: { status: { in: ["PENDING", "CONFIRMED"] as AppointmentStatus[] }, startAt: { gt: now } },
-      })),
-      // Not booked since: a check-up nudge to someone with a visit ahead is noise.
-      {
-        kind: "CHECKUP_DUE",
-        business: automationEnabledWhere("CHECKUP_DUE"),
-        // The follow-up reminder it came from is still scheduled and still due.
-        followUpReminder: { status: "Scheduled", remindAt: { lte: now } },
-        client: {
-          ...ELIGIBLE_CLIENT_WHERE,
-          appointments: { none: { status: { in: ["PENDING", "CONFIRMED"] }, startAt: { gt: now } } },
-        },
-      },
-    ],
-  };
+    },
+  ];
+  return { OR: kind ? rules.filter((rule) => rule.kind === kind) : rules };
 }
 
 // What the Follow-ups page lists: everything actionable that's still pending,
@@ -148,8 +150,10 @@ function stillHoldsWhere(now: Date): Prisma.FollowUpDraftWhereInput {
 // out) stays excluded — there's nothing left to do with it here. The Inbox
 // badge counts this same set, so its only link to the page never disappears
 // while a sent offer is waiting on staff.
-function listableWhere(now: Date): Prisma.FollowUpDraftWhereInput {
-  return { OR: [actionablePendingWhere(now), { status: "SENT", ...DELIVERED_WHERE, ...liveSlotOfferWhere(now) }] };
+function listableWhere(now: Date, kind?: FollowUpDraftKind): Prisma.FollowUpDraftWhereInput {
+  const pending = actionablePendingWhere(now, kind);
+  if (kind && kind !== "SLOT_OFFER") return pending;
+  return { OR: [pending, { status: "SENT", ...DELIVERED_WHERE, ...liveSlotOfferWhere(now) }] };
 }
 
 // Send claims a draft (-> SENT) before the message leaves and records `sentAt`
@@ -308,7 +312,7 @@ export async function listPendingFollowUpDrafts(
   const perKind = await Promise.all(
     Object.values(FollowUpDraftKindEnum).map((kind) =>
       prisma.followUpDraft.findMany({
-        where: { businessId, kind, ...listableWhere(now) },
+        where: { businessId, kind, ...listableWhere(now, kind) },
         include: {
           client: { select: { name: true } },
           appointment: { select: { startAt: true, title: true } },
