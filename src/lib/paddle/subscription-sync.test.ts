@@ -3,9 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), updateMany: vi.fn(), cancelPaddleSubscription: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: { business: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } } }));
-vi.mock("./paddle-api", () => ({ cancelPaddleSubscription: mocks.cancelPaddleSubscription }));
+vi.mock("./paddle-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./paddle-api")>()),
+  cancelPaddleSubscription: mocks.cancelPaddleSubscription,
+}));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
+import { logger } from "@/lib/logger";
+
+import { PaddleApiError } from "./paddle-api";
 import type { PaddleConfig } from "./paddle-config";
 import type { PaddleSubscription } from "./subscription-snapshot";
 import { applySubscriptionSnapshot } from "./subscription-sync";
@@ -150,6 +156,16 @@ describe("applySubscriptionSnapshot", () => {
     mocks.cancelPaddleSubscription.mockRejectedValue(new Error("Paddle is down"));
 
     expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
+  });
+
+  it("treats a refused subscription Paddle has already cancelled as done, not an error", async () => {
+    mocks.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...CLINIC, paddleSubscriptionId: "sub_old", subscriptionStatus: "ACTIVE" });
+    mocks.cancelPaddleSubscription.mockRejectedValue(new PaddleApiError(400, "subscription_update_when_canceled"));
+
+    expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it("refuses a second free trial for a clinic that has had its trial", async () => {

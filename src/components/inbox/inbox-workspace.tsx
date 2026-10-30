@@ -217,9 +217,10 @@ export function InboxWorkspace({
         return;
       }
 
-      const result = await refreshInboxAction();
+      // A failed poll (offline, a redeploy) is skipped; the next tick retries.
+      const result = await refreshInboxAction().catch(() => null);
 
-      if (!result.ok || !result.view || cancelled) {
+      if (!result?.ok || !result.view || cancelled) {
         return;
       }
 

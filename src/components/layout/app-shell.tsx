@@ -254,9 +254,10 @@ export function AppShell({
     // hidden-tab timers on their own): the "(3)" tab-title count is meant to
     // be seen from another tab, so it has to keep updating there.
     async function refreshNotifications() {
-      const result = await refreshWorkspaceNotificationsAction();
+      // A failed poll (offline, a redeploy) is skipped; the next tick retries.
+      const result = await refreshWorkspaceNotificationsAction().catch(() => null);
 
-      if (!result.ok || !result.view || cancelled) {
+      if (!result?.ok || !result.view || cancelled) {
         return;
       }
 

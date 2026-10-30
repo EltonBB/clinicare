@@ -19,18 +19,24 @@ export function EmailVerificationWatcher({
     }
 
     const interval = window.setInterval(async () => {
-      const response = await fetch(
-        `/api/auth/email-verification-status?ticket=${encodeURIComponent(ticket)}`,
-        {
-          cache: "no-store",
-        }
-      );
+      let payload: { verified?: boolean };
+      try {
+        const response = await fetch(
+          `/api/auth/email-verification-status?ticket=${encodeURIComponent(ticket)}`,
+          {
+            cache: "no-store",
+          }
+        );
 
-      if (!response.ok) {
+        if (!response.ok) {
+          return;
+        }
+
+        payload = (await response.json()) as { verified?: boolean };
+      } catch {
+        // ignore a failed poll (offline) — the next tick retries
         return;
       }
-
-      const payload = (await response.json()) as { verified?: boolean };
 
       if (!payload.verified || hasRedirected.current) {
         return;
