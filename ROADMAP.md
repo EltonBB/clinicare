@@ -46,7 +46,7 @@
 `sendMessage(channel, payload)` + a thin adapter layer (`lib/messaging/`), with minimum-necessary content baked in (name + time; no clinical detail over SMS/WhatsApp). Baileys is the live adapter.
 
 ### Step 2 — Reminder automations ✅ *(built)*
-`lib/reminders.ts` + `/api/cron/reminders`, wired to the messaging layer and to the existing reminder settings (timing, template). Hourly cron + distributed lock + fair rotation shipped 2026-08-28/29.
+`lib/reminders.ts` + `/api/cron/reminders`, wired to the messaging layer and to the existing reminder settings (timing, template). Distributed lock + fair rotation shipped 2026-08-28/29; the cron runs every 5 minutes since 2026-10-18, and every automatic patient message is now managed from the Automations page.
 
 ### Step 3 — Patient-data safeguards *(build alongside product work, not gated on a regime)*
 - Audit logging of patient-data access (who viewed which record, when).
@@ -56,7 +56,7 @@
 
 ### Step 4 — Finish the product on the current stack
 - ~~Billing (Paddle) behind `/checkout`: checkout session, webhooks, plan activation.~~ Built 2026-10-26 (sandbox-tested before live; spec `docs/superpowers/specs/2026-10-26-paddle-billing-design.md`).
-- Reusable signed-in test session (unblocks signed-in QA — long-standing blocker).
+- ~~Reusable signed-in test session~~ Done: a dedicated test workspace account is used for signed-in QA.
 - UI/UX + performance polish over the completed surface.
 
 ### Step 5 — HIPAA compliance gate *(paused with the US market — resume only if it reopens)*
