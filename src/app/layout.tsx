@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { connection } from "next/server";
 
 import "./globals.css";
 
@@ -14,11 +15,15 @@ export const metadata: Metadata = {
   description: "Modern client and appointment management for service businesses.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Every page renders per request so its scripts carry the request's CSP nonce
+  // (proxy.ts); a prerendered page would have none and all its scripts would be blocked.
+  await connection();
+
   return (
     <html
       lang="en"
