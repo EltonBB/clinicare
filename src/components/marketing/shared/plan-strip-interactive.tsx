@@ -6,28 +6,41 @@ import { ArrowRight } from "lucide-react";
 
 import { type PaddleClientConfig, useLocalizedPrices } from "@/components/billing/use-paddle";
 import { TRIAL_DAYS } from "@/lib/checkout-state";
-import { proAddedFeatures, publicPlans, type PublicPlanKey } from "@/lib/public-plans";
+import { proAddedFeatures, publicPlans, type PublicPlan, type PublicPlanKey } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
 
 type Interval = "MONTH" | "YEAR";
+
+/** What the browser needs to show plan prices in the visitor's currency (see `planPricing`). */
+export type PlanPricing = {
+  paddle: PaddleClientConfig | null;
+  previewPriceIds: Record<PublicPlanKey, Record<Interval, string>> | null;
+};
+
+/**
+ * A plan's price in the visitor's currency once Paddle answers, its list price
+ * until then (or when billing is off). Every caller asks for the same four
+ * prices, so a page showing plans in several places makes one request.
+ */
+export function usePlanPrice({ paddle, previewPriceIds }: PlanPricing): (plan: PublicPlan, interval: Interval) => string {
+  const localized = useLocalizedPrices(
+    paddle,
+    previewPriceIds ? [previewPriceIds.basic.MONTH, previewPriceIds.basic.YEAR, previewPriceIds.pro.MONTH, previewPriceIds.pro.YEAR] : []
+  );
+  return (plan, interval) => {
+    const previewId = previewPriceIds?.[plan.key][interval];
+    return (previewId && localized[previewId]) || (interval === "YEAR" ? plan.yearlyPrice : plan.price);
+  };
+}
 
 /**
  * Each half links to that plan's checkout (with the chosen billing period)
  * and lifts its own background on hover; Pro's half lists only what it adds
  * over Basic. Prices show in the visitor's currency once Paddle answers.
  */
-export function PlanStripInteractive({
-  paddle,
-  previewPriceIds,
-}: {
-  paddle: PaddleClientConfig | null;
-  previewPriceIds: Record<PublicPlanKey, Record<Interval, string>> | null;
-}) {
+export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
   const [interval, setBillingInterval] = useState<Interval>("MONTH");
-  const localized = useLocalizedPrices(
-    paddle,
-    previewPriceIds ? [previewPriceIds.basic.MONTH, previewPriceIds.basic.YEAR, previewPriceIds.pro.MONTH, previewPriceIds.pro.YEAR] : []
-  );
+  const priceOf = usePlanPrice(pricing);
   const [basic, pro] = publicPlans;
   const halves = [
     { plan: basic, points: basic.features.slice(0, 4), lead: "Includes" },
@@ -57,8 +70,7 @@ export function PlanStripInteractive({
 
       <div className="grid overflow-hidden rounded-(--radius-mkt-card) border border-border/70 bg-white md:grid-cols-2">
         {halves.map(({ plan, points, lead }, i) => {
-          const previewId = previewPriceIds?.[plan.key][interval];
-          const price = (previewId && localized[previewId]) || (interval === "YEAR" ? plan.yearlyPrice : plan.price);
+          const price = priceOf(plan, interval);
           return (
             <Link
               key={plan.key}
