@@ -5,6 +5,7 @@ import { Check, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { publicPlans } from "@/lib/public-plans";
+import { type PlanPricing, usePlanPrice } from "../shared/plan-strip-interactive";
 
 type Cell = true | false | string;
 const GROUPS: { title: string; rows: [string, Cell, Cell][] }[] = [
@@ -63,8 +64,9 @@ function Value({ value, pro }: { value: Cell; pro: boolean }) {
  * support). Pointing anywhere in a plan's column lights that whole column, so
  * the eye can read one plan top to bottom.
  */
-export function CompareTable() {
+export function CompareTable({ pricing }: { pricing: PlanPricing }) {
   const [col, setCol] = useState<0 | 1 | null>(null);
+  const priceOf = usePlanPrice(pricing);
   const [basic, pro] = publicPlans;
 
   const colTint = (c: 0 | 1) => (col === c ? "bg-[var(--brand-wash)]/70" : "");
@@ -83,7 +85,7 @@ export function CompareTable() {
           >
             <p className={cn("text-base font-semibold", c === 1 ? "text-primary" : "text-[var(--brand-ink)]")}>{plan.name}</p>
             <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-              {plan.price} {plan.cadence}
+              {priceOf(plan, "MONTH")} {plan.cadence}
             </p>
           </div>
         ))}

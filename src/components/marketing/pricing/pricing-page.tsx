@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { MarketingShell } from "../shell/marketing-shell";
-import { PlanStrip } from "../shared/plan-strip";
+import { PlanStrip, planPricing } from "../shared/plan-strip";
 import { SectionHeader } from "../shared/section-header";
 import { Reveal } from "../motion/reveal";
 import { Highlight, WordReveal } from "../motion/word-reveal";
@@ -76,7 +76,7 @@ export function PricingPageContent() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <SectionHeader className="mb-12" lead="Not sure which one?" rest="Three questions settle it." />
           <Reveal>
-            <PlanFinder />
+            <PlanFinder pricing={planPricing()} />
           </Reveal>
         </div>
       </section>
@@ -85,7 +85,7 @@ export function PricingPageContent() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <SectionHeader className="mb-12" lead="Everything in Basic," rest="and more in Pro." />
           <Reveal>
-            <CompareTable />
+            <CompareTable pricing={planPricing()} />
           </Reveal>
         </div>
       </section>

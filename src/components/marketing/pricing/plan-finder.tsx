@@ -7,6 +7,7 @@ import { ArrowRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { publicPlans } from "@/lib/public-plans";
+import { type PlanPricing, usePlanPrice } from "../shared/plan-strip-interactive";
 import { EASE } from "../motion/ease";
 
 // Each question maps to a real Pro-only line on the plan cards.
@@ -23,8 +24,9 @@ type Key = (typeof QUESTIONS)[number]["key"];
  * includes. The verdict card on the right updates as answers change and says
  * exactly why. No answers needed for Basic; any Pro need tips it to Pro.
  */
-export function PlanFinder() {
+export function PlanFinder({ pricing }: { pricing: PlanPricing }) {
   const [yes, setYes] = useState<Set<Key>>(new Set());
+  const priceOf = usePlanPrice(pricing);
   const pro = yes.size > 0;
   const plan = publicPlans.find((p) => p.key === (pro ? "pro" : "basic"))!;
   const reasons = QUESTIONS.filter((q) => yes.has(q.key)).map((q) => q.because);
@@ -95,7 +97,7 @@ export function PlanFinder() {
               <p className="mt-2 flex items-baseline gap-3">
                 <span className="text-4xl font-semibold tracking-tight">{plan.name}</span>
                 <span className={cn("text-lg tabular-nums", pro ? "text-white/70" : "text-muted-foreground")}>
-                  {plan.price} {plan.cadence}
+                  {priceOf(plan, "MONTH")} {plan.cadence}
                 </span>
               </p>
             </m.div>

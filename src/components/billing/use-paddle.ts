@@ -145,6 +145,10 @@ export function trimWholeAmount(formatted: string): string {
   return formatted.replace(/([.,])00(?=\D*$)/, "");
 }
 
+// One PricePreview per set of price ids, shared by every component on the page
+// that shows them (the pricing page shows the same plans three times).
+const previews = new Map<string, Promise<Record<string, string>>>();
+
 /**
  * The visitor's local price for each price id (Paddle localises from their IP,
  * tax included), keyed by price id. Empty until Paddle answers, so callers show
@@ -157,13 +161,22 @@ export function useLocalizedPrices(config: PaddleClientConfig | null, priceIds: 
   useEffect(() => {
     if (!paddle || !key) return;
     let cancelled = false;
-    paddle
-      .PricePreview({ items: key.split(",").map((priceId) => ({ priceId, quantity: 1 })) })
-      .then((result) => {
-        if (cancelled) return;
-        const next: Record<string, string> = {};
-        for (const item of result.data.details.lineItems) next[item.price.id] = trimWholeAmount(item.formattedTotals.total);
-        setPrices(next);
+    let preview = previews.get(key);
+    if (!preview) {
+      preview = paddle
+        .PricePreview({ items: key.split(",").map((priceId) => ({ priceId, quantity: 1 })) })
+        .then((result) => {
+          const next: Record<string, string> = {};
+          for (const item of result.data.details.lineItems) next[item.price.id] = trimWholeAmount(item.formattedTotals.total);
+          return next;
+        });
+      previews.set(key, preview);
+      // A failed preview may be retried by the next component that asks.
+      preview.catch(() => previews.delete(key));
+    }
+    preview
+      .then((next) => {
+        if (!cancelled) setPrices(next);
       })
       .catch(() => {
         // Keep the list prices.
