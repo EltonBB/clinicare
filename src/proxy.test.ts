@@ -35,3 +35,32 @@ describe("mobile proxy", () => {
     expect(updateSession).toHaveBeenCalledOnce();
   });
 });
+
+describe("content security policy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    updateSession.mockImplementation(async (request: NextRequest) =>
+      NextResponse.next({ request: { headers: request.headers } }),
+    );
+  });
+
+  it("gives every page a fresh nonce and hands the same policy to the page", async () => {
+    const policies = [];
+    for (const path of ["/clients/abc", "/clients/abc", "/", "/login", "/checkout"]) {
+      const response = await proxy(new NextRequest(`https://example.test${path}`));
+      const policy = response.headers.get("Content-Security-Policy") ?? "";
+      expect(policy).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+      expect(policy).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+      const forwarded: NextRequest = updateSession.mock.calls.at(-1)![0];
+      expect(forwarded.headers.get("Content-Security-Policy")).toBe(policy);
+      policies.push(policy);
+    }
+    expect(new Set(policies).size).toBe(policies.length);
+  });
+
+  it("keeps the policy on a sign-in redirect", async () => {
+    updateSession.mockResolvedValue(NextResponse.redirect("https://example.test/login"));
+    const response = await proxy(new NextRequest("https://example.test/dashboard"));
+    expect(response.headers.get("Content-Security-Policy")).toContain("'strict-dynamic'");
+  });
+});

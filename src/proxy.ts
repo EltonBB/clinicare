@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { contentSecurityPolicy, createNonce } from "@/lib/content-security-policy";
 import { updateSession } from "@/utils/supabase/middleware";
 
 // The mobile API authenticates with device tokens, not browser cookies, so it
@@ -38,7 +39,14 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  return updateSession(request);
+  // Next reads the nonce from the request's CSP and stamps it on its scripts;
+  // the session middleware forwards these request headers to the page.
+  const policy = contentSecurityPolicy(createNonce());
+  request.headers.set("Content-Security-Policy", policy);
+
+  const response = await updateSession(request);
+  response.headers.set("Content-Security-Policy", policy);
+  return response;
 }
 
 export const config = {
