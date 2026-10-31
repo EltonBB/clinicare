@@ -1,7 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
-import { intlLocale, type Locale } from "@/i18n/config"
+import type { Locale } from "@/i18n/config"
+import { numberFormatter } from "@/i18n/format"
 import { normalizeCurrency } from "@/lib/currency"
 
 export function cn(...inputs: ClassValue[]) {
@@ -89,7 +90,7 @@ export function formatCurrency(
   // entry form.
   const digits = options?.whole ? 0 : 2
 
-  return new Intl.NumberFormat(intlLocale(options?.locale ?? "en"), {
+  return numberFormatter(options?.locale ?? "en", {
     style: "currency",
     currency: normalizeCurrency(currency),
     minimumFractionDigits: digits,

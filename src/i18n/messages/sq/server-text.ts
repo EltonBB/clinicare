@@ -65,4 +65,47 @@ export const serverText: Record<string, string> = {
   "Your session expired. Log in again to upload files.": "Sesioni juaj skadoi. Hyni përsëri për të ngarkuar skedarë.",
   "We couldn't upload this file. Try again.": "Nuk mundëm ta ngarkonim këtë skedar. Provoni përsëri.",
   "We couldn't prepare this file for preview. Try again.": "Nuk mundëm ta përgatitnim këtë skedar për shikim. Provoni përsëri.",
+
+  // Calendar, bookings and the waiting list
+  "A cancelled appointment can't be marked as a no-show.": "Një termin i anuluar nuk mund të shënohet si mosparaqitje.",
+  "Appointment not found in this clinic workspace.": "Termini nuk u gjet në këtë klinikë.",
+  "Appointment not found.": "Termini nuk u gjet.",
+  "Check the appointment details and try again.": "Kontrolloni të dhënat e terminit dhe provoni përsëri.",
+  "Choose a From time earlier than the To time.": "Zgjidhni një orë „Nga” më të hershme se ora „Deri”.",
+  "Choose a client and enter a valid service before saving.": "Zgjidhni një pacient dhe shkruani një shërbim të vlefshëm para se të ruani.",
+  "Choose a client and valid start/end time before saving.": "Zgjidhni një pacient dhe një orë të vlefshme fillimi dhe mbarimi para se të ruani.",
+  "Choose a valid earliest date.": "Zgjidhni një datë më të hershme të vlefshme.",
+  "Choose a valid month.": "Zgjidhni një muaj të vlefshëm.",
+  "Choose an active client. Archived and inactive clients can't join the waiting list.":
+    "Zgjidhni një pacient aktiv. Pacientët e arkivuar dhe joaktivë nuk mund të shtohen në listën e pritjes.",
+  "Choose an active staff member. Inactive staff can't be requested on the waiting list.":
+    "Zgjidhni një anëtar aktiv të stafit. Stafi joaktiv nuk mund të kërkohet në listën e pritjes.",
+  "Couldn't remove this entry. Try again.": "Nuk mundëm ta hiqnim këtë hyrje. Provoni përsëri.",
+  "No-show tracking is part of the Pro plan.": "Ndjekja e mosparaqitjeve është pjesë e planit Pro.",
+  "The selected client does not belong to this clinic workspace.": "Pacienti i zgjedhur nuk i përket kësaj klinike.",
+  "The selected client or staff member no longer exists. Refresh and try again.":
+    "Pacienti ose anëtari i stafit i zgjedhur nuk ekziston më. Rifreskoni faqen dhe provoni përsëri.",
+  "The selected staff member does not belong to this clinic workspace.": "Anëtari i zgjedhur i stafit nuk i përket kësaj klinike.",
+  "The waiting list is full. Remove an entry before adding another.": "Lista e pritjes është plot. Hiqni një hyrje para se të shtoni një tjetër.",
+  "This appointment is outside your operating hours. Choose a time inside the clinic schedule.":
+    "Ky termin është jashtë orarit të punës. Zgjidhni një orë brenda orarit të klinikës.",
+  "This appointment was changed elsewhere. Refresh and try again.": "Ky termin u ndryshua diku tjetër. Rifreskoni faqen dhe provoni përsëri.",
+  "This time is already booked or blocked. Choose a different time.": "Kjo orë është e zënë ose e bllokuar. Zgjidhni një orë tjetër.",
+  "This visit is already completed and can't be cancelled.": "Kjo vizitë ka përfunduar tashmë dhe nuk mund të anulohet.",
+  "This visit is recorded as a no-show and can't be cancelled. Mark it as attended first if the client came.":
+    "Kjo vizitë është shënuar si mosparaqitje dhe nuk mund të anulohet. Nëse pacienti erdhi, shënojeni më parë si të paraqitur.",
+  "This waiting-list entry was already removed.": "Kjo hyrje në listën e pritjes është hequr tashmë.",
+  "Waiting list is part of the Pro plan.": "Lista e pritjes është pjesë e planit Pro.",
+  "We couldn't save the appointment.": "Nuk mundëm ta ruanim terminin.",
+  "You can only mark an appointment as a no-show after it has started.": "Një termin mund të shënohet si mosparaqitje vetëm pasi të ketë filluar.",
+  "Your session expired. Log in again to manage appointments.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar terminet.",
+  "Your session expired. Log in again to manage the waiting list.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar listën e pritjes.",
+  "Your session expired. Log in again to view the calendar.": "Sesioni juaj skadoi. Hyni përsëri për të parë kalendarin.",
+
+  // No-show risk reasons (lib/no-show-risk.ts)
+  "Missed a recent appointment": "Ka humbur një termin së fundmi",
+  "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",
+  "Hasn't confirmed the reminder": "Nuk e ka konfirmuar kujtesën",
+  "Booked far in advance": "Caktuar shumë herët",
+  "Not enough visit history yet": "Ende pa historik të mjaftueshëm vizitash",
 };

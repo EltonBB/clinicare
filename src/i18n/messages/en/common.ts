@@ -3,6 +3,11 @@ export const common = {
     label: "Language",
   },
   logOut: "Log out",
+  locked: {
+    title: "This workspace is read-only",
+    description: "Its plan has ended, so nothing can be added or changed. Renew the plan to keep working.",
+    renew: "Renew plan",
+  },
   close: "Close",
   cancel: "Cancel",
   save: "Save",

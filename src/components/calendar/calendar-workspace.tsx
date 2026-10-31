@@ -59,6 +59,8 @@ import type {
   CalendarViewModel,
 } from "@/lib/calendar";
 import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
+import { useI18n, useServerText } from "@/i18n/client";
+import { dateRangeText, dateText, fmt } from "@/i18n/format";
 
 type CalendarView = "day" | "week" | "month";
 
@@ -165,6 +167,7 @@ function EventPill({
   /** Only rendered in the detailed (Day view) row — never fetched for month/week pills. */
   risk?: NoShowRiskAssessment;
 }) {
+  const { m } = useI18n();
   return (
     <Link
       href={`/calendar/${appointment.id}/edit`}
@@ -213,8 +216,8 @@ function EventPill({
           <span className="hidden min-w-0 flex-[2] truncate opacity-80 sm:block">
             {appointment.service} · {appointment.staffName}
           </span>
-          <span className="hidden w-20 shrink-0 text-right text-xs font-semibold capitalize opacity-80 sm:block">
-            {appointment.status}
+          <span className="hidden w-24 shrink-0 text-right text-xs font-semibold opacity-80 sm:block">
+            {m.common.appointmentStatus[appointment.status]}
           </span>
           <NoShowRiskBadge risk={risk} expiresAtIso={appointmentStartIso(appointment)} />
         </>
@@ -305,6 +308,7 @@ function DayColumn({
 }) {
   const columnRef = useRef<HTMLDivElement>(null);
   const [slots, setSlots] = useState(DAY_COLUMN_FALLBACK_SLOTS);
+  const t = useI18n().m.calendar;
 
   useEffect(() => {
     const column = columnRef.current;
@@ -362,10 +366,10 @@ function DayColumn({
         <button
           type="button"
           onClick={onOpenDay}
-          aria-label={`${hiddenCount} more calendar entries — open this day`}
+          aria-label={fmt(t.moreEntriesOpen, { count: hiddenCount })}
           className="flex shrink-0 items-center justify-center rounded-(--radius-tile) px-3 py-2.5 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         >
-          +{hiddenCount} more
+          {fmt(t.moreButton, { count: hiddenCount })}
         </button>
       ) : null}
       {isClosed ? (
@@ -373,7 +377,7 @@ function DayColumn({
           data-day-footer=""
           className={cn(footerClasses, "text-muted-foreground", !isEmpty && "mt-auto")}
         >
-          Clinic closed
+          {t.clinicClosed}
         </p>
       ) : (
         <HoverPrefetchLink
@@ -386,7 +390,7 @@ function DayColumn({
           )}
         >
           <Plus className="size-3.5" />
-          Add
+          {t.add}
         </HoverPrefetchLink>
       )}
     </div>
@@ -437,6 +441,7 @@ function DatePickerPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(activeDate));
+  const t = useI18n().m.calendar;
   const containerRef = useRef<HTMLDivElement>(null);
 
   useDismissOnOutsideOrEscape(containerRef, () => setOpen(false), { active: open });
@@ -445,7 +450,7 @@ function DatePickerPopover({
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        aria-label="Jump to date"
+        aria-label={t.jumpToDate}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => {
@@ -462,7 +467,7 @@ function DatePickerPopover({
       {open ? (
         <div
           role="dialog"
-          aria-label="Choose a date"
+          aria-label={t.chooseDate}
           className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
         >
           <MonthGrid
@@ -488,7 +493,7 @@ function DatePickerPopover({
               }}
               className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
-              Go to today
+              {t.goToToday}
             </button>
           </div>
         </div>
@@ -497,7 +502,7 @@ function DatePickerPopover({
   );
 }
 
-type AttendanceAction = { attended: boolean; label: string };
+type AttendanceAction = { attended: boolean };
 
 // Anchored to the clicked chip's bounding rect (not a portal) so it renders
 // above the surrounding surface-card's overflow-clip without needing to
@@ -522,6 +527,9 @@ function AppointmentQuickView({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  const { locale, m } = useI18n();
+  const t = m.calendar.quickView;
+  const serverText = useServerText();
   const [attendanceError, setAttendanceError] = useState("");
   const riskExpiresAtIso = appointmentStartIso(appointment);
   // Same value NoShowRiskBadge derives internally, reused here so the "Risk"
@@ -572,19 +580,21 @@ function AppointmentQuickView({
     <div
       ref={measureRef}
       role="dialog"
-      aria-label={`${appointment.clientName} appointment details`}
+      aria-label={fmt(t.label, { name: appointment.clientName })}
       className="state-pop fixed z-50 origin-top rounded-(--radius-card) border border-border/80 bg-white p-3.5 shadow-(--shadow-pop)"
       style={{ left, top, width }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{appointment.clientName}</p>
-          <p className="text-xs text-muted-foreground">{format(parseISO(appointment.date), "EEEE, MMMM d")}</p>
+          <p className="text-xs text-muted-foreground">
+            {dateText(locale, parseISO(appointment.date), { weekday: "long", month: "long", day: "numeric" })}
+          </p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t.close}
           className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground"
         >
           <X className="size-3.5" />
@@ -592,30 +602,30 @@ function AppointmentQuickView({
       </div>
       <div className="mt-2.5 space-y-1.5 text-sm">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Time</span>
+          <span className="text-muted-foreground">{t.time}</span>
           <span className="font-medium text-foreground">
             {appointment.startTime} – {appointment.endTime}
           </span>
         </div>
         {appointment.service ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">Service</span>
+            <span className="text-muted-foreground">{t.service}</span>
             <span className="truncate font-medium text-foreground">{appointment.service}</span>
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Doctor</span>
+          <span className="text-muted-foreground">{t.doctor}</span>
           <span className="truncate font-medium text-foreground">{appointment.staffName}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Status</span>
-          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize", monthChipClasses[appointment.status])}>
-            {appointment.status}
+          <span className="text-muted-foreground">{t.status}</span>
+          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", monthChipClasses[appointment.status])}>
+            {m.common.appointmentStatus[appointment.status]}
           </span>
         </div>
         {qualifyingRisk ? (
           <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">Risk</span>
+            <span className="text-muted-foreground">{t.risk}</span>
             <NoShowRiskBadge risk={risk} expiresAtIso={riskExpiresAtIso} />
           </div>
         ) : null}
@@ -628,19 +638,19 @@ function AppointmentQuickView({
             onClick={() => void handleAttendance(attendanceAction.attended)}
             className="flex h-8 w-full items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] disabled:opacity-60"
           >
-            {attendanceAction.label}
+            {attendanceAction.attended ? t.markAttended : t.markNoShow}
           </button>
         ) : null}
         {attendanceError ? (
           <p role="alert" className="text-xs text-destructive">
-            {attendanceError}
+            {serverText(attendanceError)}
           </p>
         ) : null}
         <Link
           href={`/calendar/${appointment.id}/edit`}
           className="flex h-8 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white text-sm font-semibold text-foreground transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
         >
-          View appointment
+          {t.view}
         </Link>
       </div>
     </div>
@@ -657,6 +667,8 @@ export function CalendarWorkspace({
   waitlistEntries,
 }: CalendarWorkspaceProps) {
   const [view, setView] = useState<CalendarView>("week");
+  const { locale, m } = useI18n();
+  const t = m.calendar;
   // A phone can't fit seven week columns (Week view scrolls sideways there), so
   // it opens on Day view. Set after mount, since the server can't know the
   // screen; only the starting view, never a choice the user makes afterwards.
@@ -799,12 +811,10 @@ export function CalendarWorkspace({
   const weekEnd = currentWeek[6];
   const rangeLabel =
     view === "day"
-      ? format(activeDate, "EEEE, MMMM d")
+      ? dateText(locale, activeDate, { weekday: "long", month: "long", day: "numeric" })
       : view === "month"
-        ? format(activeDate, "MMMM yyyy")
-        : isSameMonth(weekStart, weekEnd)
-          ? `${format(weekStart, "MMM d")} – ${format(weekEnd, "d, yyyy")}`
-          : `${format(weekStart, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`;
+        ? dateText(locale, activeDate, { month: "long", year: "numeric" })
+        : dateRangeText(locale, weekStart, weekEnd, { month: "short", day: "numeric", year: "numeric" });
   // Remounts the grid subtree on a real navigation (view switch or jumping to
   // a different day/week/month) so per-view local state resets cleanly —
   // just the anchor date for each view, not the full visible-date list.
@@ -902,8 +912,8 @@ export function CalendarWorkspace({
     }
 
     return appointment.status === "no-show"
-      ? { attended: true, label: "Mark as attended" }
-      : { attended: false, label: "Mark as no-show" };
+      ? { attended: true }
+      : { attended: false };
   }
 
   async function recordAttendance(appointment: CalendarAppointment, attended: boolean) {
@@ -914,13 +924,13 @@ export function CalendarWorkspace({
     } catch {
       // A rejected server action (network drop, 5xx, deploy skew) — a plain
       // message, never the raw error, so the popover can show it and re-enable.
-      return "We couldn't update this appointment. Try again.";
+      return t.quickView.updateFailed;
     }
 
     const status = result.status;
 
     if (!result.ok || !status) {
-      return result.error ?? "We couldn't update this appointment.";
+      return result.error ?? t.quickView.updateFailedShort;
     }
 
     // Every upcoming appointment for this client was scored from history that
@@ -971,7 +981,7 @@ export function CalendarWorkspace({
 
   return (
     <WorkspacePage size="wide">
-      <WorkspaceHeader title="Calendar" />
+      <WorkspaceHeader title={t.title} />
 
       <div className="section-reveal relative z-30 flex flex-wrap items-center gap-3 py-1">
         <div className="inline-flex items-center gap-1.5">
@@ -981,12 +991,12 @@ export function CalendarWorkspace({
               type="button"
               onClick={() => startTransition(() => setView(option))}
               className={cn(
-                "h-8 rounded-(--radius-tile) border border-transparent px-3.5 text-sm font-semibold capitalize text-muted-foreground transition-[background-color,border-color,color] duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+                "h-8 rounded-(--radius-tile) border border-transparent px-3.5 text-sm font-semibold text-muted-foreground transition-[background-color,border-color,color] duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
                 view === option &&
                   "border-primary/40 text-primary hover:bg-transparent hover:text-primary"
               )}
             >
-              {option}
+              {t.views[option]}
             </button>
           ))}
         </div>
@@ -996,7 +1006,7 @@ export function CalendarWorkspace({
           onClick={() => setActiveDate(todayDate)}
           className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
         >
-          Today
+          {t.today}
         </button>
 
         {/* flex-wrap, not a fixed one-line row — the date label, date-jump
@@ -1007,7 +1017,7 @@ export function CalendarWorkspace({
         <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
           {isLoadingMonths ? (
             <span role="status" className="text-sm text-muted-foreground">
-              Loading…
+              {t.loading}
             </span>
           ) : null}
           <span className="text-[17px] font-semibold tracking-tight text-foreground">
@@ -1028,7 +1038,7 @@ export function CalendarWorkspace({
               className={cn(buttonVariants({ variant: "outline" }), "h-9 rounded-(--radius-card) px-3.5")}
             >
               <Clock className="size-4" />
-              Waiting list
+              {t.waitingList}
             </button>
           ) : null}
 
@@ -1041,7 +1051,7 @@ export function CalendarWorkspace({
               )}
             >
               <Plus className="size-4" />
-              New appointment
+              {t.newAppointment}
             </Link>
           ) : (
             <Link
@@ -1052,7 +1062,7 @@ export function CalendarWorkspace({
               )}
             >
               <UsersRound className="size-4" />
-              Add a client
+              {t.addClient}
             </Link>
           )}
         </div>
@@ -1065,16 +1075,14 @@ export function CalendarWorkspace({
             className="flex items-center justify-between gap-3 rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive"
           >
             <span>
-              {sessionExpired
-                ? "Your session expired, so these dates couldn't load."
-                : "We couldn't load these dates, so some appointments may be missing."}
+              {sessionExpired ? t.sessionExpired : t.loadFailed}
             </span>
             {sessionExpired ? (
               <Link
                 href="/login"
                 className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
               >
-                Log in again
+                {t.logInAgain}
               </Link>
             ) : (
               <button
@@ -1082,7 +1090,7 @@ export function CalendarWorkspace({
                 onClick={retryLoading}
                 className="shrink-0 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
               >
-                Try again
+                {t.tryAgain}
               </button>
             )}
           </div>
@@ -1093,16 +1101,16 @@ export function CalendarWorkspace({
                 cells={["identity", "text", "pill"]}
                 gridClassName="lg:grid-cols-[minmax(0,1fr)_120px_100px]"
                 className="pt-2"
-                title="Add a client before booking"
-                description="Every appointment belongs to a client, so reminders reach the right person."
+                title={t.firstRun.title}
+                description={t.firstRun.description}
                 actionHref="/clients/new?next=calendar"
-                actionLabel="Add a client"
+                actionLabel={t.addClient}
               />
             </div>
           ) : view === "month" ? (
             <div key={gridKey} className={calendarGridHeightClass}>
               <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold caps-label text-muted-foreground">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+                {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const).map((day) => m.common.weekdays[day].short).map((label) => (
                   <div key={label} className="px-4 py-3">
                     {label}
                   </div>
@@ -1133,7 +1141,7 @@ export function CalendarWorkspace({
                           setActiveDate(day);
                           startTransition(() => setView("day"));
                         }}
-                        aria-label={`Open ${format(day, "MMMM d")}`}
+                        aria-label={fmt(t.openDay, { date: dateText(locale, day, { month: "long", day: "numeric" }) })}
                         className="absolute inset-0 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
                       />
                       <div className="pointer-events-none relative px-2.5 py-2">
@@ -1152,11 +1160,11 @@ export function CalendarWorkspace({
                           </span>
                           {overflowCount > 0 ? (
                             <span
-                              aria-label={`${overflowCount} more calendar entries`}
+                              aria-label={fmt(t.moreEntries, { count: overflowCount })}
                               className="hidden shrink-0 text-[10px] font-semibold text-primary sm:block"
                             >
                               +{overflowCount}
-                              <span className="hidden lg:inline"> more</span>
+                              <span className="hidden lg:inline"> {t.more}</span>
                             </span>
                           ) : null}
                         </div>
@@ -1233,7 +1241,7 @@ export function CalendarWorkspace({
                           isToday && "text-primary"
                         )}
                       >
-                        {format(day, "EEE")}
+                        {dateText(locale, day, { weekday: "short" })}
                       </p>
                       <p className="mt-1.5">
                         <span

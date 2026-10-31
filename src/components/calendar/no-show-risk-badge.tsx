@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useI18n } from "@/i18n/client";
+import { useI18n, useServerText } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 
@@ -90,6 +90,7 @@ export function NoShowRiskBadge({
 }) {
   const qualifyingRisk = useShowNoShowRisk(risk, expiresAtIso);
   const labels = useI18n().m.common.noShowRisk;
+  const serverText = useServerText();
 
   if (!qualifyingRisk) {
     return null;
@@ -101,7 +102,7 @@ export function NoShowRiskBadge({
         "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium",
         LEVEL_STYLES[qualifyingRisk.level]
       )}
-      title={qualifyingRisk.reasons[0] ?? undefined}
+      title={serverText(qualifyingRisk.reasons[0]) ?? undefined}
     >
       {labels[qualifyingRisk.level]}
     </span>

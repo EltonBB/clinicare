@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { format } from "date-fns";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
 import { canUseWorkspace } from "@/lib/billing-access";
@@ -9,7 +11,9 @@ import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { isRealDateKey } from "@/lib/time-zone";
 
-export const metadata: Metadata = { title: "New appointment | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.calendar.meta.newBooking };
+}
 
 // A real calendar date: the shape alone lets 2026-02-31 through to be prefilled
 // (and then rolled over into March 3 when saved).
@@ -46,7 +50,7 @@ export default async function NewAppointmentPage({
   });
   if (!canUseWorkspace(business)) {
     return (
-      <CreatePageShell title="New booking">
+      <CreatePageShell title={(await getI18n()).m.calendar.form.newTitle}>
         <WorkspaceLockedState />
       </CreatePageShell>
     );
@@ -155,7 +159,8 @@ export default async function NewAppointmentPage({
   const initialDuration = parseDurationParam(requestedDuration);
 
   return (
-    <CreatePageShell title="New booking">
+    <WithMessages namespaces={["calendar"]}>
+    <CreatePageShell title={(await getI18n()).m.calendar.form.newTitle}>
       <NewAppointmentForm
         clients={pickerClients.map((client) => ({
           id: client.id,
@@ -178,5 +183,6 @@ export default async function NewAppointmentPage({
         initialDuration={initialDuration}
       />
     </CreatePageShell>
+    </WithMessages>
   );
 }

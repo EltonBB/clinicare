@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import type { CalendarSelectOption } from "@/lib/calendar";
 
@@ -25,6 +26,7 @@ export function ClientCombobox({
   initialOptions,
   className,
 }: ClientComboboxProps) {
+  const t = useI18n().m.calendar.combobox;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CalendarSelectOption[]>([]);
@@ -111,7 +113,7 @@ export function ClientCombobox({
         className="flex h-10 w-full items-center justify-between gap-2 rounded-(--radius-card) border border-border/80 bg-white px-3 text-left text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
       >
         <span className={cn("truncate", !selectedLabel && "text-muted-foreground")}>
-          {selectedLabel || "Select a client"}
+          {selectedLabel || t.placeholder}
         </span>
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </button>
@@ -124,22 +126,22 @@ export function ClientCombobox({
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name or phone"
+              placeholder={t.search}
               className="h-9 w-full bg-transparent text-sm outline-none"
             />
           </div>
           <ul
             role="listbox"
-            aria-label="Clients"
+            aria-label={t.label}
             className="max-h-56 overflow-auto py-1"
           >
             {options.length === 0 ? (
               <li className="px-3 py-2 text-sm text-muted-foreground">
                 {loading
-                  ? "Searching…"
+                  ? t.searching
                   : trimmedQuery.length >= 2
-                    ? "No matching clients"
-                    : "Type at least 2 characters to search"}
+                    ? t.noResults
+                    : t.minLength}
               </li>
             ) : (
               options.map((option) => (

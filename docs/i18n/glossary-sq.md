@@ -10,7 +10,7 @@ The terminology and tone every Albanian string in Vela follows: the website, the
 - **Sentence case** everywhere, like the English UI. Days and months are lowercase (*e hënë*, *tetor*).
 - **Always ë and ç**, never *e* / *c* as substitutes.
 - **Quotes:** „…“ in prose; none in labels.
-- **Numbers:** `1.234,50 €`, time `14:30` (24-hour), date `31 tetor 2026` / `31.10.2026`. Always through `Intl`, never hand-built.
+- **Numbers:** `12 345,50 €` (space between thousands, comma for decimals, four-digit numbers whole: `1234`), time `9:30` / `14:30` (24-hour), date `31 tetor 2026`. Always through `src/i18n/format.ts`, which matches the standard (CLDR) Albanian data and is tested against it.
 - **No em-dashes** in visible copy (as in English); use a comma, colon or a new sentence.
 - **Provider names never appear** (Baileys, Twilio, Supabase, OpenAI…), same as English.
 - **Brand and plan names stay as they are:** Vela, Vela Staff, Basic, Pro, WhatsApp, Paddle (only where English shows it).

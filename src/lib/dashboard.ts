@@ -1,7 +1,7 @@
 import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
-import { intlLocale, type Locale } from "@/i18n/config";
-import { fmt } from "@/i18n/format";
+import type { Locale } from "@/i18n/config";
+import { dateFormatter, fmt } from "@/i18n/format";
 import { messages, type Messages } from "@/i18n/messages";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
@@ -262,7 +262,7 @@ export function buildVisitsSummary(args: {
 
   // `zonedDayBefore` returns UTC-noon of the calendar date, so the weekday is
   // read in UTC — the clinic zone was already applied when picking the date.
-  const weekdayFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+  const weekdayFormatter = dateFormatter(locale, {
     weekday: "short",
     timeZone: "UTC",
   });

@@ -20,11 +20,6 @@ export const localeNames: Record<Locale, string> = {
   sq: "Shqip",
 };
 
-// The Intl locale behind dates, numbers and money: Albanian as used in Kosovo.
-export function intlLocale(locale: Locale) {
-  return locale === "sq" ? "sq-XK" : "en-US";
-}
-
 /**
  * The language for a request: a valid cookie wins, then the first language in
  * Accept-Language that Vela speaks, then English.

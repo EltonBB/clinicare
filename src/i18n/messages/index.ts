@@ -1,6 +1,7 @@
 import type { Locale } from "../config";
 import { auth as enAuth } from "./en/auth";
 import { billing as enBilling } from "./en/billing";
+import { calendar as enCalendar } from "./en/calendar";
 import { common as enCommon } from "./en/common";
 import { dashboard as enDashboard } from "./en/dashboard";
 import { legal as enLegal } from "./en/legal";
@@ -10,6 +11,7 @@ import { onboarding as enOnboarding } from "./en/onboarding";
 import { shell as enShell } from "./en/shell";
 import { auth as sqAuth } from "./sq/auth";
 import { billing as sqBilling } from "./sq/billing";
+import { calendar as sqCalendar } from "./sq/calendar";
 import { common as sqCommon } from "./sq/common";
 import { dashboard as sqDashboard } from "./sq/dashboard";
 import { legal as sqLegal } from "./sq/legal";
@@ -29,6 +31,7 @@ const en = {
   onboarding: enOnboarding,
   shell: enShell,
   dashboard: enDashboard,
+  calendar: enCalendar,
 };
 
 export type Messages = Translation<typeof en>;
@@ -45,6 +48,7 @@ const sq: Messages = {
   onboarding: sqOnboarding,
   shell: sqShell,
   dashboard: sqDashboard,
+  calendar: sqCalendar,
 };
 
 export const messages: Record<Locale, Messages> = { en, sq };

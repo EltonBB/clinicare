@@ -27,6 +27,10 @@ import {
   WorkspaceEmptyState,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
+import type { Locale } from "@/i18n/config";
+import { fmt, plural } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
 import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
 import type {
   CalendarAppointment,
@@ -66,19 +70,19 @@ function minutesToTime(minutes: number) {
 
 const timeSlots = Array.from({ length: 96 }, (_, index) => minutesToTime(index * 15));
 
-function formatDuration(minutes: number) {
+function formatDuration(minutes: number, t: Messages["calendar"]["form"], locale: Locale) {
   if (minutes < 60) {
-    return `${minutes} min`;
+    return fmt(t.minutes, { minutes });
   }
 
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
 
   if (rest === 0) {
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    return plural(t.hours, hours, locale);
   }
 
-  return `${hours} h ${rest} min`;
+  return fmt(t.hoursMinutes, { hours, minutes: rest });
 }
 
 export function NewAppointmentForm({
@@ -95,6 +99,9 @@ export function NewAppointmentForm({
   initialAppointment,
   canRecordNoShows = false,
 }: NewAppointmentFormProps) {
+  const { locale, m } = useI18n();
+  const t = m.calendar.form;
+  const serverText = useServerText();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -238,7 +245,7 @@ export function NewAppointmentForm({
       });
 
       if (!result.ok || !result.appointment) {
-        setError(result.error ?? `We couldn't ${isEditing ? "update" : "create"} this booking.`);
+        setError(result.error ?? (isEditing ? t.updateFailed : t.createFailed));
         return;
       }
 
@@ -257,7 +264,7 @@ export function NewAppointmentForm({
 
       if (!result.ok) {
         setConfirmingAction(null);
-        setError(result.error ?? "We couldn't cancel this booking.");
+        setError(result.error ?? t.cancelFailed);
         return;
       }
 
@@ -276,7 +283,7 @@ export function NewAppointmentForm({
 
       if (!result.ok) {
         setConfirmingAction(null);
-        setError(result.error ?? "We couldn't delete this booking.");
+        setError(result.error ?? t.deleteFailed);
         return;
       }
 
@@ -288,9 +295,9 @@ export function NewAppointmentForm({
     return (
       <WorkspaceEmptyState
         icon={UsersRound}
-        title="Add a client before booking"
+        title={m.calendar.firstRun.title}
         actionHref="/clients/new?next=calendar"
-        actionLabel="Add a client"
+        actionLabel={m.calendar.addClient}
       />
     );
   }
@@ -299,21 +306,21 @@ export function NewAppointmentForm({
     <form action={handleSubmit} className="space-y-3">
       <WorkspaceFormSection>
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Client" className={isEditing ? undefined : "sm:col-span-2"}>
+          <FormField label={t.client} className={isEditing ? undefined : "sm:col-span-2"}>
             <ClientCombobox value={clientId} onChange={setClientId} initialOptions={clients} />
           </FormField>
           {/* Status is only a choice when editing — a new booking is confirmed by
               default and moves to completed/cancelled later from the calendar. */}
           {isEditing ? (
             <FormSelect
-              label="Status"
+              label={t.status}
               value={status}
               options={editStatusOptions}
+              optionLabels={m.common.appointmentStatus}
               onChange={(value) => setStatus(value as CalendarAppointmentStatus)}
-              selectClassName="capitalize"
             />
           ) : null}
-          <FormField label="Service">
+          <FormField label={t.service}>
             <Input
               name="service"
               required
@@ -321,13 +328,13 @@ export function NewAppointmentForm({
               className={fieldInputClass}
             />
           </FormField>
-          <FormField label="Staff">
+          <FormField label={t.staff}>
             <select
               value={staffMemberId}
               onChange={(event) => setStaffMemberId(event.target.value)}
               className={fieldSelectClass}
             >
-              <option value="">{ownerName || "Workspace staff"}</option>
+              <option value="">{ownerName || t.workspaceStaff}</option>
               {staffMembers.map((member) => (
                 <option key={member.id} value={member.id}>
                   {member.name}
@@ -336,7 +343,7 @@ export function NewAppointmentForm({
             </select>
           </FormField>
           <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-3">
-            <FormField label="Date" className="col-span-2 sm:col-span-1">
+            <FormField label={t.date} className="col-span-2 sm:col-span-1">
               <Input
                 type="date"
                 value={date}
@@ -344,14 +351,14 @@ export function NewAppointmentForm({
                 className={fieldInputClass}
               />
             </FormField>
-            <FormField label="Time">
+            <FormField label={t.time}>
               <select
                 value={startOptions.includes(startTime) ? startTime : ""}
                 onChange={(event) => setStartTime(event.target.value)}
                 className={fieldSelectClass}
               >
                 <option value="" disabled>
-                  Select
+                  {t.select}
                 </option>
                 {startOptions.map((time) => (
                   <option key={time} value={time}>
@@ -360,7 +367,7 @@ export function NewAppointmentForm({
                 ))}
               </select>
             </FormField>
-            <FormField label="Duration">
+            <FormField label={t.duration}>
               <select
                 value={effectiveDuration}
                 onChange={(event) => setDuration(Number(event.target.value))}
@@ -368,26 +375,26 @@ export function NewAppointmentForm({
               >
                 {durationOptions.map((minutes) => (
                   <option key={minutes} value={minutes}>
-                    {formatDuration(minutes)}
+                    {formatDuration(minutes, t, locale)}
                   </option>
                 ))}
               </select>
             </FormField>
           </div>
           {selectedHours.enabled || !date ? null : (
-            <p className="text-sm text-destructive sm:col-span-2">The clinic is closed on this date.</p>
+            <p className="text-sm text-destructive sm:col-span-2">{t.closedDate}</p>
           )}
-          <FormField label="Notes" className="sm:col-span-2">
+          <FormField label={t.notes} className="sm:col-span-2">
             <Textarea name="notes" defaultValue={initialAppointment?.notes} className={fieldTextareaClass} />
           </FormField>
         </div>
       </WorkspaceFormSection>
 
-      <FormError message={error} />
+      <FormError message={serverText(error) ?? ""} />
 
       <FormActions
         cancelHref={initialAppointment ? `/calendar?date=${initialAppointment.date}` : "/calendar"}
-        submitLabel={isEditing ? "Save" : "Book appointment"}
+        submitLabel={isEditing ? t.save : t.book}
         isPending={isPending}
       >
         {initialAppointment ? (
@@ -401,10 +408,10 @@ export function NewAppointmentForm({
                 baselineStatus === "no-show"
               }
             >
-              Cancel booking
+              {t.cancelBooking}
             </DestructiveTextButton>
             <DestructiveTextButton onClick={() => setConfirmingAction("delete")} disabled={isPending}>
-              Delete booking
+              {t.deleteBooking}
             </DestructiveTextButton>
           </>
         ) : null}
@@ -413,13 +420,9 @@ export function NewAppointmentForm({
       <ConfirmDeleteDialog
         open={confirmingAction !== null}
         onOpenChange={(open) => setConfirmingAction(open ? confirmingAction : null)}
-        title={confirmingAction === "cancel" ? "Cancel this booking?" : "Delete this booking?"}
-        description={
-          confirmingAction === "cancel"
-            ? "The client will need to be rebooked. This can't be undone."
-            : "This permanently removes the booking record. This can't be undone."
-        }
-        confirmLabel={confirmingAction === "cancel" ? "Cancel booking" : "Delete"}
+        title={confirmingAction === "cancel" ? t.confirmCancelTitle : t.confirmDeleteTitle}
+        description={confirmingAction === "cancel" ? t.confirmCancelDetail : t.confirmDeleteDetail}
+        confirmLabel={confirmingAction === "cancel" ? t.cancelBooking : t.delete}
         isPending={isPending}
         onConfirm={confirmingAction === "cancel" ? cancelAppointment : deleteAppointment}
       />

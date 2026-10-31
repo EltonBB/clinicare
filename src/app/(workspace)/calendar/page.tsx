@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { CalendarWorkspace } from "@/components/calendar/calendar-workspace";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { prisma } from "@/lib/prisma";
 import { isProBusinessPlan } from "@/lib/billing";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
@@ -11,7 +13,9 @@ import { listWaitingEntries } from "@/lib/waitlist-data";
 import { redirect } from "next/navigation";
 import { isValid, parseISO } from "date-fns";
 
-export const metadata: Metadata = { title: "Calendar | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.calendar.meta.calendar };
+}
 
 // A real calendar date in `YYYY-MM-DD` form — the shape check alone lets through
 // impossible dates like 2026-02-31, which would crash the workspace.
@@ -95,7 +99,7 @@ export default async function CalendarPage({
     // Waiting list is Pro-only — skip the query entirely on Basic rather than
     // fetching rows nobody can see (same cost-avoidance discipline as the
     // no-show risk batch lookup).
-    isPro ? listWaitingEntries(business.id) : Promise.resolve([]),
+    isPro ? listWaitingEntries(business.id, new Date(), (await getI18n()).locale) : Promise.resolve([]),
   ]);
 
   // initialDate is validated above, so its month key is always valid.
@@ -116,14 +120,16 @@ export default async function CalendarPage({
   });
 
   return (
-    <CalendarWorkspace
-      initialView={initialView}
-      initialRange={month.range}
-      today={todayKey}
-      canRecordNoShows={isPro}
-      canViewNoShowRisk={isPro}
-      canManageWaitlist={isPro}
-      waitlistEntries={waitlistEntries}
-    />
+    <WithMessages namespaces={["calendar"]}>
+      <CalendarWorkspace
+        initialView={initialView}
+        initialRange={month.range}
+        today={todayKey}
+        canRecordNoShows={isPro}
+        canViewNoShowRisk={isPro}
+        canManageWaitlist={isPro}
+        waitlistEntries={waitlistEntries}
+      />
+    </WithMessages>
   );
 }

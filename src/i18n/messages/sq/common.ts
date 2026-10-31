@@ -6,6 +6,11 @@ export const common: Translation<typeof en> = {
     label: "Gjuha",
   },
   logOut: "Dil",
+  locked: {
+    title: "Kjo hapësirë pune është vetëm për lexim",
+    description: "Plani i saj ka mbaruar, ndaj nuk mund të shtohet ose ndryshohet asgjë. Rinovoni planin për të vazhduar punën.",
+    renew: "Rinovo planin",
+  },
   close: "Mbyll",
   cancel: "Anulo",
   save: "Ruaj",

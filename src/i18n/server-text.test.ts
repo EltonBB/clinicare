@@ -12,7 +12,22 @@ const COVERED = [
   "src/lib/business.ts",
   "src/app/onboarding/actions.ts",
   "src/lib/media-storage-client.ts",
+  "src/app/(workspace)/calendar/actions.ts",
+  "src/app/(workspace)/calendar/waitlist-actions.ts",
+  "src/lib/waitlist.ts",
+  "src/lib/appointments-shared.ts",
+  "src/lib/appointments.ts",
 ];
+
+// Literals in covered files that no screen shows: log lines, and the staff
+// app's push text (translated with the staff app).
+const NOT_SHOWN = new Set([
+  "Couldn't remove a waiting-list entry.",
+  "Failed to notify staff of an appointment change.",
+  "notifyStaffOfAppointmentChange called with a staffMemberId outside businessId.",
+  "Your clinic booked a new appointment for you.",
+  "Your clinic changed one of your appointments.",
+]);
 
 // Literal sentences an action shows a person: `error:`, `success:`, `message:`
 // (or assigned to such a variable), the constants they come from, `return`ed
@@ -27,7 +42,7 @@ function literals(file: string) {
 
 describe("server messages in Albanian", () => {
   it.each(COVERED)("%s: every literal message has a translation", (file) => {
-    const missing = literals(file).filter((text) => translateServerText(text, "sq") === text);
+    const missing = literals(file).filter((text) => !NOT_SHOWN.has(text) && translateServerText(text, "sq") === text);
     expect(missing).toEqual([]);
   });
 

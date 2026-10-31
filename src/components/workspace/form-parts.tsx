@@ -35,6 +35,7 @@ export function FormSelect({
   options,
   onChange,
   emptyLabel,
+  optionLabels,
   className,
   selectClassName,
 }: {
@@ -47,6 +48,8 @@ export function FormSelect({
   options: readonly string[];
   onChange?: (value: string) => void;
   emptyLabel?: string;
+  /** Display text per stored value (a translated status); the value is shown when missing. */
+  optionLabels?: Readonly<Record<string, string>>;
   className?: string;
   selectClassName?: string;
 }) {
@@ -67,7 +70,7 @@ export function FormSelect({
       >
         {choices.map((option) => (
           <option key={option || "unset"} value={option}>
-            {option || emptyLabel}
+            {optionLabels?.[option] ?? (option || emptyLabel)}
           </option>
         ))}
       </select>
