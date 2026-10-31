@@ -5,6 +5,8 @@ import { Check, ImagePlus, Loader2 } from "lucide-react";
 
 import { authFieldClassName } from "@/components/auth/field-styles";
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { businessTypes } from "@/lib/constants";
 import {
@@ -19,30 +21,21 @@ import { cn, firstDisplayName, getInitials } from "@/lib/utils";
 
 import { FieldLabel, NativeSelect, Toggle } from "./form-parts";
 
-const dayLabel = (day: WeekdayKey) => day[0].toUpperCase() + day.slice(1);
-
 const timeOptions = [
   "07:00", "08:00", "09:00", "10:00", "11:00", "12:00",
   "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00",
 ];
 
-const staffRoles = ["Specialist", "Manager", "Reception"];
-
-const stepDetails: Record<(typeof onboardingSteps)[number]["id"], string> = {
-  clinic: "Name, logo and brand color",
-  hours: "When patients can book",
-  team: "Who works day one",
-};
-
 // Emerald reads as a status color next to the workspace's green "completed" tone.
 const visibleAccentPresets = brandAccentPresets.filter((preset) => preset.id !== "emerald");
 
 export function WelcomeStep({ firstName }: { firstName: string }) {
+  const t = useI18n().m.onboarding;
   return (
     <div>
-      <p className="text-sm font-semibold text-primary">Welcome to Vela</p>
+      <p className="text-sm font-semibold text-primary">{t.welcome.eyebrow}</p>
       <h1 className="mt-3 text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-        Let&apos;s set up your clinic, <span className="text-muted-foreground">{firstName}.</span>
+        {t.welcome.title} <span className="text-muted-foreground">{firstName}.</span>
       </h1>
       <ol className="mt-8 space-y-1">
         {onboardingSteps.map((item, index) => (
@@ -51,13 +44,13 @@ export function WelcomeStep({ firstName }: { firstName: string }) {
               {index + 1}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-foreground">{item.shortLabel}</span>
-              <span className="block text-sm text-muted-foreground">{stepDetails[item.id]}</span>
+              <span className="block text-sm font-semibold text-foreground">{t.steps[item.id].short}</span>
+              <span className="block text-sm text-muted-foreground">{t.steps[item.id].detail}</span>
             </span>
           </li>
         ))}
       </ol>
-      <p className="mt-5 text-sm text-muted-foreground">About three minutes. You can change any of it later.</p>
+      <p className="mt-5 text-sm text-muted-foreground">{t.welcome.duration}</p>
     </div>
   );
 }
@@ -81,6 +74,8 @@ export function ClinicStep({
   onLogoUpload: (file: File | null) => void;
   onLogoRemove: () => void;
 }) {
+  const { m } = useI18n();
+  const t = m.onboarding.clinic;
   const normalizedCustomAccent = normalizeBrandHexColor(state.clinic.accentHex);
   const customActive = state.clinic.accentColor === "custom";
   const customInvalid = customActive && !normalizedCustomAccent;
@@ -88,7 +83,7 @@ export function ClinicStep({
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <FieldLabel htmlFor="clinic-name">Clinic name</FieldLabel>
+        <FieldLabel htmlFor="clinic-name">{t.name}</FieldLabel>
         <Input
           id="clinic-name"
           value={state.clinic.name}
@@ -100,7 +95,7 @@ export function ClinicStep({
       </div>
 
       <div className="space-y-2">
-        <FieldLabel htmlFor="owner-name">Your name</FieldLabel>
+        <FieldLabel htmlFor="owner-name">{t.yourName}</FieldLabel>
         <Input
           id="owner-name"
           value={state.owner.name}
@@ -111,7 +106,7 @@ export function ClinicStep({
       </div>
 
       <div className="space-y-2.5">
-        <p className="text-sm font-semibold text-foreground">Clinic type</p>
+        <p className="text-sm font-semibold text-foreground">{t.type}</p>
         <div className="flex flex-wrap gap-2">
           {businessTypes.map((type) => {
             const active = state.clinic.type === type;
@@ -128,7 +123,7 @@ export function ClinicStep({
                     : "border-border bg-white text-muted-foreground hover:border-[var(--brand-ink)]/30 hover:text-foreground"
                 )}
               >
-                {type}
+                {m.common.businessTypes[type]}
               </button>
             );
           })}
@@ -136,7 +131,7 @@ export function ClinicStep({
       </div>
 
       <div className="space-y-2.5">
-        <p className="text-sm font-semibold text-foreground">Logo</p>
+        <p className="text-sm font-semibold text-foreground">{t.logo}</p>
         <div className="flex items-center gap-3">
           <input
             id="clinic-logo-upload"
@@ -151,7 +146,7 @@ export function ClinicStep({
           />
           <label
             htmlFor="clinic-logo-upload"
-            aria-label={logoDisplayUrl ? "Replace logo" : "Upload logo"}
+            aria-label={logoDisplayUrl ? t.replaceLogo : t.uploadLogo}
             className="flex size-12 cursor-pointer items-center justify-center overflow-hidden rounded-(--radius-tile) border border-dashed border-border bg-white text-muted-foreground transition-colors duration-(--duration-base) hover:border-[var(--brand-ink)]/40 hover:text-[var(--brand-ink)] peer-focus-visible:ring-4 peer-focus-visible:ring-primary/15"
           >
             {isLogoUploading ? (
@@ -164,16 +159,16 @@ export function ClinicStep({
           </label>
           {state.clinic.logoUrl ? (
             <button type="button" className="text-sm font-medium text-muted-foreground hover:text-destructive" onClick={onLogoRemove}>
-              Remove
+              {t.remove}
             </button>
           ) : (
-            <span className="text-sm text-muted-foreground">Optional</span>
+            <span className="text-sm text-muted-foreground">{t.optional}</span>
           )}
         </div>
       </div>
 
       <div className="space-y-2.5">
-        <p className="text-sm font-semibold text-foreground">Brand color</p>
+        <p className="text-sm font-semibold text-foreground">{t.brandColor}</p>
         <div className="flex flex-wrap items-center gap-2.5">
           {visibleAccentPresets.map((preset) => {
             const active = state.clinic.accentColor === preset.id;
@@ -181,7 +176,7 @@ export function ClinicStep({
               <button
                 key={preset.id}
                 type="button"
-                aria-label={preset.name}
+                aria-label={m.common.accentColors[preset.id]}
                 aria-pressed={active}
                 onClick={() => onClinicChange({ accentColor: preset.id, accentHex: preset.value })}
                 className={cn(
@@ -203,17 +198,17 @@ export function ClinicStep({
           >
             <input
               type="color"
-              aria-label="Custom color"
+              aria-label={t.customColor}
               value={normalizedCustomAccent ?? "#3142d8"}
               onChange={(event) => onClinicChange({ accentColor: "custom", accentHex: event.target.value })}
               className="size-4 cursor-pointer rounded-full border-0 bg-transparent p-0"
             />
             <input
-              aria-label="Custom color hex"
+              aria-label={t.customHex}
               value={customActive ? state.clinic.accentHex : ""}
               onFocus={() => onClinicChange({ accentColor: "custom" })}
               onChange={(event) => onClinicChange({ accentColor: "custom", accentHex: event.target.value })}
-              placeholder="Custom"
+              placeholder={t.customPlaceholder}
               className="w-16 bg-transparent font-mono uppercase outline-none placeholder:font-sans placeholder:normal-case"
             />
           </label>
@@ -230,6 +225,8 @@ export function HoursStep({
   workingHours: OnboardingState["workingHours"];
   onDayChange: (day: WeekdayKey, patch: Partial<DaySchedule>) => void;
 }) {
+  const { m } = useI18n();
+  const t = m.onboarding.hours;
   return (
     <ul className="space-y-1">
       {weekdayOrder.map((day) => {
@@ -244,11 +241,11 @@ export function HoursStep({
               <Toggle
                 checked={item.enabled}
                 onPressedChange={(checked) => onDayChange(day, { enabled: checked })}
-                ariaLabel={`Open on ${dayLabel(day)}`}
+                ariaLabel={fmt(t.openOn, { day: m.common.weekdays[day].name })}
               />
               <span className={cn("text-sm font-medium", item.enabled ? "text-foreground" : "text-muted-foreground")}>
-                <span className="sm:hidden">{dayLabel(day).slice(0, 3)}</span>
-                <span className="hidden sm:inline">{dayLabel(day)}</span>
+                <span className="sm:hidden">{m.common.weekdays[day].short}</span>
+                <span className="hidden sm:inline">{m.common.weekdays[day].name}</span>
               </span>
             </div>
             {item.enabled ? (
@@ -257,22 +254,22 @@ export function HoursStep({
                   value={item.start}
                   onChange={(value) => onDayChange(day, { start: value })}
                   options={timeOptions}
-                  ariaLabel={`${dayLabel(day)} opens`}
+                  ariaLabel={fmt(t.opens, { day: m.common.weekdays[day].name })}
                   className={cn("w-[4.75rem] px-2.5 sm:w-[5.5rem] sm:px-3", invalid && "border-destructive/50")}
                 />
                 <span aria-hidden className="text-muted-foreground">
-                  to
+                  {t.to}
                 </span>
                 <NativeSelect
                   value={item.end}
                   onChange={(value) => onDayChange(day, { end: value })}
                   options={timeOptions}
-                  ariaLabel={`${dayLabel(day)} closes`}
+                  ariaLabel={fmt(t.closes, { day: m.common.weekdays[day].name })}
                   className={cn("w-[4.75rem] px-2.5 sm:w-[5.5rem] sm:px-3", invalid && "border-destructive/50")}
                 />
               </div>
             ) : (
-              <span className="text-sm text-muted-foreground">Closed</span>
+              <span className="text-sm text-muted-foreground">{t.closed}</span>
             )}
           </li>
         );
@@ -294,6 +291,7 @@ export function TeamStep({
   onChooseSolo: () => void;
   onStaffChange: (patch: Partial<OnboardingState["staffMember"]>) => void;
 }) {
+  const t = useI18n().m.onboarding.team;
   return (
     <div className="space-y-6">
       <button
@@ -306,12 +304,12 @@ export function TeamStep({
         )}
       >
         <span className="flex size-9 shrink-0 items-center justify-center rounded-(--radius-tile) border border-border bg-white text-sm font-semibold text-primary">
-          {getInitials(ownerName || "Me")}
+          {getInitials(ownerName || t.me)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-foreground">It&apos;s just me for now</span>
+          <span className="block text-sm font-semibold text-foreground">{t.soloTitle}</span>
           <span className="block truncate text-sm text-muted-foreground">
-            {firstDisplayName(ownerName || "You")} takes every appointment
+            {fmt(t.soloDetail, { name: firstDisplayName(ownerName || t.you) })}
           </span>
         </span>
         <span
@@ -326,24 +324,24 @@ export function TeamStep({
       </button>
 
       <div className="space-y-2">
-        <FieldLabel htmlFor="staff-name">Or add your first team member</FieldLabel>
+        <FieldLabel htmlFor="staff-name">{t.addFirst}</FieldLabel>
         <div className="flex gap-2.5">
           <Input
             id="staff-name"
             value={staffMember.name}
             onChange={(event) => onStaffChange({ name: event.target.value })}
-            placeholder="Full name"
+            placeholder={t.fullName}
             className={cn(authFieldClassName, "flex-1")}
           />
           <NativeSelect
             value={staffMember.role}
             onChange={(role) => onStaffChange({ role })}
-            options={staffRoles}
-            ariaLabel="Role"
+            options={t.roles}
+            ariaLabel={t.role}
             className="h-12 w-36 px-3.5 text-[15px]"
           />
         </div>
-        <p className="pt-1 text-sm text-muted-foreground">Add the rest of the team anytime from Staff.</p>
+        <p className="pt-1 text-sm text-muted-foreground">{t.later}</p>
       </div>
     </div>
   );

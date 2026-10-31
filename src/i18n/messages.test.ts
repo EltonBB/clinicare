@@ -14,6 +14,11 @@ const SAME_IN_BOTH = new Set([
   "AI",
   "Paddle",
   "EUR",
+  // Words Albanian shares with English.
+  "Specialist",
+  "Studio",
+  "Spa",
+  "Indigo",
   // Sample staff names on the website.
   "Dr. Collins",
   "Dr. Shaw",

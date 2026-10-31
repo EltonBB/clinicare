@@ -7,7 +7,11 @@ import { ClinicPreview } from "@/components/onboarding/clinic-preview";
 import { inkButtonClassName } from "@/components/onboarding/form-parts";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { workspaceAccess } from "@/lib/billing-access";
+import { TRIAL_DAYS } from "@/lib/checkout-state";
 import { getCurrentBusiness } from "@/lib/business";
 import { resolveBrandAccentPreset } from "@/lib/branding";
 import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
@@ -16,7 +20,9 @@ import { prisma } from "@/lib/prisma";
 import { cn, firstDisplayName } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/server";
 
-export const metadata: Metadata = { title: "Setup complete | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.onboarding.meta.completeTitle };
+}
 
 type FirstStep = { href: string; title: string; detail: string };
 
@@ -66,19 +72,20 @@ export default async function OnboardingCompletePage() {
   }
 
   const ownerFirstName = firstDisplayName(typeof metadata.full_name === "string" ? metadata.full_name : "");
+  const t = (await getI18n()).m.onboarding;
 
   // A new clinic starts its free trial before anything else opens.
   const needsPlan = workspaceAccess(business).kind === "needs_plan";
   const firstSteps: FirstStep[] = [
     ...(needsPlan
-      ? [{ href: "/checkout", title: "Start your free trial", detail: "14 days free, cancel any time before" }]
+      ? [{ href: "/checkout", title: t.complete.trial.title, detail: fmt(t.complete.trial.detail, { days: TRIAL_DAYS }) }]
       : []),
-    { href: "/calendar/new", title: "Book your first appointment", detail: "It lands straight on the calendar" },
-    { href: "/clients/new", title: "Add a patient", detail: "Their record starts with the first visit" },
+    { href: "/calendar/new", ...t.complete.book },
+    { href: "/clients/new", ...t.complete.patient },
     ...(staff.length <= 1
-      ? [{ href: "/staff/new", title: "Add your team", detail: "So visits can be shared out" }]
+      ? [{ href: "/staff/new", ...t.complete.team }]
       : []),
-    { href: "/settings?section=whatsapp", title: "Connect WhatsApp", detail: "Reminders go out from your own number" },
+    { href: "/settings?section=whatsapp", ...t.complete.whatsapp },
   ];
 
   const panel = (
@@ -95,17 +102,18 @@ export default async function OnboardingCompletePage() {
   );
 
   return (
-    <OnboardingShell panel={panel} panelLead="Your clinic," panelTail="ready for day one.">
+    <WithMessages namespaces={["onboarding"]}>
+    <OnboardingShell panel={panel} panelLead={t.panel.done[0]} panelTail={t.panel.done[1]}>
       <p className="state-pop inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
         <Check className="size-4" />
-        Setup complete
+        {t.complete.eyebrow}
       </p>
       <h1 className="mt-3 text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-        {business.name} is ready{ownerFirstName ? "," : "."}{" "}
+        {fmt(t.complete.ready, { clinic: business.name })}{ownerFirstName ? "," : "."}{" "}
         {ownerFirstName ? <span className="text-muted-foreground">{ownerFirstName}.</span> : null}
       </h1>
 
-      <p className="mt-8 text-sm font-semibold text-foreground">First steps</p>
+      <p className="mt-8 text-sm font-semibold text-foreground">{t.complete.firstSteps}</p>
       <ol className="mt-2 space-y-1">
         {firstSteps.map((item, index) => (
           <li key={item.href}>
@@ -130,9 +138,10 @@ export default async function OnboardingCompletePage() {
         href={needsPlan ? "/checkout" : "/dashboard"}
         className={cn(buttonVariants({ size: "lg" }), inkButtonClassName, "mt-8 w-full")}
       >
-        {needsPlan ? "Choose your plan" : "Go to dashboard"}
+        {needsPlan ? t.complete.choosePlan : t.complete.dashboard}
         <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" data-icon="inline-end" />
       </Link>
     </OnboardingShell>
+    </WithMessages>
   );
 }

@@ -43,4 +43,26 @@ export const serverText: Record<string, string> = {
   "Profile updated. Check your inbox to confirm the new email address.":
     "Profili u përditësua. Kontrolloni email-in për të konfirmuar adresën e re.",
   "Profile updated. Your password has been changed.": "Profili u përditësua. Fjalëkalimi juaj u ndryshua.",
+
+  // Onboarding
+  "That name is too long — please shorten it.": "Ky emër është shumë i gjatë. Ju lutemi shkurtojeni.",
+  "Please set valid opening hours (24-hour HH:MM) for every open day.":
+    "Ju lutemi vendosni orar të vlefshëm (në formatin 24-orësh HH:MM) për çdo ditë të hapur.",
+  "Your session expired. Log in again to continue onboarding.": "Sesioni juaj skadoi. Hyni përsëri për të vazhduar konfigurimin.",
+  "Upload the clinic logo again before completing onboarding.": "Ngarkojeni përsëri logon e klinikës para se të përfundoni konfigurimin.",
+  "We couldn't create your clinic workspace. Try again.": "Nuk mundëm ta krijonim hapësirën e punës së klinikës. Provoni përsëri.",
+  "We couldn't save onboarding right now. Try again.": "Nuk mundëm ta ruanim konfigurimin tani. Provoni përsëri.",
+
+  // Uploads (images and files)
+  "Upload a JPG, PNG, WebP, or GIF image.": "Ngarkoni një imazh JPG, PNG, WebP ose GIF.",
+  "This image is too large.": "Ky imazh është shumë i madh.",
+  "Your session expired. Log in again to upload images.": "Sesioni juaj skadoi. Hyni përsëri për të ngarkuar imazhe.",
+  "We couldn't upload this image. Try again.": "Nuk mundëm ta ngarkonim këtë imazh. Provoni përsëri.",
+  "We couldn't prepare this image for preview. Try again.": "Nuk mundëm ta përgatitnim këtë imazh për shikim. Provoni përsëri.",
+  "We couldn't load this image. Try again.": "Nuk mundëm ta hapnim këtë imazh. Provoni përsëri.",
+  "Upload a PDF, JPG, PNG, WebP, or GIF file.": "Ngarkoni një skedar PDF, JPG, PNG, WebP ose GIF.",
+  "This file is too large.": "Ky skedar është shumë i madh.",
+  "Your session expired. Log in again to upload files.": "Sesioni juaj skadoi. Hyni përsëri për të ngarkuar skedarë.",
+  "We couldn't upload this file. Try again.": "Nuk mundëm ta ngarkonim këtë skedar. Provoni përsëri.",
+  "We couldn't prepare this file for preview. Try again.": "Nuk mundëm ta përgatitnim këtë skedar për shikim. Provoni përsëri.",
 };
