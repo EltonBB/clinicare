@@ -9,7 +9,7 @@ import { useMarketingScroll } from "../motion/scroll-context";
 import { WordReveal } from "../motion/word-reveal";
 import { PrimaryCta, SecondaryCta } from "../shared/cta-links";
 import { MODULE_GLYPHS } from "../shared/module-glyphs";
-import { MODULES, selectModule } from "../shared/modules";
+import { MODULE_COUNT, selectModule, useModules } from "../shared/modules";
 
 /**
  * Product hero: a fixed lead line over a cobalt last line that rolls through
@@ -20,12 +20,13 @@ import { MODULES, selectModule } from "../shared/modules";
  */
 export function ProductHero() {
   const { reduced } = useMarketingScroll();
+  const modules = useModules();
   const [index, setIndex] = useState(0);
   const [held, setHeld] = useState(false);
 
   useEffect(() => {
     if (reduced || held) return;
-    const id = window.setInterval(() => setIndex((i) => (i + 1) % MODULES.length), 2400);
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % MODULE_COUNT), 2400);
     return () => window.clearInterval(id);
   }, [reduced, held]);
 
@@ -42,14 +43,14 @@ export function ProductHero() {
           <span aria-hidden className="relative block h-[1.1em] overflow-hidden text-[min(1em,10vw)] text-primary">
             <AnimatePresence initial={false} mode="popLayout">
               <m.span
-                key={MODULES[index].word}
+                key={modules[index].word}
                 className="block whitespace-nowrap"
                 initial={{ transform: "translateY(85%)", opacity: 0, filter: "blur(10px)" }}
                 animate={{ transform: "translateY(0%)", opacity: 1, filter: "blur(0px)" }}
                 exit={{ transform: "translateY(-85%)", opacity: 0, filter: "blur(10px)" }}
                 transition={{ duration: 0.7, ease: EASE }}
               >
-                {MODULES[index].word}.
+                {modules[index].word}.
               </m.span>
             </AnimatePresence>
           </span>
@@ -68,7 +69,7 @@ export function ProductHero() {
           className="section-reveal mt-16 grid grid-cols-2 gap-px overflow-hidden rounded-(--radius-mkt-card) border border-border/70 bg-border/70 sm:grid-cols-3 lg:mt-20 lg:grid-cols-6"
           onPointerLeave={() => setHeld(false)}
         >
-          {MODULES.map((mod, i) => {
+          {modules.map((mod, i) => {
             const Glyph = MODULE_GLYPHS[i];
             const on = i === index;
             return (

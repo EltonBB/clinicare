@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { LegalPage } from "@/components/legal/legal-page";
+import { WithMessages } from "@/i18n/with-messages";
 import { legalLastUpdated, termsSections } from "@/lib/legal-content";
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 
 export default function TermsAndConditionsPage() {
   return (
+    <WithMessages namespaces={["marketing", "modules"]}>
     <LegalPage
       current="terms"
       title="Terms of Service"
@@ -18,5 +20,6 @@ export default function TermsAndConditionsPage() {
       lastUpdated={legalLastUpdated}
       sections={termsSections}
     />
+    </WithMessages>
   );
 }

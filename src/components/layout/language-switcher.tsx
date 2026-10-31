@@ -7,6 +7,11 @@ import { useI18n } from "@/i18n/client";
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, localeNames, locales, type Locale } from "@/i18n/config";
 import { cn } from "@/lib/utils";
 
+function storeLocale(locale: Locale) {
+  const secure = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax${secure}`;
+}
+
 /**
  * EN / SQ as two separate text buttons. Choosing one stores the language in a
  * cookie and re-renders the page on the server in that language.
@@ -18,8 +23,7 @@ export function LanguageSwitcher({ tone = "default", className }: { tone?: "defa
 
   function choose(next: Locale) {
     if (next === locale || pending) return;
-    const secure = window.location.protocol === "https:" ? "; secure" : "";
-    document.cookie = `${LOCALE_COOKIE}=${next}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax${secure}`;
+    storeLocale(next);
     startTransition(() => router.refresh());
   }
 

@@ -5,8 +5,10 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 
 import { type PaddleClientConfig, useLocalizedPrices } from "@/components/billing/use-paddle";
+import { useI18n } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import { TRIAL_DAYS } from "@/lib/checkout-state";
-import { proAddedFeatures, publicPlans, type PublicPlan, type PublicPlanKey } from "@/lib/public-plans";
+import { localizedPlans, type PublicPlan, type PublicPlanKey } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
 
 type Interval = "MONTH" | "YEAR";
@@ -41,15 +43,18 @@ export function usePlanPrice({ paddle, previewPriceIds }: PlanPricing): (plan: P
 export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
   const [interval, setBillingInterval] = useState<Interval>("MONTH");
   const priceOf = usePlanPrice(pricing);
-  const [basic, pro] = publicPlans;
+  const { m } = useI18n();
+  const t = m.marketing.planStrip;
+  const [basic, pro] = localizedPlans(m.common.plans);
   const halves = [
-    { plan: basic, points: basic.features.slice(0, 4), lead: "Includes" },
-    { plan: pro, points: proAddedFeatures.slice(0, 4), lead: "Adds" },
+    { plan: basic, points: basic.features.slice(0, 4), lead: t.includes },
+    // Pro's list after its "Everything in Basic" connector is what it adds.
+    { plan: pro, points: pro.features.slice(1, 5), lead: t.adds },
   ];
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Billing period">
+      <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label={t.billingPeriod}>
         {(["MONTH", "YEAR"] as const).map((option) => (
           <button
             key={option}
@@ -63,7 +68,7 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
                 : "text-muted-foreground shadow-[inset_0_0_0_1px_var(--border)] hover:text-[var(--brand-ink)]"
             )}
           >
-            {option === "MONTH" ? "Monthly" : "Yearly · 1 month free"}
+            {option === "MONTH" ? t.monthly : t.yearly}
           </button>
         ))}
       </div>
@@ -85,9 +90,9 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
                 <span className="text-[clamp(3.5rem,6vw,5rem)] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums transition-colors duration-(--duration-slow) group-hover/plan:text-primary">
                   {price}
                 </span>
-                <span className="text-sm text-muted-foreground">{interval === "YEAR" ? "per year" : plan.cadence}</span>
+                <span className="text-sm text-muted-foreground">{interval === "YEAR" ? m.common.plans.perYear : plan.cadence}</span>
               </p>
-              <p className="mt-2 text-sm font-medium text-primary">{TRIAL_DAYS}-day free trial</p>
+              <p className="mt-2 text-sm font-medium text-primary">{fmt(t.trial, { days: TRIAL_DAYS })}</p>
               <p className="mt-4 max-w-sm text-[15px] leading-7 text-muted-foreground">{plan.description}</p>
 
               <p className="mt-8 text-xs font-semibold text-muted-foreground">{lead}</p>
@@ -100,14 +105,14 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
               </ul>
 
               <span className="mt-auto inline-flex items-center gap-2 pt-8 text-sm font-semibold text-[var(--brand-ink)] transition-colors duration-(--duration-base) group-hover/plan:text-primary">
-                Start free trial
+                {t.startTrial}
                 <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/plan:translate-x-1" />
               </span>
             </Link>
           );
         })}
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">Prices include VAT. Cancel any time during the trial and you pay nothing.</p>
+      <p className="mt-3 text-xs text-muted-foreground">{t.vat}</p>
     </div>
   );
 }

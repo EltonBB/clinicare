@@ -7,16 +7,18 @@ import { AnimatePresence, m } from "framer-motion";
 import { Menu, X } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { Magnetic } from "./motion/magnetic";
 import { useMarketingScroll } from "./motion/scroll-context";
 
 const navItems = [
-  { label: "Product", href: "/product" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "About", href: "/about" },
-  { label: "Contact", href: "/contact" },
-];
+  { key: "product", href: "/product" },
+  { key: "pricing", href: "/pricing" },
+  { key: "about", href: "/about" },
+  { key: "contact", href: "/contact" },
+] as const;
 
 /**
  * Marketing header. A quiet glass bar: transparent over the very top of the
@@ -31,6 +33,7 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { lenisRef } = useMarketingScroll();
   const pathname = usePathname();
+  const t = useI18n().m.marketing.header;
 
   useEffect(() => {
     const onScroll = () => {
@@ -97,7 +100,7 @@ export function SiteHeader() {
                   current && (dark ? "text-white" : "text-foreground"),
                 )}
               >
-                {item.label}
+                {t.nav[item.key]}
                 <span
                   className={cn(
                     "absolute -bottom-1.5 left-0 h-px w-full origin-left bg-current transition-transform duration-300 ease-out-quint group-hover:scale-x-100",
@@ -110,6 +113,7 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <LanguageSwitcher tone={dark ? "light" : "default"} className="hidden sm:flex" />
           <Link
             href="/login"
             className={cn(
@@ -117,7 +121,7 @@ export function SiteHeader() {
               dark ? "text-white hover:text-white/70" : "text-foreground hover:text-primary",
             )}
           >
-            Log in
+            {t.logIn}
           </Link>
           <Magnetic className="hidden sm:inline-flex">
             <Link
@@ -127,14 +131,14 @@ export function SiteHeader() {
                 dark ? "bg-white text-[var(--brand-ink)]" : "bg-[var(--brand-ink)] text-white",
               )}
             >
-              Start free
+              {t.startFree}
             </Link>
           </Magnetic>
 
           {/* Mobile menu toggle */}
           <button
             type="button"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-label={menuOpen ? t.closeMenu : t.openMenu}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
             className={cn(
@@ -165,23 +169,24 @@ export function SiteHeader() {
                   onClick={() => setMenuOpen(false)}
                   className="rounded-(--radius-mkt-field) px-3 py-3 text-base font-medium text-foreground transition hover:bg-[var(--brand-wash)] hover:text-primary"
                 >
-                  {item.label}
+                  {t.nav[item.key]}
                 </Link>
               ))}
+              <LanguageSwitcher className="px-2 pt-1" />
               <div className="mt-2 grid gap-2">
                 <Link
                   href="/login"
                   onClick={() => setMenuOpen(false)}
                   className="inline-flex h-11 items-center justify-center rounded-(--radius-mkt-field) border border-border/70 bg-white text-sm font-medium text-foreground"
                 >
-                  Log in
+                  {t.logIn}
                 </Link>
                 <Link
                   href="/sign-up"
                   onClick={() => setMenuOpen(false)}
                   className="inline-flex h-11 items-center justify-center rounded-(--radius-mkt-field) bg-[var(--brand-ink)] text-sm font-medium text-white"
                 >
-                  Start free
+                  {t.startFree}
                 </Link>
               </div>
             </nav>

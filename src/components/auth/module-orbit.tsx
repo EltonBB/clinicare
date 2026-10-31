@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
 import { MODULE_GLYPHS } from "@/components/marketing/shared/module-glyphs";
-import { MODULES } from "@/components/marketing/shared/modules";
+import { MODULE_COUNT, useModules } from "@/components/marketing/shared/modules";
 
 const RADIUS = 41; // % of the stage, where the module tiles ride
 const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -19,6 +19,7 @@ const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matche
  * pointer. Reduced motion keeps the ring still and skips the auto cycle.
  */
 export function ModuleOrbit() {
+  const modules = useModules();
   const [active, setActive] = useState(0);
   const [holding, setHolding] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
@@ -26,7 +27,7 @@ export function ModuleOrbit() {
 
   useEffect(() => {
     if (holding || still()) return;
-    const id = window.setInterval(() => setActive((i) => (i + 1) % MODULES.length), 2800);
+    const id = window.setInterval(() => setActive((i) => (i + 1) % MODULE_COUNT), 2800);
     return () => window.clearInterval(id);
   }, [holding]);
 
@@ -52,7 +53,7 @@ export function ModuleOrbit() {
   }, []);
 
   const spin: CSSProperties = { animationPlayState: holding ? "paused" : "running" };
-  const current = MODULES[active];
+  const current = modules[active];
 
   return (
     <div ref={stage} className="flex w-full flex-col items-center [perspective:1200px]">
@@ -71,8 +72,8 @@ export function ModuleOrbit() {
 
         {/* The ring: spokes and tiles turn together. */}
         <div className="absolute inset-0 motion-safe:animate-[vela-orbit_90s_linear_infinite]" style={spin}>
-          {MODULES.map((item, i) => {
-            const angle = (i / MODULES.length) * 360 - 90;
+          {modules.map((item, i) => {
+            const angle = (i / MODULE_COUNT) * 360 - 90;
             const rad = (angle * Math.PI) / 180;
             const lit = i === active;
             const Glyph = MODULE_GLYPHS[i];

@@ -1,35 +1,20 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { useI18n } from "@/i18n/client";
 import { Magnetic } from "../motion/magnetic";
 import { Reveal } from "../motion/reveal";
 import { FooterWordmark } from "./footer-wordmark";
 
 const columns = [
-  {
-    title: "Product",
-    links: [
-      { label: "Overview", href: "/product" },
-      { label: "Pricing", href: "/pricing" },
-    ],
-  },
-  {
-    title: "Company",
-    links: [
-      { label: "About", href: "/about" },
-      { label: "Contact", href: "/contact" },
-    ],
-  },
-  {
-    title: "Legal",
-    links: [
-      { label: "Terms", href: "/terms-and-conditions" },
-      { label: "Privacy", href: "/privacy" },
-      { label: "Refund", href: "/refund" },
-    ],
-  },
-];
+  { title: "product", links: [["overview", "/product"], ["pricing", "/pricing"]] },
+  { title: "company", links: [["about", "/about"], ["contact", "/contact"]] },
+  { title: "legal", links: [["terms", "/terms-and-conditions"], ["privacy", "/privacy"], ["refund", "/refund"]] },
+] as const;
 
 /**
  * The ink footer every marketing page ends on. Pages that close on a call to
@@ -41,15 +26,11 @@ const columns = [
 /** A page's own closing line for the footer CTA; `true` uses the default. */
 export type FooterCta = boolean | { lead: string; rest: string; copy: string };
 
-const DEFAULT_CTA = {
-  lead: "Give the day back",
-  rest: "to the people running it.",
-  copy: "Appointments, patients, staff, and messages in one calm workspace, from your first day.",
-};
 
 export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
+  const t = useI18n().m.marketing.footer;
   const year = new Date().getFullYear();
-  const ask = cta === true ? DEFAULT_CTA : cta || null;
+  const ask = cta === true ? t.cta : cta || null;
 
   return (
     <footer data-tone="dark" className="relative overflow-hidden bg-[var(--brand-ink)] text-white">
@@ -68,7 +49,7 @@ export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
                   href="/sign-up"
                   className="inline-flex h-12 min-w-32 items-center justify-center gap-2 whitespace-nowrap rounded-(--radius-mkt-field) bg-white px-6 text-sm font-semibold text-[var(--brand-ink)] transition-transform duration-(--duration-base) ease-out-quint hover:-translate-y-0.5 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/40"
                 >
-                  Start free
+                  {t.startFree}
                   <ArrowRight className="size-4" />
                 </Link>
               </Magnetic>
@@ -76,7 +57,7 @@ export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
                 href="/contact"
                 className="inline-flex h-12 min-w-32 items-center justify-center whitespace-nowrap rounded-(--radius-mkt-field) border border-white/20 px-6 text-sm font-semibold text-white transition-[border-color,transform] duration-(--duration-base) ease-out-quint hover:border-white/50 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/40"
               >
-                Talk to us
+                {t.talkToUs}
               </Link>
             </div>
           </Reveal>
@@ -87,20 +68,20 @@ export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
         <div className={"grid grid-cols-2 gap-10 sm:grid-cols-[1.5fr_1fr_1fr_1fr] " + (cta ? "border-t border-white/10 pt-14" : "")}>
           <div className="col-span-2 max-w-xs sm:col-span-1">
             <BrandMark href="/" includeSubtitle={false} tone="light" />
-            <p className="mt-4 text-sm leading-6 text-white/55">The calm operating system for clinics.</p>
+            <p className="mt-4 text-sm leading-6 text-white/55">{t.tagline}</p>
           </div>
 
           {columns.map((col) => (
-            <nav key={col.title} aria-label={col.title}>
-              <p className="text-xs font-semibold text-white/40">{col.title}</p>
+            <nav key={col.title} aria-label={t[col.title]}>
+              <p className="text-xs font-semibold text-white/40">{t[col.title]}</p>
               <ul className="mt-4 space-y-3">
-                {col.links.map((link) => (
-                  <li key={link.href}>
+                {col.links.map(([label, href]) => (
+                  <li key={href}>
                     <Link
-                      href={link.href}
+                      href={href}
                       className="text-sm text-white/75 transition-colors duration-(--duration-base) hover:text-white focus-visible:text-white focus-visible:outline-none"
                     >
-                      {link.label}
+                      {t[label]}
                     </Link>
                   </li>
                 ))}
@@ -111,7 +92,10 @@ export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
 
         <div className="mt-14 flex flex-col gap-2 text-xs text-white/40 sm:flex-row sm:items-center sm:justify-between">
           <p>© {year} Vela</p>
-          <p>Privacy-conscious by design.</p>
+          <div className="flex items-center gap-4">
+            <p>{t.privacyLine}</p>
+            <LanguageSwitcher tone="light" />
+          </div>
         </div>
       </div>
 

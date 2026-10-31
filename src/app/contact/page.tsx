@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { ContactPage } from "@/components/marketing/contact/contact-page";
+import { WithMessages } from "@/i18n/with-messages";
 
 export const metadata: Metadata = {
   title: "Contact | Vela",
@@ -9,5 +10,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <ContactPage />;
+  return (
+    <WithMessages namespaces={["marketing", "modules"]}>
+      <ContactPage />
+    </WithMessages>
+  );
 }

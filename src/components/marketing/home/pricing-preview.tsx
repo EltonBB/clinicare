@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
+import { getI18n } from "@/i18n/server";
+
 import { Reveal } from "../motion/reveal";
 import { PlanStrip } from "../shared/plan-strip";
 import { SectionHeader } from "../shared/section-header";
@@ -9,19 +11,20 @@ import { SectionHeader } from "../shared/section-header";
  * Home pricing: the shared plan strip under a two-tone header, with a link to
  * the full comparison on /pricing.
  */
-export function PricingPreview() {
+export async function PricingPreview() {
+  const t = (await getI18n()).m.marketing.home.pricing;
   return (
     <section className="py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeader
-          lead="Two plans, no surprises."
-          rest="Add Pro when reporting starts to matter."
+          lead={t.lead}
+          rest={t.rest}
           aside={
             <Link
               href="/pricing"
               className="group/link inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--brand-ink)] transition-colors duration-(--duration-base) hover:text-primary"
             >
-              Compare every feature
+              {t.compare}
               <ArrowUpRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/link:-translate-y-0.5 group-hover/link:translate-x-0.5" />
             </Link>
           }

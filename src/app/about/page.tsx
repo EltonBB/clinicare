@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AboutPage } from "@/components/marketing/about/about-page";
+import { WithMessages } from "@/i18n/with-messages";
 
 export const metadata: Metadata = {
   title: "About | Vela",
@@ -9,5 +10,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <AboutPage />;
+  return (
+    <WithMessages namespaces={["marketing", "modules"]}>
+      <AboutPage />
+    </WithMessages>
+  );
 }

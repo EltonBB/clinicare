@@ -1,5 +1,7 @@
 import type { BusinessPlan } from "@prisma/client";
 
+import type { Messages } from "@/i18n/messages";
+
 export type PublicPlanKey = "basic" | "pro";
 
 export type PublicPlan = {
@@ -72,6 +74,20 @@ export const proAddedFeatures = publicPlans
   .features.filter((feature) => feature !== "Everything in Basic");
 
 export const basicFeatures = publicPlans.find((plan) => plan.key === "basic")!.features;
+
+/**
+ * The plans with their words in the visitor's language (`common.plans`);
+ * names, prices and keys stay as defined above.
+ */
+export function localizedPlans(copy: Messages["common"]["plans"]): PublicPlan[] {
+  return publicPlans.map((plan) => ({
+    ...plan,
+    cadence: copy.perMonth,
+    description: copy[plan.key].description,
+    audience: copy[plan.key].audience,
+    features: copy[plan.key].features,
+  }));
+}
 
 export function getPublicPlan(plan?: string | string[]) {
   const value = Array.isArray(plan) ? plan[0] : plan;

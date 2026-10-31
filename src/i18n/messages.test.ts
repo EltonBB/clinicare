@@ -14,6 +14,9 @@ const SAME_IN_BOTH = new Set([
   "AI",
   "Paddle",
   "EUR",
+  // Sample staff names on the website.
+  "Dr. Collins",
+  "Dr. Shaw",
 ]);
 
 type Leaf = { path: string; value: string };

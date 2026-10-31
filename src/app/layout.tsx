@@ -13,10 +13,10 @@ const plusJakarta = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Vela",
-  description: "Modern client and appointment management for service businesses.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { m } = await getI18n();
+  return { title: "Vela", description: m.common.meta.description };
+}
 
 export default async function RootLayout({
   children,

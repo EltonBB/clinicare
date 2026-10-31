@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { PricingPageContent } from "@/components/marketing/pricing/pricing-page";
+import { WithMessages } from "@/i18n/with-messages";
 
 export const metadata: Metadata = {
   title: "Pricing | Vela",
@@ -9,5 +10,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <PricingPageContent />;
+  return (
+    <WithMessages namespaces={["marketing", "modules"]}>
+      <PricingPageContent />
+    </WithMessages>
+  );
 }

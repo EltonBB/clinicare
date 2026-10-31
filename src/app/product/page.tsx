@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { ProductPage } from "@/components/marketing/product/product-page";
+import { WithMessages } from "@/i18n/with-messages";
 
 export const metadata: Metadata = {
   title: "Product | Vela",
@@ -9,5 +10,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <ProductPage />;
+  return (
+    <WithMessages namespaces={["marketing", "modules"]}>
+      <ProductPage />
+    </WithMessages>
+  );
 }

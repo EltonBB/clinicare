@@ -5,7 +5,9 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useMarketingScroll } from "../motion/scroll-context";
 import { MODULE_GLYPHS } from "../shared/module-glyphs";
-import { MODULES } from "../shared/modules";
+import { useModules } from "../shared/modules";
+import { fmt } from "@/i18n/format";
+import { useI18n } from "@/i18n/client";
 
 // Node positions in a 360 x 200 box: three modules down each side, the record
 // in the middle. Percentages place the HTML tiles over the same SVG geometry.
@@ -36,7 +38,9 @@ const wire = (n: { x: number; y: number }) => {
 export function RecordHub() {
   const { reduced } = useMarketingScroll();
   const [hovered, setHovered] = useState<number | null>(null);
-  const adds = ["Visits", "History", "Provider", "Messages", "Files & balance", "Trends"];
+  const t = useI18n().m.marketing.home.hub;
+  const modules = useModules();
+  const adds = t.adds;
 
   return (
     <div
@@ -77,7 +81,7 @@ export function RecordHub() {
           <button
             key={i}
             type="button"
-            aria-label={`${MODULES[i].label}: adds ${adds[i].toLowerCase()} to the patient record`}
+            aria-label={fmt(t.moduleLabel, { module: modules[i].label, add: adds[i].toLowerCase() })}
             aria-pressed={on}
             onPointerEnter={(e) => {
               if (e.pointerType === "mouse") setHovered(i);
@@ -106,7 +110,7 @@ export function RecordHub() {
           MN
         </span>
         <span className="mt-2 whitespace-nowrap text-[11px] font-semibold text-[var(--brand-ink)]">
-          {hovered === null ? "One patient record" : `+ ${adds[hovered]}`}
+          {hovered === null ? t.record : `+ ${adds[hovered]}`}
         </span>
       </div>
     </div>
