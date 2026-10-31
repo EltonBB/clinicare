@@ -1,15 +1,18 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { BrandMark } from "@/components/brand-mark";
+import { useI18n } from "@/i18n/client";
 
 /**
  * Checkout's split layout, the same family as the auth and onboarding pages:
  * the plan and payment column on the left, an ink panel on the right with the
  * order, closed by the panel's lead line. Rendered from the server page and
- * from the client checkout alike, so it stays plain markup.
+ * from the client checkout alike.
  */
 export function CheckoutShell({
   children,
@@ -24,6 +27,7 @@ export function CheckoutShell({
   panelTail: string;
   signedIn: boolean;
 }) {
+  const t = useI18n().m.billing.checkout;
   return (
     <div className="grid min-h-dvh bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
       <main className="flex min-h-dvh min-w-0 flex-col px-4 py-6 sm:px-10 sm:py-8">
@@ -37,7 +41,7 @@ export function CheckoutShell({
               className="group/back inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-[var(--brand-ink)]"
             >
               <ArrowLeft className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/back:-translate-x-0.5" />
-              Back to pricing
+              {t.backToPricing}
             </Link>
           )}
         </div>
@@ -50,9 +54,9 @@ export function CheckoutShell({
 
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <LockKeyhole className="size-3.5 shrink-0" aria-hidden />
-          Prices include VAT. Payment is handled securely by Paddle, our reseller.
+          {t.footer}
           <Link href="/refund" className="font-medium text-[var(--brand-ink)] underline-offset-4 hover:underline">
-            Refunds
+            {t.refunds}
           </Link>
         </p>
       </main>

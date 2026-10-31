@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Check, LoaderCircle } from "lucide-react";
 
 import { checkoutReadyAction } from "@/app/checkout/actions";
+import { useI18n } from "@/i18n/client";
 
 const POLL_MS = 2_000;
 const PATIENCE_MS = 60_000;
@@ -17,6 +18,7 @@ const PATIENCE_MS = 60_000;
 export function CheckoutSuccess() {
   const router = useRouter();
   const [state, setState] = useState<"waiting" | "ready" | "slow">("waiting");
+  const t = useI18n().m.billing.success;
 
   useEffect(() => {
     let cancelled = false;
@@ -50,12 +52,10 @@ export function CheckoutSuccess() {
         <LoaderCircle className="mx-auto size-6 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
       )}
       <h1 className="mt-4 text-2xl font-semibold tracking-[-0.02em] text-[var(--brand-ink)]">
-        {state === "ready" ? "You're all set" : "Setting up your plan"}
+        {state === "ready" ? t.ready : t.setting}
       </h1>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        {state === "slow"
-          ? "This is taking longer than usual. Your payment details are safe; refresh in a minute, or write to us if it doesn't clear."
-          : "This takes a few seconds. We'll open your workspace as soon as it's ready."}
+        {state === "slow" ? t.slow : t.wait}
       </p>
       {state === "slow" ? (
         <button
@@ -63,7 +63,7 @@ export function CheckoutSuccess() {
           onClick={() => window.location.reload()}
           className="mt-5 text-sm font-semibold text-[var(--brand-ink)] underline-offset-4 hover:underline"
         >
-          Refresh
+          {t.refresh}
         </button>
       ) : null}
     </div>

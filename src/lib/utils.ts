@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+import { intlLocale, type Locale } from "@/i18n/config"
 import { normalizeCurrency } from "@/lib/currency"
 
 export function cn(...inputs: ClassValue[]) {
@@ -72,12 +73,13 @@ export function sumMergedIntervals(intervals: Array<{ start: number; end: number
  * argument on purpose — a call site that forgot it would silently show the wrong
  * symbol. An unsupported stored value reads as the default currency. Pass
  * `{ whole: true }` for compact surfaces (e.g. dashboard KPI tiles) that show
- * rounded whole amounts; the default keeps two-decimal precision.
+ * rounded whole amounts; the default keeps two-decimal precision. `locale`
+ * sets how the amount is written ("€40.00", "40,00 €").
  */
 export function formatCurrency(
   cents: number,
   currency: string | null | undefined,
-  options?: { whole?: boolean }
+  options?: { whole?: boolean; locale?: Locale }
 ) {
   const amount = cents / 100
 
@@ -87,7 +89,7 @@ export function formatCurrency(
   // entry form.
   const digits = options?.whole ? 0 : 2
 
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(intlLocale(options?.locale ?? "en"), {
     style: "currency",
     currency: normalizeCurrency(currency),
     minimumFractionDigits: digits,

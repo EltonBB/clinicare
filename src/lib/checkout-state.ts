@@ -3,6 +3,7 @@ import type { Business } from "@prisma/client";
 import { normalizeBusinessPlan } from "@/lib/billing";
 import { workspaceAccess } from "@/lib/billing-access";
 import type { PaidInterval, PaidPlan, PriceTable } from "@/lib/paddle/paddle-config";
+import type { Locale } from "@/i18n/config";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
 /** Days of every plan's free trial (scripts/paddle-setup.mjs creates the prices with it). */
@@ -42,6 +43,6 @@ export function checkoutPriceId(prices: PriceTable, plan: PaidPlan, interval: Pa
 }
 
 /** The day a trial started now ends, for the checkout's order ("From November 10, 2026"). */
-export function trialEndLabel(now = new Date(), timeZone?: string): string {
-  return formatZonedFullDate(new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000), timeZone);
+export function trialEndLabel(now = new Date(), timeZone?: string, locale: Locale = "en"): string {
+  return formatZonedFullDate(new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000), timeZone, locale);
 }

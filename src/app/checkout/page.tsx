@@ -4,17 +4,20 @@ import { CheckoutFlow, InkLink, Note } from "@/components/billing/checkout-flow"
 import { CheckoutShell } from "@/components/billing/checkout-shell";
 import { OrderSummary } from "@/components/billing/order-summary";
 import type { PaddleClientConfig } from "@/components/billing/use-paddle";
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { getCurrentUser } from "@/lib/auth";
 import { workspaceAccess } from "@/lib/billing-access";
 import { getCurrentBusiness } from "@/lib/business";
 import { checkoutStage, trialEndLabel } from "@/lib/checkout-state";
 import { paddleConfig, type PaidInterval } from "@/lib/paddle/paddle-config";
-import { getPublicPlan, publicPlanKeyFromBusinessPlan } from "@/lib/public-plans";
+import { getPublicPlan, localizedPlans, publicPlanKeyFromBusinessPlan } from "@/lib/public-plans";
 
-export const metadata: Metadata = {
-  title: "Checkout | Vela",
-  description: "Choose your Vela plan and start your free trial.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { title, description } = (await getI18n()).m.billing.checkout.meta;
+  return { title, description };
+}
 
 type CheckoutPageProps = {
   searchParams?: Promise<{
@@ -29,6 +32,8 @@ function first(value: string | string[] | undefined) {
 
 export default async function CheckoutPage({ searchParams }: CheckoutPageProps) {
   const params = await searchParams;
+  const { locale, m } = await getI18n();
+  const t = m.billing.checkout;
   const user = await getCurrentUser();
   const business = user ? await getCurrentBusiness(user.id) : null;
   const stage = checkoutStage({ signedIn: Boolean(user), business });
@@ -42,56 +47,59 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
   // A clinic with a plan running sees that plan; choosing another happens in Settings › Billing.
   if (stage.kind === "subscribed" || stage.kind === "free_account") {
     const planKey = publicPlanKeyFromBusinessPlan(stage.kind === "subscribed" ? stage.plan : (business?.plan ?? "BASIC"));
-    const plan = getPublicPlan(planKey);
+    const plan = localizedPlans(m.common.plans).find((item) => item.key === planKey) ?? getPublicPlan(planKey);
     const interval: PaidInterval = business?.billingInterval ?? "MONTH";
     const free = stage.kind === "free_account";
     return (
+      <WithMessages namespaces={["billing"]}>
       <CheckoutShell
         signedIn
-        panelLead={free ? "Your clinic is on us." : "Your plan is set."}
-        panelTail={free ? "Nothing to pay." : "Change it any time."}
+        panelLead={free ? t.panel.freeLead : t.panel.setLead}
+        panelTail={free ? t.panel.freeTail : t.panel.setTail}
         panel={
           <OrderSummary
             plan={plan}
             interval={interval}
             paddle={free ? null : paddle}
             previewPriceId={free ? null : (config?.prices[planKey === "pro" ? "PRO" : "BASIC"][interval].noTrial ?? null)}
-            heading={free ? "Free account" : "Your plan"}
+            heading={free ? t.current.freeHeading : t.current.planHeading}
             trial={null}
           />
         }
       >
-        <p className="mb-3 text-sm font-semibold text-primary">{free ? "Free account" : "Current plan"}</p>
+        <p className="mb-3 text-sm font-semibold text-primary">{free ? t.current.freeEyebrow : t.current.currentEyebrow}</p>
         <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
           {free ? (
             <>
-              Your clinic has <span className="text-muted-foreground">a free account.</span>
+              {t.current.freeLead} <span className="text-muted-foreground">{t.current.freeRest}</span>
             </>
           ) : (
             <>
-              You&apos;re on Vela {plan.name},{" "}
-              <span className="text-muted-foreground">billed {interval === "YEAR" ? "yearly" : "monthly"}.</span>
+              {fmt(t.current.onPlan, { plan: plan.name })}{" "}
+              <span className="text-muted-foreground">{interval === "YEAR" ? t.current.billedYearly : t.current.billedMonthly}</span>
             </>
           )}
         </h1>
         <div className="mt-8">
           {free ? (
             <>
-              <InkLink href="/dashboard">Go to your workspace</InkLink>
-              <Note>There&apos;s nothing to pay.</Note>
+              <InkLink href="/dashboard">{t.current.goWorkspace}</InkLink>
+              <Note>{t.current.nothingToPay}</Note>
             </>
           ) : (
             <>
-              <InkLink href="/dashboard?settings=billing">Manage your plan</InkLink>
-              <Note>Change plan, card or billing period in Settings › Billing.</Note>
+              <InkLink href="/dashboard?settings=billing">{t.current.manage}</InkLink>
+              <Note>{t.current.manageNote}</Note>
             </>
           )}
         </div>
       </CheckoutShell>
+      </WithMessages>
     );
   }
 
   return (
+    <WithMessages namespaces={["billing"]}>
     <CheckoutFlow
       stage={stage}
       locked={locked}
@@ -102,7 +110,8 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
       email={user?.email ?? ""}
       businessId={business?.id ?? ""}
       clinicName={business?.name ?? ""}
-      trialEndsOn={trialEndLabel()}
+      trialEndsOn={trialEndLabel(new Date(), undefined, locale)}
     />
+    </WithMessages>
   );
 }

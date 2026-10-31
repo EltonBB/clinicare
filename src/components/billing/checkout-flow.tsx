@@ -14,14 +14,18 @@ import {
   useLocalizedPrices,
   usePaddle,
 } from "@/components/billing/use-paddle";
+import { useI18n } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
 import { checkoutPriceId, TRIAL_DAYS } from "@/lib/checkout-state";
 import type { PaidInterval, PaidPlan, PriceTable } from "@/lib/paddle/paddle-config";
-import { publicPlans, type PublicPlan } from "@/lib/public-plans";
+import { localizedPlans, type PublicPlan } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
 
 type FlowStage = { kind: "sign_up" } | { kind: "onboarding" } | { kind: "subscribe"; trialAvailable: boolean };
 
-const STEPS = ["Account", "Clinic", "Plan"] as const;
+type Copy = Messages["billing"]["checkout"];
+
 const FRAME_CLASS = "paddle-checkout-frame";
 
 function paidPlan(plan: PublicPlan): PaidPlan {
@@ -62,6 +66,9 @@ export function CheckoutFlow({
   const [planKey, setPlanKey] = useState(initialPlan);
   const [interval, setBillingInterval] = useState(initialInterval);
   const [checkout, setCheckout] = useState<PaddleCheckoutData | null>(null);
+  const { m } = useI18n();
+  const t = m.billing.checkout;
+  const publicPlans = localizedPlans(m.common.plans);
   const plan = publicPlans.find((item) => item.key === planKey) ?? publicPlans[1];
   const trial = stage.kind === "subscribe" ? stage.trialAvailable : true;
   const previewIds = prices
@@ -80,10 +87,10 @@ export function CheckoutFlow({
   const step = stage.kind === "sign_up" ? 0 : stage.kind === "onboarding" ? 1 : 2;
   const showSteps = trial && !locked;
   const lines = locked
-    ? (["Your records are waiting.", "Pick up where you left off."] as const)
+    ? [t.panel.lockedLead, t.panel.lockedTail]
     : trial
-      ? (["Try it for 14 days.", "Pay nothing until then."] as const)
-      : (["One plan for the whole clinic.", "Change it any time."] as const);
+      ? [fmt(t.panel.trialLead, { days: TRIAL_DAYS }), t.panel.trialTail]
+      : [t.panel.planLead, t.panel.planTail];
 
   return (
     <CheckoutShell
@@ -96,7 +103,7 @@ export function CheckoutFlow({
           interval={interval}
           paddle={paddle}
           previewPriceId={prices ? prices[paidPlan(plan)][interval].noTrial : null}
-          heading="Your order"
+          heading={m.billing.order.heading}
           trial={trial}
           trialEndsOn={trialEndsOn}
           checkout={stage.kind === "subscribe" ? checkout : null}
@@ -106,7 +113,7 @@ export function CheckoutFlow({
       {showSteps ? (
         <div className="mb-8">
           <div className="flex gap-1.5" aria-hidden>
-            {STEPS.map((label, index) => (
+            {t.steps.map((label, index) => (
               <span
                 key={label}
                 className={cn("h-1 flex-1 rounded-full", index <= step ? "bg-[var(--brand-ink)]" : "bg-border")}
@@ -114,18 +121,18 @@ export function CheckoutFlow({
             ))}
           </div>
           <p className="mt-3 text-sm text-muted-foreground">
-            Step {step + 1} of {STEPS.length} · {STEPS[step]}
+            {fmt(t.stepOf, { step: step + 1, total: t.steps.length, label: t.steps[step] })}
           </p>
         </div>
       ) : (
-        <p className="mb-3 text-sm font-semibold text-primary">{locked ? "Renew" : "Choose a plan"}</p>
+        <p className="mb-3 text-sm font-semibold text-primary">{locked ? t.renew : t.choosePlan}</p>
       )}
 
       <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-        {headline(stage, locked, clinicName)}
+        {headline(stage, locked, clinicName, t)}
       </h1>
 
-      <div className="mt-8 flex flex-wrap gap-2" role="group" aria-label="Billing period">
+      <div className="mt-8 flex flex-wrap gap-2" role="group" aria-label={t.billingPeriod}>
         {(["MONTH", "YEAR"] as const).map((option) => (
           <button
             key={option}
@@ -139,12 +146,12 @@ export function CheckoutFlow({
                 : "border-border bg-white text-muted-foreground hover:border-[var(--brand-ink)]/30 hover:text-foreground"
             )}
           >
-            {option === "MONTH" ? "Monthly" : "Yearly · 1 month free"}
+            {option === "MONTH" ? t.monthly : t.yearly}
           </button>
         ))}
       </div>
 
-      <div className="mt-4 grid gap-2.5" role="radiogroup" aria-label="Plan">
+      <div className="mt-4 grid gap-2.5" role="radiogroup" aria-label={t.planLabel}>
         {publicPlans.map((item) => {
           const selected = item.key === planKey;
           const id = prices ? prices[paidPlan(item)][interval].noTrial : null;
@@ -176,8 +183,8 @@ export function CheckoutFlow({
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="text-base font-semibold text-[var(--brand-ink)]">{item.name}</span>
                   <span className="text-sm text-muted-foreground">
-                    <span className="text-base font-semibold text-[var(--brand-ink)] tabular-nums">{price}</span> /
-                    {interval === "YEAR" ? " year" : " month"}
+                    <span className="text-base font-semibold text-[var(--brand-ink)] tabular-nums">{price}</span> /{" "}
+                    {interval === "YEAR" ? m.billing.order.year : m.billing.order.month}
                   </span>
                 </span>
                 <span className="mt-1 block text-[13px] leading-5 text-muted-foreground">{item.description}</span>
@@ -202,32 +209,33 @@ export function CheckoutFlow({
   );
 }
 
-function headline(stage: FlowStage, locked: boolean, clinicName: string) {
+function headline(stage: FlowStage, locked: boolean, clinicName: string, t: Copy) {
+  const h = t.headline;
   if (stage.kind === "sign_up") {
     return (
       <>
-        Pick a plan, <span className="text-muted-foreground">then create your account.</span>
+        {h.signUpLead} <span className="text-muted-foreground">{h.signUpRest}</span>
       </>
     );
   }
   if (stage.kind === "onboarding") {
     return (
       <>
-        Pick a plan, <span className="text-muted-foreground">then set up your clinic.</span>
+        {h.onboardingLead} <span className="text-muted-foreground">{h.onboardingRest}</span>
       </>
     );
   }
   if (locked) {
     return (
       <>
-        Renew your plan, <span className="text-muted-foreground">keep every record.</span>
+        {h.lockedLead} <span className="text-muted-foreground">{h.lockedRest}</span>
       </>
     );
   }
   return (
     <>
-      {stage.trialAvailable ? "Start your free trial" : "Choose your plan"}
-      <span className="text-muted-foreground">{clinicName ? ` for ${clinicName}.` : "."}</span>
+      {stage.trialAvailable ? h.startTrial : h.choose}
+      <span className="text-muted-foreground">{clinicName ? fmt(h.forClinic, { clinic: clinicName }) : "."}</span>
     </>
   );
 }
@@ -249,19 +257,21 @@ function Action({
   businessId: string;
   onCheckout: (data: PaddleCheckoutData) => void;
 }) {
+  const t = useI18n().m.billing.checkout;
+  const trialNote = fmt(t.trialStarts, { days: TRIAL_DAYS });
   if (stage.kind === "sign_up") {
     return (
       <>
-        <InkLink href="/sign-up">Create your account</InkLink>
-        <Note>Your {TRIAL_DAYS}-day free trial starts once your clinic is set up.</Note>
+        <InkLink href="/sign-up">{t.createAccount}</InkLink>
+        <Note>{trialNote}</Note>
       </>
     );
   }
   if (stage.kind === "onboarding") {
     return (
       <>
-        <InkLink href="/onboarding">Set up your clinic</InkLink>
-        <Note>Your {TRIAL_DAYS}-day free trial starts once your clinic is set up.</Note>
+        <InkLink href="/onboarding">{t.setUpClinic}</InkLink>
+        <Note>{trialNote}</Note>
       </>
     );
   }
@@ -270,12 +280,12 @@ function Action({
       <>
         <p className="flex h-12 items-center justify-center gap-2 rounded-(--radius-mkt-field) bg-muted text-sm font-semibold text-muted-foreground">
           <LockKeyhole className="size-4" aria-hidden />
-          Card payment opens soon
+          {t.cardSoon}
         </p>
         <Note>
-          Until then we switch your plan on with you.{" "}
+          {t.untilThen}{" "}
           <Link href="/contact" className="font-medium text-[var(--brand-ink)] underline-offset-4 hover:underline">
-            Talk to us
+            {t.talkToUs}
           </Link>
         </Note>
       </>
@@ -283,14 +293,14 @@ function Action({
   }
   return (
     <>
-      <p className="text-sm font-semibold text-foreground">Payment details</p>
+      <p className="text-sm font-semibold text-foreground">{t.paymentDetails}</p>
       <InlineCheckout paddle={paddle} priceId={priceId} email={email} businessId={businessId} onCheckout={onCheckout} />
       {locked ? (
         <Link
           href="/dashboard"
           className="mt-2 inline-flex h-10 w-full items-center justify-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
         >
-          View your records (read-only)
+          {t.viewRecords}
         </Link>
       ) : null}
     </>
@@ -314,6 +324,7 @@ function InlineCheckout({
   businessId: string;
   onCheckout: (data: PaddleCheckoutData) => void;
 }) {
+  const t = useI18n().m.billing.checkout;
   const router = useRouter();
   const { paddle, failed } = usePaddle(paddleConfig);
   const [loaded, setLoaded] = useState(false);
@@ -371,9 +382,7 @@ function InlineCheckout({
   if (failed || broken) {
     return (
       <p role="alert" className="mt-3 rounded-(--radius-mkt-field) bg-muted px-4 py-3 text-sm text-muted-foreground">
-        {broken
-          ? "The payment form couldn't open. Refresh the page, or write to us if it keeps happening."
-          : "The payment form didn't load. Turn off any content blocker for this page, then refresh."}
+        {broken ? t.formBroken : t.formBlocked}
       </p>
     );
   }
