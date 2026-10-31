@@ -22,3 +22,8 @@ export function plural(
     ...values,
   });
 }
+
+/** An amount of money the way the language writes it ("€40.00", "40,00 €"). */
+export function money(locale: Locale, amount: number, currency = "EUR") {
+  return new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency }).format(amount);
+}

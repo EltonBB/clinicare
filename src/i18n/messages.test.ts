@@ -47,6 +47,7 @@ describe("Albanian dictionary", () => {
   it.each(albanian)("$path is translated", ({ path, value }) => {
     expect(value.trim()).not.toBe("");
     const source = english.get(path) ?? "";
-    if (value === source) expect(SAME_IN_BOTH.has(value) || !/[a-z]{3}/i.test(value)).toBe(true);
+    // Identical text must be a known shared word, or carry no words once placeholders are removed.
+    if (value === source) expect(SAME_IN_BOTH.has(value) || !/[a-z]{3}/i.test(value.replace(/\{\w+\}/g, ""))).toBe(true);
   });
 });

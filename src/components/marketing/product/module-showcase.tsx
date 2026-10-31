@@ -24,7 +24,9 @@ export function ModuleShowcase() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const inView = useInView(ref, { margin: "0px 0px -25% 0px" });
   const modules = useModules();
-  const pauseLabel = useI18n().m.marketing.pause.tour;
+  const { m: messages } = useI18n();
+  const pauseLabel = messages.marketing.pause.tour;
+  const t = messages.marketing.product.showcase;
   const [active, setActive] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -64,8 +66,8 @@ export function ModuleShowcase() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeader
           className="mb-12"
-          lead="Every surface, all day."
-          rest="Six modules, one record underneath."
+          lead={t.lead}
+          rest={t.rest}
           aside={<PauseToggle paused={held} onToggle={() => setHeld((h) => !h)} label={pauseLabel} />}
         />
 
@@ -80,7 +82,7 @@ export function ModuleShowcase() {
               if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
             }}
           >
-            <div role="tablist" aria-orientation="vertical" aria-label="Product modules" className="border-b border-border/60" onKeyDown={onKeyDown}>
+            <div role="tablist" aria-orientation="vertical" aria-label={t.tabsLabel} className="border-b border-border/60" onKeyDown={onKeyDown}>
               {modules.map((item, i) => {
                 const selected = i === active;
                 return (

@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
+const useLoop = () => useI18n().m.marketing.about.loop;
+
 function Hours() {
-  const rows: [string, string, boolean][] = [
-    ["Mon to Fri", "08:00 to 18:00", true],
-    ["Saturday", "09:00 to 13:00", true],
-    ["Sunday", "Closed", false],
-  ];
+  const t = useLoop();
+  // The last row (Sunday) is the closed day.
+  const rows = t.hours.map(([day, time], i) => [day, time, i < t.hours.length - 1] as const);
   return (
     <div className="divide-y divide-border/60">
       {rows.map(([day, time, open]) => (
@@ -26,10 +27,11 @@ function Hours() {
 }
 
 function Today() {
+  const t = useLoop();
   const rows: [string, string, string][] = [
-    ["09:30", "Maya Novak", "Checked in"],
-    ["10:15", "Daniel Kim", "Next"],
-    ["11:00", "Hannah Wright", "Booked"],
+    ["09:30", "Maya Novak", t.statuses[0]],
+    ["10:15", "Daniel Kim", t.statuses[1]],
+    ["11:00", "Hannah Wright", t.statuses[2]],
   ];
   return (
     <div className="divide-y divide-border/60">
@@ -45,10 +47,11 @@ function Today() {
 }
 
 function Trend() {
+  const t = useLoop();
   return (
     <div className="px-6 pb-4 pt-3">
       <div className="flex items-baseline justify-between text-xs">
-        <span className="text-muted-foreground">Completion</span>
+        <span className="text-muted-foreground">{t.completion}</span>
         <span className="font-semibold text-[var(--brand-ink)] tabular-nums">84%</span>
       </div>
       <svg viewBox="0 0 200 60" preserveAspectRatio="none" className="mt-2 h-16 w-full" aria-hidden>
@@ -66,32 +69,29 @@ function Trend() {
 }
 
 function Slot() {
+  const t = useLoop();
   return (
     <div className="divide-y divide-border/60">
       <div className="flex items-center gap-3 px-6 py-2.5 text-xs">
         <span className="w-9 text-muted-foreground tabular-nums">08:00</span>
-        <span className="font-medium text-[var(--brand-ink)]">Thursday</span>
-        <span className="ml-auto text-muted-foreground">Full</span>
+        <span className="font-medium text-[var(--brand-ink)]">{t.thursday}</span>
+        <span className="ml-auto text-muted-foreground">{t.full}</span>
       </div>
       <div className="flex items-center gap-3 bg-[var(--brand-wash)]/70 px-6 py-2.5 text-xs">
         <span className="w-9 font-semibold text-primary tabular-nums">07:30</span>
-        <span className="font-semibold text-[var(--brand-ink)]">Thursday</span>
-        <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-white">New slot</span>
+        <span className="font-semibold text-[var(--brand-ink)]">{t.thursday}</span>
+        <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-white">{t.newSlot}</span>
       </div>
       <div className="flex items-center gap-3 px-6 py-2.5 text-xs">
-        <span className="font-medium text-[var(--brand-ink)]">Reminder</span>
-        <span className="ml-auto whitespace-nowrap text-muted-foreground">2 days before, was 1</span>
+        <span className="font-medium text-[var(--brand-ink)]">{t.reminder}</span>
+        <span className="ml-auto whitespace-nowrap text-muted-foreground">{t.reminderValue}</span>
       </div>
     </div>
   );
 }
 
-const STEPS = [
-  { title: "Configure", copy: "Set hours, staff, and branding once.", Visual: Hours },
-  { title: "Operate", copy: "Run bookings, records, and messages.", Visual: Today },
-  { title: "Understand", copy: "See trends and one suggested next step.", Visual: Trend },
-  { title: "Improve", copy: "Adjust slots and reminders, then repeat.", Visual: Slot },
-];
+// One visual per step; the steps' words are `marketing.about.loop.steps`, in this order.
+const VISUALS = [Hours, Today, Trend, Slot];
 
 /**
  * How a clinic runs on Vela: four step cards across the width, each with a
@@ -101,11 +101,13 @@ const STEPS = [
  */
 export function LoopSteps() {
   const [hovered, setHovered] = useState<number | null>(null);
+  const t = useLoop();
+  const steps = t.steps.map((step, i) => ({ ...step, Visual: VISUALS[i] }));
 
   return (
     <div onPointerLeave={() => setHovered(null)}>
       <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {STEPS.map(({ title, copy, Visual }, i) => (
+        {steps.map(({ title, copy, Visual }, i) => (
           <li
             key={title}
             onPointerEnter={() => setHovered(i)}
@@ -118,7 +120,7 @@ export function LoopSteps() {
             <div className="p-6">
               <div className="flex items-center justify-between">
                 <span className="flex size-8 items-center justify-center rounded-full bg-[var(--brand-ink)] text-xs font-semibold text-white tabular-nums">{i + 1}</span>
-                {i < STEPS.length - 1 ? <span className="hidden text-muted-foreground/50 lg:block">→</span> : <span className="hidden text-xs font-medium text-primary lg:block">Back to 1</span>}
+                {i < steps.length - 1 ? <span className="hidden text-muted-foreground/50 lg:block">→</span> : <span className="hidden text-xs font-medium text-primary lg:block">{t.backToFirst}</span>}
               </div>
               <p className="mt-5 text-xl font-semibold text-[var(--brand-ink)]">{title}</p>
               <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{copy}</p>
@@ -136,7 +138,7 @@ export function LoopSteps() {
         <span className="absolute bottom-0 left-0 h-full w-px bg-border" />
         <span className="absolute bottom-0 right-0 h-full w-px bg-border" />
         <span className="absolute -left-[3px] -top-1 size-0 border-x-[4px] border-b-[6px] border-x-transparent border-b-border" />
-        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-3 text-xs font-medium text-muted-foreground">then the loop starts again</span>
+        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-3 text-xs font-medium text-muted-foreground">{t.again}</span>
       </div>
     </div>
   );

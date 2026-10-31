@@ -8,27 +8,27 @@ import { cn } from "@/lib/utils";
 import { EASE } from "../motion/ease";
 import { useMarketingScroll } from "../motion/scroll-context";
 import { SectionHeader } from "../shared/section-header";
+import { useI18n } from "@/i18n/client";
+import { fmt, money } from "@/i18n/format";
 
-type Step = { title: string; copy: string; entries: [string, string][] };
+type Step = { title: string; copy: string; entries: string[][] };
+type Row = { key: string; step: number; entry: string[] };
 
-const STEPS: Step[] = [
-  { title: "Create the patient profile", copy: "Contact details and notes, entered once and never again.", entries: [["Profile created", "New patient"]] },
-  { title: "Book the visit and the provider", copy: "Pick a time that is actually free, with the right person attached.", entries: [["Visit booked", "Thu 09:30 · Dr. Collins"]] },
-  {
-    title: "Record what happened",
-    copy: "Service, payment, notes, and files from the visit all land on the record.",
-    entries: [
-      ["Visit completed", "Consultation"],
-      ["Payment recorded", "€40.00 · Paid"],
-      ["Document added", "Consent form.pdf"],
-    ],
-  },
-  { title: "Follow up with context", copy: "Reminders and messages already know the history.", entries: [["Follow-up reminder", "In 6 weeks"]] },
-  { title: "Review what needs attention", copy: "The visit counts toward this month's reports, without anyone retyping it.", entries: [["Included in reports", "October"]] },
-];
+// Five steps; their words are `marketing.product.story.steps`.
+const LAST = 4;
 
-const ROWS = STEPS.flatMap((step, si) => step.entries.map((entry, ei) => ({ key: `${si}-${ei}`, step: si, entry })));
-const LAST = STEPS.length - 1;
+/** The steps in the visitor's language, with the sample amount filled in, and the record rows they write. */
+function useStory() {
+  const { locale, m } = useI18n();
+  const story = m.marketing.product.story;
+  const amount = money(locale, 40);
+  const steps: Step[] = story.steps.map((step) => ({
+    ...step,
+    entries: step.entries.map(([what, detail]) => [what, fmt(detail, { amount })]),
+  }));
+  const rows: Row[] = steps.flatMap((step, si) => step.entries.map((entry, ei) => ({ key: `${si}-${ei}`, step: si, entry })));
+  return { story, steps, rows };
+}
 
 /**
  * Scroll-linked value computed on the JS side. framer-motion would otherwise
@@ -52,6 +52,7 @@ function useRange(progress: MotionValue<number>, input: number[], output: number
  */
 export function RecordStory() {
   const { reduced } = useMarketingScroll();
+  const { story, steps, rows } = useStory();
   const stepRefs = useRef<(HTMLLIElement | null)[]>([]);
   const list = useRef<HTMLOListElement>(null);
   const record = useRef<HTMLDivElement>(null);
@@ -107,11 +108,11 @@ export function RecordStory() {
   return (
     <section className="border-t border-border/60 py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <SectionHeader lead="From booking to follow-up." rest="One record carries the visit from start to finish." />
+        <SectionHeader lead={story.lead} rest={story.rest} />
 
         <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-[1fr_minmax(0,30rem)] lg:gap-20">
           <ol ref={list} onPointerLeave={() => setHovered(null)}>
-            {STEPS.map((step, i) => (
+            {steps.map((step, i) => (
               <StepItem
                 key={step.title}
                 ref={(el) => {
@@ -128,12 +129,12 @@ export function RecordStory() {
           </ol>
 
           <div ref={record} className="lg:sticky lg:top-28 lg:self-start">
-            <RecordCard shown={shown} done={reduced || complete} hovered={hovered} onHover={setHovered} />
+            <RecordCard rows={rows} shown={shown} done={reduced || complete} hovered={hovered} onHover={setHovered} />
           </div>
         </div>
 
         <div ref={recap} className="mt-16 sm:mt-20">
-          <Recap progress={scrollYProgress} still={reduced} />
+          <Recap labels={story.short} lead={story.recapLead} rest={story.recapRest} progress={scrollYProgress} still={reduced} />
         </div>
       </div>
     </section>
@@ -221,13 +222,11 @@ function StepItem({
   );
 }
 
-const SHORT = ["Profile", "Booking", "Visit", "Follow-up", "Reports"];
-
 /**
  * The end of the section, kept quiet: one light panel with the takeaway on
  * the left and the five steps ticked off along a single line on the right.
  */
-function Recap({ progress, still }: { progress: MotionValue<number>; still: boolean }) {
+function Recap({ labels, lead, rest, progress, still }: { labels: string[]; lead: string; rest: string; progress: MotionValue<number>; still: boolean }) {
   const opacity = useRange(progress, [0, 0.35], [0, 1]);
   const y = useRange(progress, [0, 0.5], [40, 0]);
   const line = useRange(progress, [0.35, 0.95], [0, 1]);
@@ -238,14 +237,14 @@ function Recap({ progress, still }: { progress: MotionValue<number>; still: bool
       style={still ? undefined : { opacity, y }}
     >
       <p className="text-balance text-[clamp(1.6rem,2.4vw,2rem)] font-semibold leading-[1.15] tracking-[-0.03em] text-[var(--brand-ink)]">
-        Five steps, one record. <span className="text-muted-foreground">Nothing typed twice.</span>
+        {lead} <span className="text-muted-foreground">{rest}</span>
       </p>
 
       <ol className="relative grid grid-cols-5">
         <span aria-hidden className="absolute inset-x-[10%] top-3 h-px bg-border">
           <m.span className="absolute inset-0 origin-left bg-primary" style={still ? undefined : { scaleX: line }} />
         </span>
-        {SHORT.map((label, i) => (
+        {labels.map((label, i) => (
           <RecapStep key={label} label={label} index={i} progress={progress} still={still} />
         ))}
       </ol>
@@ -274,19 +273,22 @@ function RecapStep({ label, index, progress, still }: { label: string; index: nu
 
 /** Maya's record: starts empty; each entry slides in when its step lands. */
 function RecordCard({
+  rows,
   shown,
   done,
   hovered,
   onHover,
   className,
 }: {
+  rows: Row[];
   shown: number;
   done: boolean;
   hovered: number | null;
   onHover: (step: number | null) => void;
   className?: string;
 }) {
-  const filled = ROWS.filter((row) => row.step <= shown).length;
+  const t = useI18n().m.marketing.product.story;
+  const filled = rows.filter((row) => row.step <= shown).length;
 
   return (
     <div
@@ -303,7 +305,7 @@ function RecordCard({
         <span className="flex size-10 items-center justify-center rounded-(--radius-mkt-tile) border border-border/70 bg-white text-xs font-bold text-primary">MN</span>
         <div>
           <p className="text-sm font-semibold text-[var(--brand-ink)]">Maya Novak</p>
-          <p className="text-xs text-muted-foreground">Patient record</p>
+          <p className="text-xs text-muted-foreground">{t.patientRecord}</p>
         </div>
         <span
           className={cn(
@@ -311,12 +313,12 @@ function RecordCard({
             done ? "bg-primary text-white" : "bg-[var(--brand-wash)] text-[var(--brand-ink)]",
           )}
         >
-          {done ? "Complete" : `${filled} of ${ROWS.length}`}
+          {done ? t.complete : fmt(t.progress, { count: filled, total: rows.length })}
         </span>
         <span className="absolute inset-x-0 bottom-0 h-px bg-border/60">
           <span
             className="block h-full origin-left bg-gradient-to-r from-primary to-[#64B6FF] transition-transform duration-700 ease-out-quint"
-            style={{ transform: `scaleX(${filled / ROWS.length})` }}
+            style={{ transform: `scaleX(${filled / rows.length})` }}
           />
         </span>
       </div>
@@ -328,17 +330,17 @@ function RecordCard({
         )}
       >
         <p className="overflow-hidden px-6 text-sm text-muted-foreground">
-          <span className="block py-4">Nothing on the record yet. Scroll to start the visit.</span>
+          <span className="block py-4">{t.empty}</span>
         </p>
       </div>
 
       <ul>
-        {ROWS.map(({ key, step, entry: [what, detail] }, ri) => {
+        {rows.map(({ key, step, entry: [what, detail] }, ri) => {
           const landed = step <= shown;
           const fresh = landed && step === shown && !done;
           const lit = hovered === step;
           const dim = hovered !== null && !lit;
-          const order = ri - ROWS.findIndex((row) => row.step === step);
+          const order = ri - rows.findIndex((row) => row.step === step);
           return (
             <li
               key={key}

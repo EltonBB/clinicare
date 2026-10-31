@@ -5,7 +5,7 @@ import { animate, m, useMotionValue, useTransform } from "framer-motion";
 import { Check, CheckCheck } from "lucide-react";
 
 import { useI18n } from "@/i18n/client";
-import { intlLocale, type Locale } from "@/i18n/config";
+import { money } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import { EASE } from "../motion/ease";
 
@@ -20,9 +20,6 @@ import { EASE } from "../motion/ease";
 type SceneProps = { active: boolean; still: boolean };
 
 const useScene = () => useI18n().m.marketing.home.day.scenes;
-
-const euro = (locale: Locale, value: number) =>
-  new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency: "EUR" }).format(value);
 
 const enter = (active: boolean, still: boolean, delay = 0) => ({
   initial: false as const,
@@ -61,7 +58,7 @@ function VisitScene({ active, still }: SceneProps) {
   const rows = [
     [t.lastVisit, t.lastVisitValue],
     [t.documents, t.documentsValue],
-    [t.balance, euro(locale, 40)],
+    [t.balance, money(locale, 40)],
   ];
   return (
     <Frame className="px-0 py-0">
@@ -196,7 +193,7 @@ function PaymentScene({ active, still }: SceneProps) {
   const { locale } = useI18n();
   const t = useScene();
   const balance = useMotionValue(40);
-  const label = useTransform(balance, (v) => euro(locale, v));
+  const label = useTransform(balance, (v) => money(locale, v));
 
   useEffect(() => {
     if (still) {
@@ -215,11 +212,11 @@ function PaymentScene({ active, still }: SceneProps) {
     <Frame className="px-0 py-0">
       <div className="flex items-center justify-between border-b border-border/60 px-7 py-3 text-sm">
         <span className="text-muted-foreground">{t.consultation}</span>
-        <span className="font-medium text-[var(--brand-ink)] tabular-nums">{euro(locale, 40)}</span>
+        <span className="font-medium text-[var(--brand-ink)] tabular-nums">{money(locale, 40)}</span>
       </div>
       <m.div {...enter(active, still, 0.25)} className="flex items-center justify-between border-b border-border/60 px-7 py-3 text-sm">
         <span className="text-muted-foreground">{t.paidByCard}</span>
-        <span className="font-medium text-primary tabular-nums">{euro(locale, -40)}</span>
+        <span className="font-medium text-primary tabular-nums">{money(locale, -40)}</span>
       </m.div>
       <div className="flex items-center justify-between bg-white px-7 py-4">
         <span className="text-sm font-semibold text-[var(--brand-ink)]">{t.balance}</span>

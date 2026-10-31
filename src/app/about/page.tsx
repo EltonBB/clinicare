@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 
 import { AboutPage } from "@/components/marketing/about/about-page";
+import { getI18n } from "@/i18n/server";
 import { WithMessages } from "@/i18n/with-messages";
 
-export const metadata: Metadata = {
-  title: "About | Vela",
-  description:
-    "Learn why Vela is building a calmer operating system for clinics, with clear privacy, terms, and refund policies.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return (await getI18n()).m.marketing.meta.about;
+}
 
 export default function Page() {
   return (

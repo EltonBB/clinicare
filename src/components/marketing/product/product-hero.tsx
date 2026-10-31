@@ -10,6 +10,7 @@ import { WordReveal } from "../motion/word-reveal";
 import { PrimaryCta, SecondaryCta } from "../shared/cta-links";
 import { MODULE_GLYPHS } from "../shared/module-glyphs";
 import { MODULE_COUNT, selectModule, useModules } from "../shared/modules";
+import { useI18n } from "@/i18n/client";
 
 /**
  * Product hero: a fixed lead line over a cobalt last line that rolls through
@@ -21,6 +22,7 @@ import { MODULE_COUNT, selectModule, useModules } from "../shared/modules";
 export function ProductHero() {
   const { reduced } = useMarketingScroll();
   const modules = useModules();
+  const t = useI18n().m.marketing.product;
   const [index, setIndex] = useState(0);
   const [held, setHeld] = useState(false);
 
@@ -34,9 +36,9 @@ export function ProductHero() {
     <section className="pb-20 pt-20 sm:pb-24 sm:pt-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <h1 className="display-1 text-[var(--brand-ink)]">
-          <span className="sr-only">One workspace for scheduling, patient records, staff, messages, payments, and reports.</span>
+          <span className="sr-only">{t.heroSr}</span>
           <span aria-hidden className="block">
-            <WordReveal>One workspace for</WordReveal>
+            <WordReveal>{t.heroLead}</WordReveal>
           </span>
           {/* The rolling word can't wrap, so on narrow phones the line scales with
               the viewport ("patient records." is the longest) instead of clipping. */}
@@ -57,11 +59,11 @@ export function ProductHero() {
         </h1>
         <div className="hero-follow mt-8 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
           <p className="max-w-lg text-lg leading-8 text-muted-foreground">
-            Six modules built together, so a booking, a message, and a payment all land on the same patient record.
+            {t.lede}
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <PrimaryCta href="/sign-up">Start free</PrimaryCta>
-            <SecondaryCta href="/pricing">View pricing</SecondaryCta>
+            <PrimaryCta href="/sign-up">{t.startFree}</PrimaryCta>
+            <SecondaryCta href="/pricing">{t.viewPricing}</SecondaryCta>
           </div>
         </div>
 
