@@ -5,6 +5,21 @@ export const common: Translation<typeof en> = {
   language: {
     label: "Gjuha",
   },
+  logOut: "Dil",
+  showPassword: "Shfaq fjalëkalimin",
+  hidePassword: "Fshih fjalëkalimin",
+  errors: {
+    title: "Diçka shkoi keq",
+    titleRest: "nga ana jonë.",
+    copy: "Ju lutemi provoni përsëri. Nëse vazhdon të ndodhë, kontaktoni mbështetjen dhe do ta shqyrtojmë.",
+    tryAgain: "Provo përsëri",
+    backHome: "Kthehu në faqen kryesore",
+    pageTitle: "Kjo faqe nuk u ngarkua",
+    pageCopy: "Ju lutemi provoni përsëri. Nëse vazhdon të ndodhë, kontaktoni mbështetjen.",
+    backToDashboard: "Kthehu te paneli",
+    notFoundTitle: "Nuk e gjetëm",
+    notFoundCopy: "Kjo kartelë mund të jetë hequr ose lidhja është e vjetër.",
+  },
   meta: {
     description: "Menaxhim modern i klientëve dhe i termineve për biznese shërbimesh.",
   },

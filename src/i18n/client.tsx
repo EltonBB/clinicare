@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useCallback, useContext, useMemo } from "react";
 
 import type { Locale } from "./config";
 import type { Messages } from "./messages";
+import { translateServerText } from "./server-text";
 
 type I18nValue = { locale: Locale; m: Partial<Messages> };
 
@@ -38,4 +39,10 @@ export function useI18n() {
   const value = useContext(I18nContext);
   if (!value) throw new Error("useI18n must be used inside MessagesProvider.");
   return value as { locale: Locale; m: Messages };
+}
+
+/** Shows a server action's message (`error`, `success`, a field error) in the current language. */
+export function useServerText() {
+  const { locale } = useI18n();
+  return useCallback((text: string | undefined) => (text ? translateServerText(text, locale) : text), [locale]);
 }

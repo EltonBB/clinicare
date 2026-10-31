@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { RotateCcw } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { useI18n } from "@/i18n/client";
 
 /**
  * A crash on a public, auth or onboarding page. Kept standalone (brand mark,
@@ -19,6 +20,7 @@ export default function RootError({
   error: Error & { digest?: string };
   retry: () => void;
 }) {
+  const t = useI18n().m.common.errors;
   useEffect(() => {
     // Report to Sentry (scrubbed in beforeSend). Route error boundaries catch
     // client render errors before they reach global-error.tsx, so without this
@@ -33,10 +35,10 @@ export default function RootError({
       <div className="flex flex-1 items-center">
         <div className="mx-auto w-full max-w-xl">
           <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-            Something went wrong <span className="text-muted-foreground">on our side.</span>
+            {t.title} <span className="text-muted-foreground">{t.titleRest}</span>
           </h1>
           <p className="mt-4 text-[15px] leading-7 text-muted-foreground">
-            Please try again. If it keeps happening, contact support and we&apos;ll look into it.
+            {t.copy}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
             <button
@@ -45,10 +47,10 @@ export default function RootError({
               className="inline-flex h-12 items-center gap-2 rounded-(--radius-field) bg-[var(--brand-ink)] px-6 text-[15px] font-semibold text-white transition-[background-color,transform] duration-(--duration-base) ease-out-quint hover:bg-[var(--brand-ink)]/90 active:scale-[0.97]"
             >
               <RotateCcw className="size-4" />
-              Try again
+              {t.tryAgain}
             </button>
             <Link href="/" className="text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-[var(--brand-ink)]">
-              Back to home
+              {t.backHome}
             </Link>
           </div>
         </div>

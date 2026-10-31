@@ -2,6 +2,21 @@ export const common = {
   language: {
     label: "Language",
   },
+  logOut: "Log out",
+  showPassword: "Show password",
+  hidePassword: "Hide password",
+  errors: {
+    title: "Something went wrong",
+    titleRest: "on our side.",
+    copy: "Please try again. If it keeps happening, contact support and we'll look into it.",
+    tryAgain: "Try again",
+    backHome: "Back to home",
+    pageTitle: "This page didn't load",
+    pageCopy: "Please try again. If it keeps happening, contact support.",
+    backToDashboard: "Back to dashboard",
+    notFoundTitle: "We couldn't find that",
+    notFoundCopy: "This record may have been removed, or the link is out of date.",
+  },
   meta: {
     description: "Modern client and appointment management for service businesses.",
   },
