@@ -15,6 +15,8 @@ import {
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { useI18n } from "@/i18n/client";
+import { fmt, plural } from "@/i18n/format";
 import { cn, getInitials } from "@/lib/utils";
 import type { DashboardAppointmentStatus, DashboardViewModel } from "@/lib/dashboard";
 import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
@@ -77,6 +79,7 @@ function KpiTile({
 }
 
 function NextUpCountdown({ startAtIso }: { startAtIso: string }) {
+  const t = useI18n().m.dashboard.schedule;
   const [label, setLabel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,20 +94,20 @@ function NextUpCountdown({ startAtIso }: { startAtIso: string }) {
       }
 
       if (diffMinutes < 60) {
-        setLabel(`in ${diffMinutes} min`);
+        setLabel(fmt(t.inMinutes, { minutes: diffMinutes }));
         return;
       }
 
       const hours = Math.floor(diffMinutes / 60);
       const minutes = diffMinutes % 60;
-      setLabel(minutes === 0 ? `in ${hours} h` : `in ${hours} h ${minutes} min`);
+      setLabel(minutes === 0 ? fmt(t.inHours, { hours }) : fmt(t.inHoursMinutes, { hours, minutes }));
     };
 
     compute();
     const interval = window.setInterval(compute, 30000);
 
     return () => window.clearInterval(interval);
-  }, [startAtIso]);
+  }, [startAtIso, t]);
 
   if (!label) {
     return null;
@@ -118,6 +121,8 @@ function NextUpCountdown({ startAtIso }: { startAtIso: string }) {
 }
 
 export function DashboardOverview({ view }: { view: DashboardViewModel }) {
+  const { locale, m } = useI18n();
+  const t = m.dashboard;
   const primaryAction = view.quickActions[0];
   const visits = view.visitsSummary;
   const revenue = view.revenueSummary;
@@ -130,7 +135,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
   return (
     <WorkspacePage size="wide">
       <WorkspaceHeader
-        title="Dashboard"
+        title={t.title}
         actions={
           primaryAction ? (
             <Link href={primaryAction.href} className={solidButtonClasses}>
@@ -143,27 +148,27 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
       <div className="stagger-children grid grid-cols-2 gap-3 sm:grid-cols-5">
         <KpiTile
-          label="Appointments today"
+          label={t.kpis.appointmentsToday}
           href="/calendar"
           value={view.activeAppointmentCount.toString()}
         />
         <KpiTile
-          label="Completion rate"
+          label={t.kpis.completionRate}
           href="/reports"
           value={`${view.analyticsSummary.completionRate}%`}
         />
         <KpiTile
-          label="Active clients"
+          label={t.kpis.activeClients}
           href="/clients"
           value={view.analyticsSummary.activeClients.toString()}
         />
         <KpiTile
-          label="Revenue this month"
+          label={t.kpis.revenue}
           href="/reports"
           value={revenue.monthToDateDisplay}
         />
         <KpiTile
-          label="Unread messages"
+          label={t.kpis.unread}
           href="/inbox"
           value={liveUnreadCount.toString()}
           className="max-sm:col-span-2"
@@ -173,7 +178,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
       <div className="section-reveal grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <WorkspaceCard
           fill
-          title="Visits"
+          title={t.visits.title}
           className="flex flex-col"
           contentClassName="min-h-0 flex-1"
           action={
@@ -181,7 +186,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               href="/reports"
               className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
-              View reports
+              {t.visits.viewReports}
             </Link>
           }
         >
@@ -189,10 +194,10 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 sm:grid-rows-4">
               {(
                 [
-                  ["Last 7 days", visits.lastSevenDays],
-                  ["Last 30 days", visits.lastThirtyDays],
-                  ["This month", visits.thisMonth],
-                  ["All time", visits.allTime],
+                  [t.visits.last7, visits.lastSevenDays],
+                  [t.visits.last30, visits.lastThirtyDays],
+                  [t.visits.thisMonth, visits.thisMonth],
+                  [t.visits.allTime, visits.allTime],
                 ] as const
               ).map(([label, total]) => (
                 <div
@@ -215,7 +220,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                   className="group/bar relative flex h-full min-w-0 flex-1 flex-col items-center gap-1.5"
                 >
                   <span className="pointer-events-none absolute -top-6 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#1b2540] px-2 py-0.5 text-[10px] font-semibold text-white opacity-0 shadow-(--shadow-pop) transition-opacity duration-(--duration-fast) group-hover/bar:opacity-100">
-                    {day.count} {day.count === 1 ? "visit" : "visits"} · {day.label}
+                    {plural(t.visits.day, day.count, locale, { day: day.label })}
                   </span>
                   <span
                     className={cn(
@@ -260,7 +265,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           contentClassName="flex min-h-0 flex-1 flex-col"
           title={
             <span className="inline-flex items-center gap-2">
-              Today&apos;s schedule
+              {t.schedule.title}
               <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary">
                 {view.appointments.length}
               </span>
@@ -271,7 +276,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
               href="/calendar"
               className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
-              Open calendar
+              {t.schedule.openCalendar}
             </Link>
           }
         >
@@ -287,7 +292,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="text-[10px] font-semibold caps-label text-primary">
-                      Next up
+                      {t.schedule.nextUp}
                     </span>
                     <NextUpCountdown
                       startAtIso={view.nextAppointment.startAtIso}
@@ -357,7 +362,7 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                       statusTextStyles[appointment.status]
                     )}
                   >
-                    {appointment.status[0].toUpperCase() + appointment.status.slice(1)}
+                    {m.common.appointmentStatus[appointment.status]}
                   </span>
                   {appointment.risk?.level === "high" ? (
                     <NoShowRiskBadge risk={appointment.risk} expiresAtIso={appointment.startAtIso} />
@@ -369,16 +374,16 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
             <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-1.5 py-8 text-center">
               <CalendarPlus2 className="mb-1 size-[18px] text-muted-foreground" />
               <p className="text-sm font-semibold text-foreground">
-                No appointments today
+                {t.schedule.empty}
               </p>
               <p className="text-xs leading-5 text-muted-foreground">
-                The day&apos;s schedule will appear here.
+                {t.schedule.emptyDetail}
               </p>
               <Link
                 href="/calendar/new"
                 className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
               >
-                Book an appointment
+                {t.schedule.book}
                 <ArrowUpRight className="size-3" />
               </Link>
             </div>
@@ -389,13 +394,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
       <div className="section-reveal-delayed grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-3">
         <WorkspaceCard
           fill
-          title="Recent activity"
+          title={t.activity.title}
           action={
             <Link
               href="/clients"
               className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
-              View clients
+              {t.activity.viewClients}
             </Link>
           }
         >
@@ -425,8 +430,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : (
             <WorkspaceEmptyState
               icon={UsersRound}
-              title="No recent client activity"
-              description="Client record updates will appear here."
+              title={t.activity.emptyTitle}
+              description={t.activity.emptyDetail}
               compact
             />
           )}
@@ -439,13 +444,13 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
 
         <WorkspaceCard
           fill
-          title="Staff today"
+          title={t.staff.title}
           action={
             <Link
               href="/staff"
               className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
-              View staff
+              {t.staff.viewStaff}
             </Link>
           }
         >
@@ -476,8 +481,8 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
                     )}
                   >
                     {staffMember.appointmentsToday > 0
-                      ? `${staffMember.appointmentsToday} today`
-                      : "Free"}
+                      ? fmt(t.staff.today, { count: staffMember.appointmentsToday })
+                      : t.staff.free}
                   </span>
                 </div>
               ))}
@@ -485,10 +490,10 @@ export function DashboardOverview({ view }: { view: DashboardViewModel }) {
           ) : (
             <WorkspaceEmptyState
               icon={UsersRound}
-              title="No active staff yet"
-              description="Add staff members to see today's coverage here."
+              title={t.staff.emptyTitle}
+              description={t.staff.emptyDetail}
               actionHref="/staff/new"
-              actionLabel="Add staff"
+              actionLabel={t.staff.add}
               compact
             />
           )}

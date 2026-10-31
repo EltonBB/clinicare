@@ -15,6 +15,7 @@ export const common: Translation<typeof en> = {
   previousMonth: "Muaji i kaluar",
   nextMonth: "Muaji tjetër",
   weekdayInitials: ["Hë", "Ma", "Më", "En", "Pr", "Sh", "Di"],
+  noShowRisk: { medium: "Rrezik mesatar", high: "Rrezik i lartë" },
   appointmentStatus: {
     confirmed: "Konfirmuar",
     pending: "Në pritje",

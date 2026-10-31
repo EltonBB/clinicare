@@ -6,6 +6,7 @@ import { MessageSquareText } from "lucide-react";
 
 import { WorkspaceCard, WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
 import { useWorkspaceUnreadCount } from "@/components/layout/workspace-live-context";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import type { DashboardConversationPreview } from "@/lib/dashboard";
 
@@ -18,6 +19,7 @@ export function DashboardMessagesCard({
   initialUnreadCount,
   conversations,
 }: DashboardMessagesCardProps) {
+  const t = useI18n().m.dashboard.messages;
   // Subscribe to the app shell's single notifications poll instead of running a
   // second one — the badge updates on the same cadence, no extra round-trips.
   const unreadCount = useWorkspaceUnreadCount(initialUnreadCount);
@@ -40,7 +42,7 @@ export function DashboardMessagesCard({
       fill
       title={
         <span className="inline-flex items-center gap-2">
-          Messages
+          {t.title}
           {unreadCount > 0 ? (
             <span
               key={pulseKey}
@@ -59,7 +61,7 @@ export function DashboardMessagesCard({
           href="/inbox"
           className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
         >
-          Open inbox
+          {t.openInbox}
         </Link>
       }
     >
@@ -100,8 +102,8 @@ export function DashboardMessagesCard({
       ) : (
         <WorkspaceEmptyState
           icon={MessageSquareText}
-          title="No conversations yet"
-          description="Client replies will appear here as they come in."
+          title={t.emptyTitle}
+          description={t.emptyDetail}
           compact
         />
       )}

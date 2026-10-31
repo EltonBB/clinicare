@@ -13,6 +13,7 @@ export const common = {
   nextMonth: "Next month",
   // Monday first, two letters (month grids).
   weekdayInitials: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+  noShowRisk: { medium: "Medium risk", high: "High risk" },
   appointmentStatus: {
     confirmed: "Confirmed",
     pending: "Pending",

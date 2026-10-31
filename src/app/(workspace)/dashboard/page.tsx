@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { after } from "next/server";
 
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { isProBusinessPlan } from "@/lib/billing";
@@ -19,7 +21,9 @@ import {
 } from "@/lib/time-zone";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
-export const metadata: Metadata = { title: "Dashboard | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.dashboard.meta };
+}
 
 export default async function DashboardPage() {
   const { business } = await requireCurrentWorkspace("/dashboard", {
@@ -431,7 +435,9 @@ export default async function DashboardPage() {
         )
       : 8;
 
+  const { locale } = await getI18n();
   const view = buildDashboardViewFromWorkspace({
+    locale,
     business,
     appointments,
     lastClients,
@@ -451,5 +457,9 @@ export default async function DashboardPage() {
     noShowRisk,
   });
 
-  return <DashboardOverview view={view} />;
+  return (
+    <WithMessages namespaces={["dashboard"]}>
+      <DashboardOverview view={view} />
+    </WithMessages>
+  );
 }
