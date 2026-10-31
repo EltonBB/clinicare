@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useI18n } from "@/i18n/client";
 import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import type { SettingsState } from "@/lib/settings";
 
@@ -47,6 +48,7 @@ export function SettingsDialog({
   flashMessage?: string;
 }) {
   const router = useRouter();
+  const t = useI18n().m.shell.settingsDialog;
   const [state, setState] = useState<SettingsState | null>(null);
   const [error, setError] = useState("");
   const [isDirty, setIsDirty] = useState(false);
@@ -86,7 +88,7 @@ export function SettingsDialog({
         }
       } catch {
         if (!cancelled) {
-          setError("We couldn't load settings right now. Try again in a moment.");
+          setError("load");
         }
       }
     })();
@@ -157,8 +159,8 @@ export function SettingsDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex max-h-[88vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[920px]">
         <DialogHeader className="shrink-0 border-b border-border/70 px-5 py-4">
-          <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Configure how the workspace runs.</DialogDescription>
+          <DialogTitle>{t.title}</DialogTitle>
+          <DialogDescription>{t.description}</DialogDescription>
         </DialogHeader>
         {state ? (
           <SettingsWorkspace
@@ -184,7 +186,7 @@ export function SettingsDialog({
         ) : (
           <div className="flex flex-1 items-center justify-center px-5 py-16 text-sm text-muted-foreground">
             {error ? (
-              <p className="text-destructive">{error}</p>
+              <p className="text-destructive">{t.loadError}</p>
             ) : (
               <span className="inline-flex items-center gap-2">
                 <span className="size-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -198,9 +200,9 @@ export function SettingsDialog({
       <ConfirmDeleteDialog
         open={confirmingDiscard}
         onOpenChange={setConfirmingDiscard}
-        title="Discard unsaved changes?"
-        description="Your edits to settings haven't been saved. Closing now will lose them."
-        confirmLabel="Discard"
+        title={t.discardTitle}
+        description={t.discardDescription}
+        confirmLabel={t.discard}
         isPending={false}
         onConfirm={closeAndReset}
       />

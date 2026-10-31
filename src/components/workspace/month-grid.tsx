@@ -12,9 +12,9 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
-const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const navButtonClasses =
   "inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-(--duration-base) hover:bg-[#f1f4f9] hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45";
@@ -51,6 +51,7 @@ export function MonthGrid({
   getDayState: (day: Date) => MonthGridDayState;
   onSelectDay: (day: Date) => void;
 }) {
+  const { m } = useI18n();
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(monthCursor), { weekStartsOn: 1 }),
     end: endOfWeek(endOfMonth(monthCursor), { weekStartsOn: 1 }),
@@ -65,7 +66,7 @@ export function MonthGrid({
         <span className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Previous month"
+            aria-label={m.common.previousMonth}
             onClick={() => onMonthChange(subMonths(monthCursor, 1))}
             className={navButtonClasses}
           >
@@ -73,7 +74,7 @@ export function MonthGrid({
           </button>
           <button
             type="button"
-            aria-label="Next month"
+            aria-label={m.common.nextMonth}
             onClick={() => onMonthChange(addMonths(monthCursor, 1))}
             className={navButtonClasses}
           >
@@ -82,7 +83,7 @@ export function MonthGrid({
         </span>
       </div>
       <div className="grid grid-cols-7 pb-1 text-center text-[10px] font-semibold caps-label text-muted-foreground">
-        {WEEKDAY_LABELS.map((label) => (
+        {m.common.weekdayInitials.map((label) => (
           <span key={label} className="py-1">
             {label}
           </span>

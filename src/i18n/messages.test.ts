@@ -19,6 +19,7 @@ const SAME_IN_BOTH = new Set([
   "Studio",
   "Spa",
   "Indigo",
+  "Auto",
   // Sample staff names on the website.
   "Dr. Collins",
   "Dr. Shaw",

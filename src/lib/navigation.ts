@@ -11,49 +11,50 @@ import {
 } from "lucide-react";
 
 export type NavigationItem = {
-  label: string;
+  /** Its name in the `shell.nav` dictionary. */
+  key: "dashboard" | "calendar" | "clients" | "staff" | "inbox" | "automations" | "reports" | "settings";
   href: string;
   icon: LucideIcon;
 };
 
 export const navigationItems: NavigationItem[] = [
   {
-    label: "Dashboard",
+    key: "dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
-    label: "Calendar",
+    key: "calendar",
     href: "/calendar",
     icon: CalendarDays,
   },
   {
-    label: "Clients",
+    key: "clients",
     href: "/clients",
     icon: Users,
   },
   {
-    label: "Staff",
+    key: "staff",
     href: "/staff",
     icon: UserRoundCog,
   },
   {
-    label: "Inbox",
+    key: "inbox",
     href: "/inbox",
     icon: MessageSquareMore,
   },
   {
-    label: "Automations",
+    key: "automations",
     href: "/automations",
     icon: Workflow,
   },
   {
-    label: "Reports",
+    key: "reports",
     href: "/reports",
     icon: BarChart3,
   },
   {
-    label: "Settings",
+    key: "settings",
     href: "/settings",
     icon: Settings,
   },

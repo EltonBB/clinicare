@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
 
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import { getCurrentBusiness } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { formatZonedShortDateTime } from "@/lib/time-zone";
 
 const RESULT_LIMIT = 5;
 
-function formatDate(value: Date) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
-}
 
 export async function GET(request: Request) {
   const user = await getCurrentUser();
@@ -127,19 +122,21 @@ export async function GET(request: Request) {
     }),
   ]);
 
+  const { locale, m } = await getI18n();
+  const formatDate = (value: Date) => formatZonedShortDateTime(value, undefined, locale);
   const results = [
     ...clients.map((client) => ({
       id: `client-${client.id}`,
       type: "Client",
       title: client.name,
-      detail: client.phone || client.email || "Client record",
+      detail: client.phone || client.email || m.shell.search.clientRecord,
       href: `/clients/${client.id}`,
     })),
     ...appointments.map((appointment) => ({
       id: `appointment-${appointment.id}`,
       type: "Appointment",
       title: appointment.title,
-      detail: `${appointment.client.name} - ${formatDate(appointment.startAt)} - ${appointmentStatusKey(appointment.status)}`,
+      detail: `${appointment.client.name} - ${formatDate(appointment.startAt)} - ${m.common.appointmentStatus[appointmentStatusKey(appointment.status) as keyof typeof m.common.appointmentStatus]}`,
       href: `/calendar/${appointment.id}/edit`,
     })),
     ...staff.map((member) => ({
@@ -153,7 +150,7 @@ export async function GET(request: Request) {
       id: `conversation-${conversation.id}`,
       type: "Message",
       title: conversation.contactName,
-      detail: `${conversation.phoneNumber}${conversation.unreadCount > 0 ? ` - ${conversation.unreadCount} unread` : ""}`,
+      detail: `${conversation.phoneNumber}${conversation.unreadCount > 0 ? ` - ${fmt(m.shell.search.unread, { count: conversation.unreadCount })}` : ""}`,
       href: `/inbox?conversation=${conversation.id}`,
     })),
   ].slice(0, 12);

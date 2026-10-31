@@ -9,26 +9,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/i18n/client";
+import { plural } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 
 import type { ReminderWarning } from "@/app/(workspace)/actions";
-
-/** Banner and bell wording for each WhatsApp problem that holds up reminders. */
-export const reminderWarningCopy = {
-  disconnected: {
-    title: "WhatsApp isn't connected",
-    banner: "WhatsApp isn't connected, so appointment reminders aren't being sent.",
-    detail: "Appointment reminders aren't being sent. Connect WhatsApp to turn them back on.",
-    action: "Connect WhatsApp",
-  },
-  errored: {
-    title: "WhatsApp is having trouble sending",
-    banner: "WhatsApp is having trouble sending, so appointment reminders may not be going out.",
-    detail: "Appointment reminders may not be going out. Check the connection in Settings.",
-    action: "Check WhatsApp",
-  },
-} as const;
 
 export type NotificationItem = {
   id: string;
@@ -55,7 +41,9 @@ export function NotificationsMenu({
   reminderWarning,
   onOpenWhatsAppSettings,
 }: NotificationsMenuProps) {
-  const warning = reminderWarning ? reminderWarningCopy[reminderWarning] : null;
+  const { locale, m } = useI18n();
+  const t = m.shell.notifications;
+  const warning = reminderWarning ? m.shell.reminderWarning[reminderWarning] : null;
   const hasUpdates = unreadCount > 0 && items.length > 0;
   // The footer CTA should always land somewhere relevant to what's actually
   // outstanding — driven by the true (uncapped) per-source flags, not the
@@ -68,12 +56,12 @@ export function NotificationsMenu({
   const footerHref = hasOnlyStaffUnread
     ? (items.find((item) => item.href !== "/inbox")?.href ?? "/staff")
     : "/inbox";
-  const footerLabel = hasOnlyStaffUnread ? "Open staff messages" : "Open inbox";
+  const footerLabel = hasOnlyStaffUnread ? t.openStaffMessages : t.openInbox;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label="Open notifications"
+        aria-label={t.open}
         className="relative inline-flex size-9 items-center justify-center rounded-(--radius-tile) border border-transparent text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) hover:border-border/70 hover:bg-[#f7f9fc] hover:text-foreground active:scale-[0.97] active:bg-[#eef2f8]"
       >
         <Bell className="size-[18px]" />
@@ -92,13 +80,13 @@ export function NotificationsMenu({
         className="w-[340px] rounded-(--radius-panel) border border-border/80 bg-white p-0 shadow-(--shadow-pop)"
       >
         <div className="border-b border-border/70 px-4 py-3.5">
-          <p className="text-sm font-semibold text-foreground">Notifications</p>
+          <p className="text-sm font-semibold text-foreground">{t.title}</p>
           <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
             {hasUpdates
-              ? `${unreadCount} unread message${unreadCount === 1 ? "" : "s"} waiting for you`
+              ? plural(t.unread, unreadCount, locale)
               : warning
-                ? "Reminders need your attention."
-                : "All clear. Nothing needs your attention right now."}
+                ? t.remindersNeedAttention
+                : t.allClear}
           </p>
         </div>
 
@@ -137,8 +125,7 @@ export function NotificationsMenu({
             ))
           ) : warning ? null : (
             <div className="rounded-(--radius-card) border border-border/75 bg-[#fbfcfe] px-3 py-3 text-xs leading-5 text-muted-foreground">
-              No new notifications yet. Check back later — new messages and
-              updates will show up here.
+              {t.empty}
             </div>
           )}
         </div>

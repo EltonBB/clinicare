@@ -6,6 +6,7 @@ import { legal as enLegal } from "./en/legal";
 import { marketing as enMarketing } from "./en/marketing";
 import { modules as enModules } from "./en/modules";
 import { onboarding as enOnboarding } from "./en/onboarding";
+import { shell as enShell } from "./en/shell";
 import { auth as sqAuth } from "./sq/auth";
 import { billing as sqBilling } from "./sq/billing";
 import { common as sqCommon } from "./sq/common";
@@ -13,6 +14,7 @@ import { legal as sqLegal } from "./sq/legal";
 import { marketing as sqMarketing } from "./sq/marketing";
 import { modules as sqModules } from "./sq/modules";
 import { onboarding as sqOnboarding } from "./sq/onboarding";
+import { shell as sqShell } from "./sq/shell";
 import type { Translation } from "./types";
 
 const en = {
@@ -23,6 +25,7 @@ const en = {
   legal: enLegal,
   auth: enAuth,
   onboarding: enOnboarding,
+  shell: enShell,
 };
 
 export type Messages = Translation<typeof en>;
@@ -37,6 +40,7 @@ const sq: Messages = {
   legal: sqLegal,
   auth: sqAuth,
   onboarding: sqOnboarding,
+  shell: sqShell,
 };
 
 export const messages: Record<Locale, Messages> = { en, sq };

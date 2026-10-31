@@ -14,7 +14,7 @@ import {
   GlobalSearchTrigger,
   useGlobalSearchHotkey,
 } from "@/components/layout/global-search";
-import { NotificationsMenu, reminderWarningCopy, type NotificationItem } from "@/components/layout/notifications-menu";
+import { NotificationsMenu, type NotificationItem } from "@/components/layout/notifications-menu";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { WorkspaceLiveProvider } from "@/components/layout/workspace-live-context";
 import {
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { BillingBanner } from "@/lib/billing-banner";
 import { resolveBrandAccentPreset } from "@/lib/branding";
+import { useI18n } from "@/i18n/client";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -89,8 +90,6 @@ type AppShellProps = {
   notifications?: NotificationItem[];
 };
 
-const MOBILE_LABELS: Record<string, string> = { "/dashboard": "Home", "/automations": "Auto" };
-
 export function AppShell({
   children,
   businessName = "Rivera Health & Wellness",
@@ -106,6 +105,8 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.shell;
   const accent = useMemo(
     () => resolveBrandAccentPreset(brandAccentColor),
     [brandAccentColor]
@@ -170,7 +171,7 @@ export function AppShell({
   );
   const openWhatsAppSettings = useCallback(() => openSettingsSection("whatsapp"), [openSettingsSection]);
   const settingsNotice =
-    searchParams.get("notice") === "email_updated" ? "Your email address was confirmed and updated." : "";
+    searchParams.get("notice") === "email_updated" ? t.emailUpdated : "";
   const [searchOpen, setSearchOpen] = useState(false);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const businessInitial = (businessName || "V").charAt(0).toUpperCase();
@@ -319,7 +320,7 @@ export function AppShell({
                     onMouseEnter={() => prefetchRoute(item.href)}
                   >
                     <Icon className="size-4" />
-                    {item.label}
+                    {t.nav[item.key]}
                     <NavCountBadge
                       count={navBadgeCount(item.href)}
                       isActive={isActive}
@@ -363,7 +364,7 @@ export function AppShell({
                 >
                   <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
                     <Settings className="size-4" />
-                    Settings
+                    {t.nav.settings}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -371,7 +372,7 @@ export function AppShell({
                     onClick={() => logoutFormRef.current?.requestSubmit()}
                   >
                     <LogOut className="size-4" />
-                    Log out
+                    {m.common.logOut}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -438,14 +439,14 @@ export function AppShell({
               >
                 <span className="flex items-center gap-2">
                   <TriangleAlert className="size-4 shrink-0 text-amber-600" aria-hidden="true" />
-                  {reminderWarningCopy[reminderWarning].banner}
+                  {t.reminderWarning[reminderWarning].banner}
                 </span>
                 <button
                   type="button"
                   onClick={openWhatsAppSettings}
                   className="font-semibold text-amber-900 underline-offset-4 transition-colors duration-(--duration-base) hover:underline"
                 >
-                  {reminderWarningCopy[reminderWarning].action}
+                  {t.reminderWarning[reminderWarning].action}
                 </button>
               </div>
             ) : null}
@@ -463,7 +464,8 @@ export function AppShell({
             // Eight items share a phone's width (~44px each), where "Dashboard"
             // and "Automations" spill into their neighbours; they read "Home"
             // and "Auto" here (the full name stays the accessible label).
-            const mobileLabel = MOBILE_LABELS[item.href] ?? item.label;
+            const label = t.nav[item.key];
+            const mobileLabel = t.navShort[item.key];
             const mobileNavClasses = cn(
               "flex min-w-0 flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
               isActive &&
@@ -492,7 +494,7 @@ export function AppShell({
                 className={mobileNavClasses}
                 // Only where the visible text is shortened: an aria-label replaces
                 // the whole accessible name, unread badge included.
-                aria-label={mobileLabel !== item.label ? item.label : undefined}
+                aria-label={mobileLabel !== label ? label : undefined}
                 onFocus={() => prefetchRoute(item.href)}
                 onMouseEnter={() => prefetchRoute(item.href)}
               >

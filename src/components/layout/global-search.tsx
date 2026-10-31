@@ -11,6 +11,7 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
@@ -31,9 +32,9 @@ const resultIcons = {
 };
 
 const SHORTCUT_HINTS = [
-  ["↑↓", "Navigate"],
-  ["↵", "Open"],
-  ["esc", "Close"],
+  ["↑↓", "navigate"],
+  ["↵", "open"],
+  ["esc", "close"],
 ] as const;
 
 /** Opens the search palette on "/" from anywhere in the workspace — guarded
@@ -83,11 +84,12 @@ export function GlobalSearchTrigger({
   compact?: boolean;
   onOpen: () => void;
 }) {
+  const t = useI18n().m.shell.search;
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label="Search clients, appointments, staff, and messages"
+      aria-label={t.label}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-(--radius-tile) border-0 bg-secondary/60 text-left transition-colors duration-(--duration-base) hover:bg-secondary",
         compact ? "h-10 px-3" : "h-11 gap-3 px-4",
@@ -96,7 +98,7 @@ export function GlobalSearchTrigger({
     >
       <Search className="size-4 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-        {compact ? "Search" : "Search clients, appointments, staff, messages..."}
+        {compact ? t.short : t.placeholder}
       </span>
     </button>
   );
@@ -114,6 +116,7 @@ export function GlobalSearchPalette({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const t = useI18n().m.shell.search;
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -244,8 +247,8 @@ export function GlobalSearchPalette({
                 navigateToResult(results[activeIndex]);
               }
             }}
-            placeholder="Search clients, appointments, staff, messages..."
-            aria-label="Search clients, appointments, staff, and messages"
+            placeholder={t.placeholder}
+            aria-label={t.label}
             aria-controls="global-search-results"
             aria-activedescendant={
               results[activeIndex] ? `global-search-result-${results[activeIndex].id}` : undefined
@@ -259,7 +262,7 @@ export function GlobalSearchPalette({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {query.trim().length < 2 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              Type at least 2 characters to search.
+              {t.minLength}
             </p>
           ) : results.length > 0 ? (
             <div id="global-search-results" className="p-2" role="listbox">
@@ -289,7 +292,7 @@ export function GlobalSearchPalette({
                           {result.title}
                         </span>
                         <span className="shrink-0 text-[11px] font-semibold caps-label text-muted-foreground">
-                          {result.type}
+                          {t.types[result.type]}
                         </span>
                       </span>
                       <span className="mt-1 block truncate text-xs text-muted-foreground">
@@ -302,7 +305,7 @@ export function GlobalSearchPalette({
             </div>
           ) : (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {isLoading ? "Searching..." : "No matching records found."}
+              {isLoading ? t.searching : t.noResults}
             </p>
           )}
         </div>
@@ -313,7 +316,7 @@ export function GlobalSearchPalette({
               <kbd className="rounded-[0.3rem] border border-border/70 bg-secondary/60 px-1.5 py-0.5 font-mono">
                 {key}
               </kbd>
-              {label}
+              {t[label]}
             </span>
           ))}
         </div>

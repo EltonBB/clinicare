@@ -1,3 +1,6 @@
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
+import { messages, type Messages } from "@/i18n/messages";
 import type { WorkspaceAccess } from "@/lib/billing-access";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
@@ -13,15 +16,19 @@ export type BillingBanner = {
  * shows nothing (Paddle emails the reminder before it converts); only a lock,
  * a failed payment or a scheduled end gets a line.
  */
-export function billingBanner(access: WorkspaceAccess, timeZone?: string): BillingBanner | null {
+export function billingBanner(
+  access: WorkspaceAccess,
+  timeZone?: string,
+  locale: Locale = "en",
+  copy: Messages["shell"]["billingBanner"] = messages[locale].shell.billingBanner,
+): BillingBanner | null {
+  const date = (value: Date) => formatZonedFullDate(value, timeZone, locale);
   if (access.kind === "locked") {
-    const kept = access.keptUntil
-      ? ` Your records are kept until ${formatZonedFullDate(access.keptUntil, timeZone)}.`
-      : "";
+    const kept = access.keptUntil ? ` ${fmt(copy.keptUntil, { date: date(access.keptUntil) })}` : "";
     return {
       tone: "locked",
-      message: `This workspace is read-only because its plan has ended.${kept}`,
-      action: "Renew plan",
+      message: `${copy.locked}${kept}`,
+      action: copy.renew,
     };
   }
   if (access.kind !== "full" || !access.notice) return null;
@@ -30,14 +37,14 @@ export function billingBanner(access: WorkspaceAccess, timeZone?: string): Billi
     case "past_due":
       return {
         tone: "warning",
-        message: "Your last payment didn't go through. Update your card to keep using Vela.",
-        action: "Update card",
+        message: copy.pastDue,
+        action: copy.updateCard,
       };
     case "ending":
       return {
         tone: "warning",
-        message: `Your plan ends on ${formatZonedFullDate(access.notice.endsAt, timeZone)}. After that the workspace becomes read-only.`,
-        action: "Manage plan",
+        message: fmt(copy.ending, { date: date(access.notice.endsAt) }),
+        action: copy.manage,
       };
     case "trial":
       return null;

@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { useI18n } from "@/i18n/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { fieldSelectClass } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
@@ -100,15 +103,16 @@ export function FormActions({
   isPending: boolean;
   children?: ReactNode;
 }) {
+  const { m } = useI18n();
   return (
     <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap gap-1">{children}</div>
       <div className="flex justify-end gap-2">
         <Link href={cancelHref} className={buttonVariants({ variant: "outline" })}>
-          Cancel
+          {m.common.cancel}
         </Link>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : submitLabel}
+          {isPending ? m.common.saving : submitLabel}
         </Button>
       </div>
     </div>

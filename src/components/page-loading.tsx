@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,7 +11,8 @@ import { cn } from "@/lib/utils";
  * server `loading.tsx` with no client JS. Reduced-motion users get a static bar.
  * The caller wraps it to set the surface height (full-screen or a shell slot).
  */
-export function PageLoading({ className, label = "Loading…" }: { className?: string; label?: string }) {
+export function PageLoading({ className, label }: { className?: string; label?: string }) {
+  const { m } = useI18n();
   return (
     <div className={cn("flex flex-col items-center gap-6", className)} role="status" aria-live="polite">
       <div className="flex items-center gap-2.5">
@@ -25,7 +29,7 @@ export function PageLoading({ className, label = "Loading…" }: { className?: s
       <div className="relative h-1 w-44 overflow-hidden rounded-full bg-[var(--brand-wash)]">
         <span className="absolute inset-y-0 left-0 w-2/5 rounded-full vela-gradient motion-safe:animate-[vela-loader-slide_1.15s_var(--ease-out-quint)_infinite] motion-reduce:w-full motion-reduce:opacity-50" />
       </div>
-      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold text-muted-foreground">{label ?? m.common.loading}</span>
     </div>
   );
 }

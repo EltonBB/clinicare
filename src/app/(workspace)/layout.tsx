@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { WorkspaceToaster } from "@/components/layout/workspace-toaster";
 import { completePastConfirmedAppointments } from "@/lib/appointments";
 import { planDisplayName, planStatusLabel } from "@/lib/billing";
@@ -67,6 +69,7 @@ export default async function WorkspaceLayout({
     });
   });
 
+  const { locale } = await getI18n();
   const { businessName, ownerName } = toBusinessIdentity(business, user);
   const ownerPhone =
     typeof user.user_metadata?.owner_phone === "string"
@@ -79,6 +82,7 @@ export default async function WorkspaceLayout({
   );
 
   return (
+    <WithMessages namespaces={["shell"]}>
     <AppShell
       businessName={businessName}
       ownerName={ownerName}
@@ -88,7 +92,7 @@ export default async function WorkspaceLayout({
       planStatus={planStatusLabel(business.planStatus)}
       brandAccentColor={business.brandAccentColor}
       logoUrl={logoDisplayUrl}
-      billingBanner={billingBanner(access)}
+      billingBanner={billingBanner(access, undefined, locale)}
       unreadCount={0}
       inboxUnreadCount={0}
       notifications={[]}
@@ -96,5 +100,6 @@ export default async function WorkspaceLayout({
       {children}
       <WorkspaceToaster />
     </AppShell>
+    </WithMessages>
   );
 }

@@ -3,6 +3,23 @@ export const common = {
     label: "Language",
   },
   logOut: "Log out",
+  close: "Close",
+  cancel: "Cancel",
+  save: "Save",
+  saving: "Saving...",
+  loading: "Loading…",
+  velaHome: "Vela home",
+  previousMonth: "Previous month",
+  nextMonth: "Next month",
+  // Monday first, two letters (month grids).
+  weekdayInitials: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+  appointmentStatus: {
+    confirmed: "Confirmed",
+    pending: "Pending",
+    completed: "Completed",
+    cancelled: "Cancelled",
+    "no-show": "No-show",
+  },
   showPassword: "Show password",
   hidePassword: "Hide password",
   errors: {
