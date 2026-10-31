@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 export type RecordFieldType = "text" | "textarea" | "select" | "date" | "checkbox";
@@ -22,6 +23,8 @@ export type RecordField = {
   label: string;
   type?: RecordFieldType;
   options?: string[];
+  /** Display text per stored option value; the value itself is shown when missing. */
+  optionLabels?: Readonly<Record<string, string>>;
   placeholder?: string;
   required?: boolean;
   fullWidth?: boolean;
@@ -48,7 +51,7 @@ export function RecordFormDialog({
   description,
   fields,
   initialValues,
-  submitLabel = "Save",
+  submitLabel,
   isPending,
   onSubmit,
 }: {
@@ -62,6 +65,7 @@ export function RecordFormDialog({
   isPending: boolean;
   onSubmit: (values: RecordFormValues) => void;
 }) {
+  const { m } = useI18n();
   const [values, setValues] = useState<RecordFormValues>({});
 
   useEffect(() => {
@@ -160,7 +164,7 @@ export function RecordFormDialog({
                           >
                             {(field.options ?? []).map((option) => (
                               <option key={option} value={option}>
-                                {option}
+                                {field.optionLabels?.[option] ?? option}
                               </option>
                             ))}
                           </select>
@@ -188,14 +192,14 @@ export function RecordFormDialog({
                 disabled={isPending}
                 className="rounded-(--radius-tile)"
               >
-                Cancel
+                {m.common.cancel}
               </Button>
               <Button
                 type="submit"
                 disabled={isPending || missingRequired}
                 className="rounded-(--radius-tile)"
               >
-                {isPending ? "Saving..." : submitLabel}
+                {isPending ? m.common.saving : (submitLabel ?? m.common.save)}
               </Button>
             </div>
           </form>
@@ -218,12 +222,15 @@ export function RecordTypeDialog({
   open,
   onOpenChange,
   title,
+  description,
   options,
   onSelect,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  /** Read to screen readers only. */
+  description: string;
   options: RecordTypeOption[];
   onSelect: (key: string) => void;
 }) {
@@ -232,7 +239,7 @@ export function RecordTypeDialog({
       <DialogContent className="max-w-md p-5">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-foreground">{title}</DialogTitle>
-          <DialogDescription className="sr-only">Choose the kind of record to add.</DialogDescription>
+          <DialogDescription className="sr-only">{description}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-1.5">
           {options.map((option) => (
@@ -257,7 +264,7 @@ export function ConfirmDeleteDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Delete",
+  confirmLabel,
   isPending,
   onConfirm,
 }: {
@@ -269,6 +276,8 @@ export function ConfirmDeleteDialog({
   isPending: boolean;
   onConfirm: () => void;
 }) {
+  const { m } = useI18n();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm p-5">
@@ -291,7 +300,7 @@ export function ConfirmDeleteDialog({
             disabled={isPending}
             className="rounded-(--radius-tile)"
           >
-            Cancel
+            {m.common.cancel}
           </Button>
           <Button
             type="button"
@@ -300,7 +309,7 @@ export function ConfirmDeleteDialog({
             disabled={isPending}
             className="rounded-(--radius-tile)"
           >
-            {isPending ? "Removing..." : confirmLabel}
+            {isPending ? m.common.removing : (confirmLabel ?? m.common.delete)}
           </Button>
         </div>
       </DialogContent>

@@ -14,6 +14,8 @@ export const common: Translation<typeof en> = {
   close: "Mbyll",
   cancel: "Anulo",
   save: "Ruaj",
+  delete: "Fshi",
+  removing: "Duke hequr...",
   saving: "Duke ruajtur...",
   loading: "Duke u ngarkuar…",
   velaHome: "Faqja kryesore e Vela",

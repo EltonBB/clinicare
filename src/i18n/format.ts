@@ -17,6 +17,11 @@ export function fmt(text: string, values: Record<string, string | number>) {
   );
 }
 
+/** A value stored in English (a status, a category) as the dictionary labels it; unknown values pass through. */
+export function storedLabel(labels: Readonly<Record<string, string>>, value: string) {
+  return labels[value] ?? value;
+}
+
 /** Picks the plural form for `count` and fills `{count}` plus any other values. */
 export function plural(
   forms: PluralForms,

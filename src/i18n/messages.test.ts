@@ -9,6 +9,7 @@ const SAME_IN_BOTH = new Set([
   "Basic",
   "Pro",
   "WhatsApp",
+  "SMS",
   "Email",
   "OK",
   "AI",

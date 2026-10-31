@@ -53,7 +53,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ClientMedicalTab,
   medicalBackgroundFields,
-  medicalRecordTypes,
+  medicalRecordKinds,
   type MedicalKind,
 } from "@/components/clients/client-medical-tab";
 import {
@@ -69,6 +69,9 @@ import {
   WorkspaceEmptyState,
   WorkspacePage,
 } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt, plural, storedLabel } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import { safeUploadErrorMessage, uploadWorkspaceDocument } from "@/lib/media-storage-client";
 import { buildPaymentStatementCsv } from "@/lib/payment-statement";
@@ -90,13 +93,6 @@ type ClientDetailsPageProps = {
 // a value from one gets a client reference, not the number itself (Codex).
 // Keep both in sync if the tab list changes.
 
-const statusLabels: Record<ClientStatus, string> = {
-  active: "Active",
-  "at-risk": "At risk",
-  inactive: "Inactive",
-  archived: "Archived",
-};
-
 const statusBadgeStyles: Record<ClientStatus, string> = {
   active: "bg-emerald-100 text-emerald-700",
   "at-risk": "bg-destructive/10 text-destructive",
@@ -104,15 +100,14 @@ const statusBadgeStyles: Record<ClientStatus, string> = {
   archived: "bg-secondary text-muted-foreground",
 };
 
-const documentCategories = [
-  "Insurance",
-  "Consent",
-  "Medical History",
-  "Report",
-  "Image / Scan",
-  "Invoice",
-  "Other",
-];
+// Stored values (the actions' schemas accept exactly these); labels come from
+// the dictionary.
+const documentCategories = ["Insurance", "Consent", "Medical History", "Report", "Image / Scan", "Invoice", "Other"];
+const healthTypes = ["Allergy", "Medical alert", "Chronic condition", "Vital detail", "Care fact"];
+const treatmentStatuses = ["Pending", "Upcoming", "Completed", "On hold"];
+const reminderChannels = ["WhatsApp", "SMS", "Email", "Phone call"];
+const reminderStatuses = ["Scheduled", "Sent", "Completed"];
+const paymentStatuses = ["Paid", "Unpaid", "Partially Paid", "Refunded"];
 
 // "background" is the free-text medical background — one set of fields per
 // patient, so unlike the other kinds it has no delete and no record id.
@@ -131,7 +126,7 @@ type DialogState =
   | { mode: "delete"; kind: DeletableKind | "gallery"; recordId: string; label: string }
   | null;
 
-const entityDialogs: Record<
+function buildEntityDialogs(c: Messages["clients"]): Record<
   EntityKind,
   {
     createTitle: string;
@@ -142,149 +137,162 @@ const entityDialogs: Record<
     createFields?: RecordField[];
     fields: RecordField[];
   }
-> = {
-  medication: {
-    createTitle: "Add medication",
-    editTitle: "Edit medication",
-    description: "Record what this patient is currently taking.",
-    submitCreate: "Add medication",
-    fields: [
-      { key: "name", label: "Medication name", required: true, placeholder: "Amoxicillin" },
-      { key: "dosage", label: "Dosage", placeholder: "500mg" },
-      { key: "frequency", label: "Frequency", placeholder: "2x daily" },
-      { key: "isActive", label: "Currently active", type: "checkbox" },
-      { key: "notes", label: "Notes", type: "textarea" },
-    ],
-  },
-  health: {
-    createTitle: "Add health item",
-    editTitle: "Edit health item",
-    description: "Allergies, alerts, conditions, vitals, or care facts.",
-    submitCreate: "Add health item",
-    fields: [
-      {
-        key: "type",
-        label: "Type",
-        type: "select",
-        options: ["Allergy", "Medical alert", "Chronic condition", "Vital detail", "Care fact"],
-      },
-      { key: "label", label: "Label", required: true, placeholder: "Penicillin allergy" },
-      { key: "value", label: "Value", placeholder: "Optional value" },
-      { key: "severity", label: "Severity", placeholder: "High / Moderate / Low" },
-      { key: "notes", label: "Notes", type: "textarea" },
-    ],
-  },
-  background: {
-    createTitle: "Medical background",
-    editTitle: "Medical background",
-    description: "History, allergies, and previous treatments.",
-    submitCreate: "Save background",
-    fields: [
-      { key: "medicalHistory", label: "Medical history", type: "textarea" },
-      { key: "allergies", label: "Allergies", type: "textarea" },
-      { key: "importantHealthNotes", label: "Health notes", type: "textarea" },
-      { key: "previousTreatments", label: "Previous treatments", type: "textarea" },
-      { key: "treatmentPlan", label: "Treatment plan", type: "textarea" },
-    ],
-  },
-  treatment: {
-    createTitle: "Add treatment plan item",
-    editTitle: "Edit treatment plan item",
-    description: "Keep the care plan structured and trackable.",
-    submitCreate: "Add item",
-    fields: [
-      { key: "title", label: "Plan item", required: true, placeholder: "Whitening session 2" },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        options: ["Pending", "Upcoming", "Completed", "On hold"],
-      },
-      { key: "dueAt", label: "Due date", type: "date" },
-      { key: "description", label: "Details", type: "textarea" },
-    ],
-  },
-  note: {
-    createTitle: "Add provider note",
-    editTitle: "Edit provider note",
-    description: "Internal clinical note from the care team.",
-    submitCreate: "Add note",
-    fields: [
-      { key: "title", label: "Title", placeholder: "Optional title" },
-      { key: "body", label: "Note", type: "textarea", required: true },
-    ],
-  },
-  reminder: {
-    createTitle: "Add follow-up reminder",
-    editTitle: "Edit follow-up reminder",
-    description: "Schedule a follow-up touchpoint for this patient.",
-    submitCreate: "Add reminder",
-    fields: [
-      { key: "title", label: "Reminder", required: true, placeholder: "Post-visit check-in" },
-      { key: "remindAt", label: "Date", type: "date", required: true },
-      {
-        key: "channel",
-        label: "Channel",
-        type: "select",
-        options: ["WhatsApp", "SMS", "Email", "Phone call"],
-      },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        options: ["Scheduled", "Sent", "Completed"],
-      },
-      { key: "notes", label: "Notes", type: "textarea" },
-    ],
-  },
-  payment: {
-    createTitle: "Add ledger entry",
-    editTitle: "Edit ledger entry",
-    description: "Record a manual payment or billing entry.",
-    submitCreate: "Add entry",
-    // Adding an entry asks only for what a payment can't exist without; the
-    // invoice/receipt references and billing note are added later by editing it.
-    createFields: [
-      { key: "amount", label: "Amount", required: true, placeholder: "85.00" },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        options: ["Paid", "Unpaid", "Partially Paid", "Refunded"],
-      },
-      { key: "paidAt", label: "Payment date", type: "date" },
-      { key: "paymentMethod", label: "Payment method", placeholder: "Cash, card, transfer..." },
-      { key: "description", label: "Description", fullWidth: true, placeholder: "Whitening session" },
-    ],
-    fields: [
-      { key: "amount", label: "Amount", required: true, placeholder: "85.00" },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        options: ["Paid", "Unpaid", "Partially Paid", "Refunded"],
-      },
-      { key: "paidAt", label: "Payment date", type: "date" },
-      { key: "paymentMethod", label: "Payment method", placeholder: "Cash, card, transfer..." },
-      { key: "invoiceNumber", label: "Invoice number" },
-      { key: "receiptNumber", label: "Receipt number" },
-      { key: "description", label: "Description", fullWidth: true, placeholder: "Whitening session" },
-      { key: "receiptUrl", label: "Receipt link", fullWidth: true, placeholder: "https://..." },
-      { key: "billingNote", label: "Billing note", type: "textarea" },
-    ],
-  },
-  document: {
-    createTitle: "Add document",
-    editTitle: "Edit document",
-    description: "Private document metadata for this patient file.",
-    submitCreate: "Add document",
-    fields: [
-      { key: "fileName", label: "File name", required: true },
-      { key: "fileType", label: "Category", type: "select", options: documentCategories },
-      { key: "notes", label: "Notes", type: "textarea" },
-    ],
-  },
-};
+> {
+  const d = c.dialogs;
+  const background = c.medical.background;
+  const amount: RecordField = { key: "amount", label: d.payment.amount, required: true, placeholder: d.payment.amountPlaceholder };
+  const paymentStatus: RecordField = {
+    key: "status",
+    label: d.payment.status,
+    type: "select",
+    options: paymentStatuses,
+    optionLabels: c.paymentStatuses,
+  };
+  const paidAt: RecordField = { key: "paidAt", label: d.payment.paidAt, type: "date" };
+  const paymentMethod: RecordField = {
+    key: "paymentMethod",
+    label: d.payment.paymentMethod,
+    placeholder: d.payment.paymentMethodPlaceholder,
+  };
+  const paymentDescription: RecordField = {
+    key: "description",
+    label: d.payment.descriptionLabel,
+    fullWidth: true,
+    placeholder: d.payment.descriptionPlaceholder,
+  };
+
+  return {
+    medication: {
+      createTitle: d.medication.createTitle,
+      editTitle: d.medication.editTitle,
+      description: d.medication.description,
+      submitCreate: d.medication.submitCreate,
+      fields: [
+        { key: "name", label: d.medication.name, required: true, placeholder: d.medication.namePlaceholder },
+        { key: "dosage", label: d.medication.dosage, placeholder: d.medication.dosagePlaceholder },
+        { key: "frequency", label: d.medication.frequency, placeholder: d.medication.frequencyPlaceholder },
+        { key: "isActive", label: d.medication.isActive, type: "checkbox" },
+        { key: "notes", label: d.medication.notes, type: "textarea" },
+      ],
+    },
+    health: {
+      createTitle: d.health.createTitle,
+      editTitle: d.health.editTitle,
+      description: d.health.description,
+      submitCreate: d.health.submitCreate,
+      fields: [
+        { key: "type", label: d.health.type, type: "select", options: healthTypes, optionLabels: c.healthTypes },
+        { key: "label", label: d.health.label, required: true, placeholder: d.health.labelPlaceholder },
+        { key: "value", label: d.health.value, placeholder: d.health.valuePlaceholder },
+        { key: "severity", label: d.health.severity, placeholder: d.health.severityPlaceholder },
+        { key: "notes", label: d.health.notes, type: "textarea" },
+      ],
+    },
+    background: {
+      createTitle: d.background.title,
+      editTitle: d.background.title,
+      description: d.background.description,
+      submitCreate: d.background.submit,
+      fields: [
+        { key: "medicalHistory", label: background.medicalHistory, type: "textarea" },
+        { key: "allergies", label: background.allergies, type: "textarea" },
+        { key: "importantHealthNotes", label: background.importantHealthNotes, type: "textarea" },
+        { key: "previousTreatments", label: background.previousTreatments, type: "textarea" },
+        { key: "treatmentPlan", label: background.treatmentPlan, type: "textarea" },
+      ],
+    },
+    treatment: {
+      createTitle: d.treatment.createTitle,
+      editTitle: d.treatment.editTitle,
+      description: d.treatment.description,
+      submitCreate: d.treatment.submitCreate,
+      fields: [
+        { key: "title", label: d.treatment.title, required: true, placeholder: d.treatment.titlePlaceholder },
+        {
+          key: "status",
+          label: d.treatment.status,
+          type: "select",
+          options: treatmentStatuses,
+          optionLabels: c.treatmentStatuses,
+        },
+        { key: "dueAt", label: d.treatment.dueAt, type: "date" },
+        { key: "description", label: d.treatment.details, type: "textarea" },
+      ],
+    },
+    note: {
+      createTitle: d.note.createTitle,
+      editTitle: d.note.editTitle,
+      description: d.note.description,
+      submitCreate: d.note.submitCreate,
+      fields: [
+        { key: "title", label: d.note.title, placeholder: d.note.titlePlaceholder },
+        { key: "body", label: d.note.body, type: "textarea", required: true },
+      ],
+    },
+    reminder: {
+      createTitle: d.reminder.createTitle,
+      editTitle: d.reminder.editTitle,
+      description: d.reminder.description,
+      submitCreate: d.reminder.submitCreate,
+      fields: [
+        { key: "title", label: d.reminder.title, required: true, placeholder: d.reminder.titlePlaceholder },
+        { key: "remindAt", label: d.reminder.date, type: "date", required: true },
+        {
+          key: "channel",
+          label: d.reminder.channel,
+          type: "select",
+          options: reminderChannels,
+          optionLabels: c.reminderChannels,
+        },
+        {
+          key: "status",
+          label: d.reminder.status,
+          type: "select",
+          options: reminderStatuses,
+          optionLabels: c.reminderStatuses,
+        },
+        { key: "notes", label: d.reminder.notes, type: "textarea" },
+      ],
+    },
+    payment: {
+      createTitle: d.payment.createTitle,
+      editTitle: d.payment.editTitle,
+      description: d.payment.description,
+      submitCreate: d.payment.submitCreate,
+      // Adding an entry asks only for what a payment can't exist without; the
+      // invoice/receipt references and billing note are added later by editing it.
+      createFields: [amount, paymentStatus, paidAt, paymentMethod, paymentDescription],
+      fields: [
+        amount,
+        paymentStatus,
+        paidAt,
+        paymentMethod,
+        { key: "invoiceNumber", label: d.payment.invoiceNumber },
+        { key: "receiptNumber", label: d.payment.receiptNumber },
+        paymentDescription,
+        { key: "receiptUrl", label: d.payment.receiptUrl, fullWidth: true, placeholder: "https://..." },
+        { key: "billingNote", label: d.payment.billingNote, type: "textarea" },
+      ],
+    },
+    document: {
+      createTitle: d.document.createTitle,
+      editTitle: d.document.editTitle,
+      description: d.document.description,
+      submitCreate: d.document.submitCreate,
+      fields: [
+        { key: "fileName", label: d.document.fileName, required: true },
+        {
+          key: "fileType",
+          label: d.document.category,
+          type: "select",
+          options: documentCategories,
+          optionLabels: c.documentCategories,
+        },
+        { key: "notes", label: d.document.notes, type: "textarea" },
+      ],
+    },
+  };
+}
 
 const timelineIcons: Record<ClientTimelineEntry["kind"], ComponentType<{ className?: string }>> = {
   appointment: CalendarDays,
@@ -294,11 +302,12 @@ const timelineIcons: Record<ClientTimelineEntry["kind"], ComponentType<{ classNa
   message: MessageSquare,
 };
 
-function countLabel(count: number, singular: string, plural: string) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
 export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
+  const { locale, m } = useI18n();
+  const t = m.clients.record;
+  const saved = t.saved;
+  const serverText = useServerText();
+  const entityDialogs = buildEntityDialogs(m.clients);
   const [client, setClient] = useState(initialClient);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -339,7 +348,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       const result = await mutate();
 
       if (!result.ok || !result.client) {
-        setErrorMessage(result.error ?? "We couldn't save this change.");
+        setErrorMessage(serverText(result.error) ?? t.saveFailed);
         setStatusMessage("");
         return;
       }
@@ -377,7 +386,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             editId
               ? updateClientMedicationAction({ ...payload, id: editId })
               : addClientMedicationAction(payload),
-          editId ? "Medication updated." : "Medication added."
+          editId ? saved.medicationUpdated : saved.medicationAdded
         );
         break;
       }
@@ -392,7 +401,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               previousTreatments: v("previousTreatments"),
               treatmentPlan: v("treatmentPlan"),
             }),
-          "Medical background saved."
+          saved.backgroundSaved
         );
         break;
       }
@@ -410,7 +419,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             editId
               ? updateClientHealthItemAction({ ...payload, id: editId })
               : addClientHealthItemAction(payload),
-          editId ? "Health item updated." : "Health item added."
+          editId ? saved.healthUpdated : saved.healthAdded
         );
         break;
       }
@@ -427,7 +436,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             editId
               ? updateClientTreatmentPlanItemAction({ ...payload, id: editId })
               : addClientTreatmentPlanItemAction(payload),
-          editId ? "Treatment plan item updated." : "Treatment plan item added."
+          editId ? saved.treatmentUpdated : saved.treatmentAdded
         );
         break;
       }
@@ -442,7 +451,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             editId
               ? updateClientCareNoteAction({ ...payload, id: editId })
               : addClientCareNoteAction(payload),
-          editId ? "Provider note updated." : "Provider note added."
+          editId ? saved.noteUpdated : saved.noteAdded
         );
         break;
       }
@@ -460,7 +469,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             editId
               ? updateClientFollowUpReminderAction({ ...payload, id: editId })
               : addClientFollowUpReminderAction(payload),
-          editId ? "Reminder updated." : "Follow-up reminder added."
+          editId ? saved.reminderUpdated : saved.reminderAdded
         );
         break;
       }
@@ -482,7 +491,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             editId
               ? updateClientPaymentAction({ ...payload, id: editId })
               : addClientPaymentAction(payload),
-          editId ? "Ledger entry updated." : "Payment ledger entry added."
+          editId ? saved.paymentUpdated : saved.paymentAdded
         );
         break;
       }
@@ -497,7 +506,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 fileType: v("fileType"),
                 notes: v("notes"),
               }),
-            "Document updated."
+            saved.documentUpdated
           );
         } else {
           runMutation(
@@ -519,7 +528,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
 
               return result;
             },
-            "Document added."
+            saved.documentAdded
           );
         }
         break;
@@ -547,7 +556,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       gallery: deleteClientGalleryItemAction,
     };
 
-    runMutation(() => deleteActions[dialog.kind](payload), "Record removed.");
+    runMutation(() => deleteActions[dialog.kind](payload), saved.removed);
   }
 
   async function handleDocumentFile(file?: File) {
@@ -579,7 +588,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         },
       });
     } catch (error) {
-      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this file."));
+      setErrorMessage(serverText(safeUploadErrorMessage(error, t.uploadFailed)) ?? t.uploadFailed);
       setStatusMessage("");
     } finally {
       setIsUploading(false);
@@ -587,12 +596,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   }
 
   function downloadPaymentStatement() {
-    const csv = buildPaymentStatementCsv(client.payments);
+    const csv = buildPaymentStatementCsv(client.payments, m.clients);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${client.name.replaceAll(" ", "-").toLowerCase()}-payment-statement.csv`;
+    anchor.download = `${client.name.replaceAll(" ", "-").toLowerCase()}-${m.clients.statement.fileName}.csv`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -623,7 +632,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         className="rounded-(--radius-tile)"
       >
         <Plus className="size-4" />
-        Add manually
+        {t.addManually}
       </Button>
       <label className={cn(buttonVariants({ size: "sm" }), "cursor-pointer rounded-(--radius-tile)")}>
         <input
@@ -637,7 +646,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           disabled={isUploading}
         />
         <ImagePlus className="size-4" />
-        {isUploading ? "Uploading..." : "Upload document"}
+        {isUploading ? t.uploading : t.uploadDocument}
       </label>
     </>
   );
@@ -653,7 +662,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to clients
+          {t.backToClients}
         </Link>
 
         <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
@@ -675,7 +684,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                     statusBadgeStyles[client.status]
                   )}
                 >
-                  {statusLabels[client.status]}
+                  {m.clients.status[client.status]}
                 </span>
               </div>
 
@@ -690,7 +699,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   {client.details.preferredChannel ? (
                     <span className="inline-flex items-center gap-2">
                       <MessageSquare className="size-4 text-muted-foreground" />
-                      Prefers {client.details.preferredChannel}
+                      {fmt(t.prefers, { channel: storedLabel(m.clients.contactMethods, client.details.preferredChannel) })}
                     </span>
                   ) : null}
                 </div>
@@ -704,21 +713,21 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-tile) px-4")}
             >
               <CalendarPlus2 className="size-4" />
-              Book appointment
+              {t.bookAppointment}
             </Link>
             <Link
               href={`/inbox?client=${client.id}`}
               className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-(--radius-tile) px-4")}
             >
               <MessageSquare className="size-4" />
-              Send message
+              {t.sendMessage}
             </Link>
             <Link
               href={`/clients/${client.id}/edit`}
               className={cn(buttonVariants({ variant: "outline" }), "h-10 rounded-(--radius-tile) px-4")}
             >
               <UserRoundPen className="size-4" />
-              Edit profile
+              {t.editProfile}
             </Link>
           </div>
         </div>
@@ -744,16 +753,16 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           variant="line"
           className="w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border/80 p-0"
         >
-          <TabsTrigger className="flex-none px-0 pb-3" value="overview">Overview</TabsTrigger>
-          <TabsTrigger className="flex-none px-0 pb-3" value="appointments">Appointments</TabsTrigger>
-          <TabsTrigger className="flex-none px-0 pb-3" value="medical">Medical Info</TabsTrigger>
-          <TabsTrigger className="flex-none px-0 pb-3" value="documents">Documents</TabsTrigger>
-          <TabsTrigger className="flex-none px-0 pb-3" value="payments">Payments</TabsTrigger>
+          {(["overview", "appointments", "medical", "documents", "payments"] as const).map((tab) => (
+            <TabsTrigger key={tab} className="flex-none px-0 pb-3" value={tab}>
+              {t.tabs[tab]}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="overview" className="grid items-start gap-3">
           <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
-            <WorkspaceCard title="Next appointment">
+            <WorkspaceCard title={t.nextAppointment}>
               {nextAppointment ? (
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -765,24 +774,24 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       </p>
                     ) : null}
                   </div>
-                  <StatusBadge status={nextAppointment.status} />
+                  <StatusBadge status={appointmentStatusKey(nextAppointment.status)} />
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No upcoming appointment.</p>
+                <p className="text-sm text-muted-foreground">{t.noUpcoming}</p>
               )}
             </WorkspaceCard>
 
-            <WorkspaceCard title="Details">
+            <WorkspaceCard title={t.details}>
               <dl className="space-y-2.5">
-                <OverviewLine label="Email" value={client.email} />
-                <OverviewLine label="Patient type" value={client.patientType} />
-                <OverviewLine label="Date of birth" value={client.dateOfBirth} />
-                <OverviewLine label="Gender" value={client.gender} />
-                <OverviewLine label="Address" value={client.address} />
+                <OverviewLine label={t.email} value={client.email} />
+                <OverviewLine label={t.patientType} value={storedLabel(m.clients.patientTypes, client.patientType)} />
+                <OverviewLine label={t.dateOfBirth} value={client.dateOfBirth} />
+                <OverviewLine label={t.gender} value={storedLabel(m.clients.genders, client.gender)} />
+                <OverviewLine label={t.address} value={client.address} />
               </dl>
               {client.notes ? (
                 <div className="mt-3">
-                  <p className="text-sm text-muted-foreground">Notes</p>
+                  <p className="text-sm text-muted-foreground">{t.notes}</p>
                   <p className="mt-1 text-sm leading-5 text-foreground">{client.notes}</p>
                 </div>
               ) : null}
@@ -793,14 +802,14 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             backgroundValues.importantHealthNotes ||
             currentMedications[0] ? (
               <WorkspaceCard
-                title="Health"
+                title={t.health}
                 action={
                   <button
                     type="button"
                     onClick={() => setSelectedTab("medical")}
                     className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                   >
-                    View medical info
+                    {t.viewMedical}
                   </button>
                 }
               >
@@ -811,13 +820,13 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       <span className="font-medium text-foreground">{item.label}</span>
                     </p>
                   ))}
-                  <HealthSummaryRow title="Allergies" value={backgroundValues.allergies} />
+                  <HealthSummaryRow title={t.allergies} value={backgroundValues.allergies} />
                   <HealthSummaryRow
-                    title="Important health notes"
+                    title={t.importantHealthNotes}
                     value={backgroundValues.importantHealthNotes}
                   />
                   <HealthSummaryRow
-                    title="Current medication"
+                    title={t.currentMedication}
                     value={
                       currentMedications[0]
                         ? `${currentMedications[0].name} ${currentMedications[0].dosage}`.trim()
@@ -829,13 +838,13 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             ) : null}
           </div>
           <WorkspaceCard
-            title="Recent activity"
+            title={t.recentActivity}
             action={
               <Link
                 href={`/inbox?client=${client.id}`}
                 className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
               >
-                Open inbox
+                {t.openInbox}
               </Link>
             }
           >
@@ -865,22 +874,22 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 })}
               </div>
             ) : (
-              <WorkspaceEmptyState icon={CalendarDays} title="No activity yet" className="py-10" />
+              <WorkspaceEmptyState icon={CalendarDays} title={t.noActivity} className="py-10" />
             )}
           </WorkspaceCard>
         </TabsContent>
 
         <TabsContent value="appointments" className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           {client.appointments.length > 0 ? (
-            <WorkspaceCard title="Appointments">
+            <WorkspaceCard title={t.appointments}>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                     <tr>
-                      <th className="rounded-l-(--radius-field) px-3 py-2.5 text-left">Date & time</th>
-                      <th className="px-3 py-2.5 text-left">Service</th>
-                      <th className="px-3 py-2.5 text-left">Status</th>
-                      <th className="rounded-r-(--radius-field) px-3 py-2.5 text-left">Notes</th>
+                      <th className="rounded-l-(--radius-field) px-3 py-2.5 text-left">{t.appointmentColumns.dateTime}</th>
+                      <th className="px-3 py-2.5 text-left">{t.appointmentColumns.service}</th>
+                      <th className="px-3 py-2.5 text-left">{t.appointmentColumns.status}</th>
+                      <th className="rounded-r-(--radius-field) px-3 py-2.5 text-left">{t.appointmentColumns.notes}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -899,11 +908,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
             </WorkspaceCard>
           ) : (
-            <WorkspaceEmptyState icon={CalendarDays} title="No appointments yet" className="py-12" />
+            <WorkspaceEmptyState icon={CalendarDays} title={t.noAppointments} className="py-12" />
           )}
 
           <WorkspaceCard
-            title="Follow-up reminders"
+            title={t.followUps}
             action={<AddLink onClick={() => setDialog({ mode: "create", kind: "reminder" })} />}
           >
             {client.followUpReminders.length > 0 ? (
@@ -911,7 +920,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 <RecordRow
                   key={reminder.id}
                   title={reminder.title}
-                  meta={[reminder.remindAt, reminder.channel, reminder.status]
+                  meta={[
+                    reminder.remindAt,
+                    storedLabel(m.clients.reminderChannels, reminder.channel),
+                    storedLabel(m.clients.reminderStatuses, reminder.status),
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                   body={reminder.notes}
@@ -940,7 +953,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 />
               ))
             ) : (
-              <p className="text-sm text-muted-foreground">No reminders yet.</p>
+              <p className="text-sm text-muted-foreground">{t.noReminders}</p>
             )}
           </WorkspaceCard>
         </TabsContent>
@@ -963,7 +976,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           {client.documents.length === 0 && client.gallery.length === 0 ? (
             <WorkspaceEmptyState
               icon={FileText}
-              title="No documents yet"
+              title={t.noDocuments}
               className="py-12"
               action={<div className="flex flex-wrap justify-center gap-2">{documentActions}</div>}
             />
@@ -983,10 +996,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       <table className="w-full text-sm">
                         <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                           <tr>
-                            <th className="px-3 py-2.5 text-left">Document name</th>
-                            <th className="px-3 py-2.5 text-left">Category</th>
-                            <th className="px-3 py-2.5 text-left">Uploaded on</th>
-                            <th className="px-3 py-2.5 text-right">Actions</th>
+                            <th className="px-3 py-2.5 text-left">{t.documentColumns.name}</th>
+                            <th className="px-3 py-2.5 text-left">{t.documentColumns.category}</th>
+                            <th className="px-3 py-2.5 text-left">{t.documentColumns.uploadedOn}</th>
+                            <th className="px-3 py-2.5 text-right">{t.documentColumns.actions}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1007,7 +1020,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                               </td>
                               <td className="px-3 py-2.5">
                                 <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                                  {document.category || document.fileType}
+                                  {storedLabel(m.clients.documentCategories, document.category || document.fileType)}
                                 </span>
                               </td>
                               <td className="px-3 py-2.5 text-muted-foreground">{document.createdAt}</td>
@@ -1024,7 +1037,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                       className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                                     >
                                       <Download className="size-4" />
-                                      Open
+                                      {t.open}
                                     </a>
                                   ) : null}
                                   <RecordActions
@@ -1067,19 +1080,19 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={item.imageUrl}
-                            alt={item.caption || "Client clinical image"}
+                            alt={item.caption || t.imageAlt}
                             className="aspect-[4/3] w-full object-cover"
                           />
                         ) : (
                           <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted/40 text-muted-foreground">
                             <ImageOff className="size-6" aria-hidden="true" />
-                            <span className="sr-only">Image unavailable</span>
+                            <span className="sr-only">{t.imageUnavailable}</span>
                           </div>
                         )}
                         <figcaption className="flex items-start justify-between gap-2 px-3 py-2.5">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">{item.caption || "No note"}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">Upload date: {item.createdAt}</p>
+                            <p className="truncate text-sm font-medium text-foreground">{item.caption || t.noNote}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{fmt(t.uploadDate, { date: item.createdAt })}</p>
                           </div>
                           <button
                             type="button"
@@ -1088,11 +1101,11 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                 mode: "delete",
                                 kind: "gallery",
                                 recordId: item.id,
-                                label: item.caption || "this image",
+                                label: item.caption || t.thisImage,
                               })
                             }
                             className="mt-0.5 text-muted-foreground transition-colors duration-(--duration-base) hover:text-destructive"
-                            aria-label="Remove image"
+                            aria-label={t.removeImage}
                           >
                             <Trash2 className="size-4" />
                           </button>
@@ -1104,19 +1117,22 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               </div>
 
               {selectedDocument ? (
-                <WorkspaceCard title="Selected document">
+                <WorkspaceCard title={t.selectedDocument}>
                   <div className="space-y-3">
                     <div className="rounded-(--radius-card) bg-secondary/45 p-3.5">
                       <p className="font-semibold text-foreground">{selectedDocument.fileName}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {[selectedDocument.category || selectedDocument.fileType, selectedDocument.fileSize]
+                        {[
+                          storedLabel(m.clients.documentCategories, selectedDocument.category || selectedDocument.fileType),
+                          selectedDocument.fileSize,
+                        ]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
                     </div>
                     <dl className="space-y-2.5">
-                      <OverviewLine label="Uploaded on" value={selectedDocument.createdAt} />
-                      <OverviewLine label="Uploaded by" value={selectedDocument.uploadedBy || "Workspace staff"} />
+                      <OverviewLine label={t.uploadedOn} value={selectedDocument.createdAt} />
+                      <OverviewLine label={t.uploadedBy} value={selectedDocument.uploadedBy || m.clients.view.workspaceStaff} />
                     </dl>
                     {selectedDocument.fileUrl ? (
                       <a
@@ -1126,7 +1142,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                         className={cn(buttonVariants({ variant: "outline" }), "h-10 w-full rounded-(--radius-card) bg-white")}
                       >
                         <Download className="size-4" />
-                        Download document
+                        {t.downloadDocument}
                       </a>
                     ) : null}
                   </div>
@@ -1140,7 +1156,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           {client.payments.length === 0 ? (
             <WorkspaceEmptyState
               icon={CreditCard}
-              title="No payments yet"
+              title={t.noPayments}
               className="py-12"
               action={
                 <Button
@@ -1149,25 +1165,25 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   className="rounded-(--radius-tile)"
                 >
                   <Plus className="size-4" />
-                  Add entry
+                  {t.addEntry}
                 </Button>
               }
             />
           ) : (
             <div className="space-y-3">
               <section className="surface-card grid gap-3 p-3.5 md:grid-cols-4">
-                <PaymentMetric label="Total billed" value={client.paymentStats.totalBilledDisplay} helper={countLabel(client.paymentStats.totalCount, "ledger entry", "ledger entries")} />
-                <PaymentMetric label="Total paid" value={client.paymentStats.totalPaidDisplay} helper={countLabel(client.paymentStats.totalPaidCount, "paid entry", "paid entries")} tone="good" />
-                <PaymentMetric label="Outstanding" value={client.paymentStats.unpaidBalanceDisplay} helper="Open balance" tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
+                <PaymentMetric label={t.totalBilled} value={client.paymentStats.totalBilledDisplay} helper={plural(t.ledgerEntries, client.paymentStats.totalCount, locale)} />
+                <PaymentMetric label={t.totalPaid} value={client.paymentStats.totalPaidDisplay} helper={plural(t.paidEntries, client.paymentStats.totalPaidCount, locale)} tone="good" />
+                <PaymentMetric label={t.outstanding} value={client.paymentStats.unpaidBalanceDisplay} helper={t.openBalance} tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
                 <PaymentMetric
-                  label="Last payment"
+                  label={t.lastPayment}
                   value={latestPayment ? latestPayment.paidAt || latestPayment.createdAt : "—"}
-                  helper={latestPayment?.amountDisplay ?? "No payments yet"}
+                  helper={latestPayment?.amountDisplay ?? t.noPayments}
                 />
               </section>
 
               <WorkspaceCard
-                title="Invoice & payment history"
+                title={t.paymentHistory}
                 action={
                   <div className="flex flex-wrap items-center gap-3">
                     <button
@@ -1175,7 +1191,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       onClick={downloadPaymentStatement}
                       className="text-sm font-medium text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                     >
-                      Download statement
+                      {t.downloadStatement}
                     </button>
                     <Button
                       size="sm"
@@ -1183,7 +1199,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                       className="rounded-(--radius-tile)"
                     >
                       <Plus className="size-4" />
-                      Add entry
+                      {t.addEntry}
                     </Button>
                   </div>
                 }
@@ -1192,12 +1208,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   <table className="w-full text-sm">
                     <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                       <tr>
-                        <th className="rounded-l-(--radius-field) px-3 py-2.5 text-left">Date</th>
-                        <th className="px-3 py-2.5 text-left">Invoice #</th>
-                        <th className="px-3 py-2.5 text-left">Description</th>
-                        <th className="px-3 py-2.5 text-left">Amount</th>
-                        <th className="px-3 py-2.5 text-left">Status</th>
-                        <th className="rounded-r-(--radius-field) px-3 py-2.5 text-right">Actions</th>
+                        <th className="rounded-l-(--radius-field) px-3 py-2.5 text-left">{t.paymentColumns.date}</th>
+                        <th className="px-3 py-2.5 text-left">{t.paymentColumns.invoice}</th>
+                        <th className="px-3 py-2.5 text-left">{t.paymentColumns.description}</th>
+                        <th className="px-3 py-2.5 text-left">{t.paymentColumns.amount}</th>
+                        <th className="px-3 py-2.5 text-left">{t.paymentColumns.status}</th>
+                        <th className="rounded-r-(--radius-field) px-3 py-2.5 text-right">{t.paymentColumns.actions}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1217,7 +1233,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                   rel="noreferrer"
                                   className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                                 >
-                                  Receipt
+                                  {t.receipt}
                                 </a>
                               ) : null}
                               <RecordActions
@@ -1244,7 +1260,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                     mode: "delete",
                                     kind: "payment",
                                     recordId: payment.id,
-                                    label: `${payment.amountDisplay} entry`,
+                                    label: fmt(t.entryLabel, { amount: payment.amountDisplay }),
                                   })
                                 }
                               />
@@ -1269,8 +1285,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               setDialog(null);
             }
           }}
-          title="Add medical record"
-          options={medicalRecordTypes}
+          title={t.addMedicalRecord}
+          description={t.chooseRecord}
+          options={medicalRecordKinds.map((key) => ({ key, ...m.clients.medical.types[key] }))}
           onSelect={(key) => openCreate(key as MedicalKind)}
         />
       ) : null}
@@ -1292,7 +1309,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               : activeFormDialog.fields
           }
           initialValues={formDialog.initialValues}
-          submitLabel={formDialog.mode === "edit" ? "Save changes" : activeFormDialog.submitCreate}
+          submitLabel={formDialog.mode === "edit" ? t.saveChanges : activeFormDialog.submitCreate}
           isPending={isPending}
           onSubmit={handleRecordSubmit}
         />
@@ -1306,8 +1323,8 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
               setDialog(null);
             }
           }}
-          title="Remove this record?"
-          description={`"${dialog.label}" will be permanently removed from this patient file.`}
+          title={t.removeTitle}
+          description={fmt(t.removeDescription, { label: dialog.label })}
           isPending={isPending}
           onConfirm={handleDeleteConfirm}
         />
@@ -1316,12 +1333,20 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
   );
 }
 
+// An appointment status key ("no-show") or a lowercased payment status
+// ("partially paid"), shown in the reader's language.
 function StatusBadge({ status }: { status: string }) {
+  const { m } = useI18n();
   const normalized = status.toLowerCase().replace("_", "-");
+  const paymentLabels = Object.fromEntries(
+    Object.entries(m.clients.paymentStatuses).map(([value, label]) => [value.toLowerCase(), label])
+  );
+  const label = storedLabel({ ...m.common.appointmentStatus, ...paymentLabels }, normalized);
+
   return (
     <span
       className={cn(
-        "inline-flex rounded-full px-2 py-1 text-[11px] font-semibold capitalize",
+        "inline-flex rounded-full px-2 py-1 text-[11px] font-semibold",
         (normalized === "paid" || normalized === "completed") && "bg-emerald-100 text-emerald-700",
         normalized === "confirmed" && "bg-primary/10 text-primary",
         (normalized === "cancelled" || normalized === "refunded") &&
@@ -1332,7 +1357,7 @@ function StatusBadge({ status }: { status: string }) {
         normalized === "scheduled" && "bg-secondary text-muted-foreground"
       )}
     >
-      {normalized}
+      {label}
     </span>
   );
 }

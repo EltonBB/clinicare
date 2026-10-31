@@ -12,7 +12,7 @@ import { Check } from "lucide-react";
 
 import { useI18n } from "@/i18n/client";
 import type { Locale } from "@/i18n/config";
-import { fmt, plural } from "@/i18n/format";
+import { fmt, plural, storedLabel } from "@/i18n/format";
 import { renderReminder } from "@/lib/messaging/render";
 import { addZonedDays, formatZonedFullDate, getZonedDateParts } from "@/lib/time-zone";
 import { hoursBetweenTimes, weekdayOrder, type WeekdayKey, type WorkingHoursState } from "@/lib/onboarding";
@@ -364,7 +364,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                   />
                 ) : null}
               </p>
-              <p className="mt-0.5 text-sm text-white/65">{m.common.businessTypes[type as keyof typeof m.common.businessTypes] ?? type}</p>
+              <p className="mt-0.5 text-sm text-white/65">{storedLabel(m.common.businessTypes, type)}</p>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2" aria-hidden>

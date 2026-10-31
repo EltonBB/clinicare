@@ -120,6 +120,15 @@ describe("buildClientRecord — money in the clinic's currency", () => {
     expect(gbp.payments[0]?.amountDisplay).toBe("£125.00");
   });
 
+  it("writes amounts, dates and its own text in the reader's language", async () => {
+    const record = await buildClientRecord(clientFixture(), "EUR", new Date(), "sq");
+
+    expect(record.payments[0]).toMatchObject({ amountDisplay: "125,00 €", paidAt: "10 sht 2026", amountInput: "125.00" });
+    expect(record.lastVisit).toBe("Ende pa vizita");
+    expect(record.timeline.find((entry) => entry.id === "payment-pay_1")?.title).toBe("125,00 € paguar");
+    expect(record.timeline.find((entry) => entry.id === "payment-pay_2")?.detail).toBe("Regjistrim pagese");
+  });
+
   it("reads an unsupported stored currency as the default rather than failing", async () => {
     const record = await buildClientRecord(clientFixture(), "not-a-currency");
 

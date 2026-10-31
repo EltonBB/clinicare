@@ -102,6 +102,29 @@ export const serverText: Record<string, string> = {
   "Your session expired. Log in again to manage the waiting list.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar listën e pritjes.",
   "Your session expired. Log in again to view the calendar.": "Sesioni juaj skadoi. Hyni përsëri për të parë kalendarin.",
 
+  // Clients (patient records)
+  "We couldn't save this record. Check the details and try again.":
+    "Nuk mundëm ta ruanim këtë të dhënë. Kontrolloni të dhënat dhe provoni përsëri.",
+  "Your session expired. Log in again to manage clients.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar pacientët.",
+  "Patient not found in this clinic workspace.": "Pacienti nuk u gjet në këtë klinikë.",
+  "Client not found in this clinic workspace.": "Pacienti nuk u gjet në këtë klinikë.",
+  "Choose a photo before adding it to the gallery.": "Zgjidhni një foto para se ta shtoni në galeri.",
+  "Upload the photo again before adding it to the gallery.": "Ngarkojeni foton përsëri para se ta shtoni në galeri.",
+  "Client name and phone number are required.": "Emri dhe numri i telefonit të pacientit janë të detyrueshëm.",
+  "Check the client details and try again.": "Kontrolloni të dhënat e pacientit dhe provoni përsëri.",
+  "We couldn't save the client record.": "Nuk mundëm ta ruanim kartelën e pacientit.",
+  "Medication name is required.": "Emri i medikamentit është i detyrueshëm.",
+  "File name is required.": "Emri i skedarit është i detyrueshëm.",
+  "Use a safe HTTPS link or upload the document again.": "Përdorni një lidhje të sigurt HTTPS ose ngarkojeni dokumentin përsëri.",
+  "Use a file from this clinic or upload it again.": "Përdorni një skedar nga kjo klinikë ose ngarkojeni përsëri.",
+  "Use a safe HTTPS receipt link.": "Përdorni një lidhje të sigurt HTTPS për dëftesën.",
+  "Enter a valid payment amount.": "Shkruani një shumë të vlefshme pagese.",
+  "Health item label is required.": "Emërtimi i të dhënës shëndetësore është i detyrueshëm.",
+  "Care note text is required.": "Teksti i shënimit është i detyrueshëm.",
+  "Treatment plan item title is required.": "Titulli i hapit të planit të trajtimit është i detyrueshëm.",
+  "Reminder title and date are required.": "Titulli dhe data e kujtesës janë të detyrueshme.",
+  "This record was not found in the patient file.": "Kjo e dhënë nuk u gjet në kartelën e pacientit.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

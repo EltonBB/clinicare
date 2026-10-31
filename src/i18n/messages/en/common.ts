@@ -11,6 +11,8 @@ export const common = {
   close: "Close",
   cancel: "Cancel",
   save: "Save",
+  delete: "Delete",
+  removing: "Removing...",
   saving: "Saving...",
   loading: "Loading…",
   velaHome: "Vela home",

@@ -17,6 +17,7 @@ const COVERED = [
   "src/lib/waitlist.ts",
   "src/lib/appointments-shared.ts",
   "src/lib/appointments.ts",
+  "src/app/(workspace)/clients/actions.ts",
 ];
 
 // Literals in covered files that no screen shows: log lines, and the staff

@@ -1,7 +1,10 @@
+"use client";
+
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField, FormSelect } from "@/components/workspace/form-parts";
 import { fieldInputClass, fieldTextareaClass } from "@/components/workspace/workspace-layout";
+import { useI18n } from "@/i18n/client";
 import type { ClientRecord } from "@/lib/clients";
 
 export const patientTypes = ["New Patient", "Returning Patient", "VIP / Important"];
@@ -14,24 +17,27 @@ const contactMethods = ["", "WhatsApp", "Phone Call", "Email"];
 // (name, phone, email, dateOfBirth, gender, preferredChannel, address, notes and —
 // edit only — status, patientType). Render it inside a two-column grid.
 export function ClientProfileFields({ client }: { client?: ClientRecord }) {
+  const { m } = useI18n();
+  const t = m.clients.form;
+
   return (
     <>
-      <FormField label="Full name">
+      <FormField label={t.fullName}>
         <Input name="name" required defaultValue={client?.name} className={fieldInputClass} />
       </FormField>
-      <FormField label="Phone">
+      <FormField label={t.phone}>
         <Input
           name="phone"
           required
           defaultValue={client?.phone}
-          placeholder="+1 555 000 0000"
+          placeholder={t.phoneHint}
           className={fieldInputClass}
         />
       </FormField>
-      <FormField label="Email">
+      <FormField label={t.email}>
         <Input name="email" type="email" defaultValue={client?.email} className={fieldInputClass} />
       </FormField>
-      <FormField label="Date of birth">
+      <FormField label={t.dateOfBirth}>
         <Input
           name="dateOfBirth"
           type="date"
@@ -40,44 +46,47 @@ export function ClientProfileFields({ client }: { client?: ClientRecord }) {
         />
       </FormField>
       <FormSelect
-        label="Gender"
+        label={t.gender}
         name="gender"
         defaultValue={client?.gender ?? ""}
         options={genders}
-        emptyLabel="Not set"
+        optionLabels={m.clients.genders}
+        emptyLabel={t.notSet}
       />
       <FormSelect
-        label="Preferred contact"
+        label={t.preferredContact}
         name="preferredChannel"
         defaultValue={client?.details.preferredChannel ?? ""}
         options={contactMethods}
-        emptyLabel="Not set"
+        optionLabels={m.clients.contactMethods}
+        emptyLabel={t.notSet}
       />
       {client ? (
         <>
           <FormSelect
-            label="Status"
+            label={t.status}
             name="status"
             defaultValue={client.status}
             options={clientStatuses}
-            selectClassName="capitalize"
+            optionLabels={m.clients.status}
           />
           <FormSelect
-            label="Patient type"
+            label={t.patientType}
             name="patientType"
             defaultValue={client.patientType}
             options={patientTypes}
+            optionLabels={m.clients.patientTypes}
           />
         </>
       ) : null}
-      <FormField label="Address" className="sm:col-span-2">
+      <FormField label={t.address} className="sm:col-span-2">
         <Input
           name="address"
           defaultValue={client?.address}
           className={fieldInputClass}
         />
       </FormField>
-      <FormField label="Notes" className="sm:col-span-2">
+      <FormField label={t.notes} className="sm:col-span-2">
         <Textarea
           name="notes"
           defaultValue={client?.notes}

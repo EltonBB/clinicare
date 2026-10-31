@@ -1,9 +1,15 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+
+import { useI18n } from "@/i18n/client";
 
 // Small "+ Add" text action for a section header (the section already says what
 // it holds, so the label stays generic).
 export function AddLink({ onClick }: { onClick: () => void }) {
+  const { m } = useI18n();
+
   return (
     <button
       type="button"
@@ -11,7 +17,7 @@ export function AddLink({ onClick }: { onClick: () => void }) {
       className="inline-flex items-center gap-1 text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
     >
       <Plus className="size-3.5" />
-      Add
+      {m.clients.record.add}
     </button>
   );
 }
@@ -23,12 +29,14 @@ export function RecordActions({
   onEdit: () => void;
   onDelete?: () => void;
 }) {
+  const { m } = useI18n();
+
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       <button
         type="button"
         onClick={onEdit}
-        aria-label="Edit record"
+        aria-label={m.clients.record.editRecord}
         className="flex size-7 items-center justify-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary/60 hover:text-foreground"
       >
         <Pencil className="size-3.5" />
@@ -37,7 +45,7 @@ export function RecordActions({
         <button
           type="button"
           onClick={onDelete}
-          aria-label="Delete record"
+          aria-label={m.clients.record.deleteRecord}
           className="flex size-7 items-center justify-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
