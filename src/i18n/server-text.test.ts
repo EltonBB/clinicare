@@ -18,6 +18,8 @@ const COVERED = [
   "src/lib/appointments-shared.ts",
   "src/lib/appointments.ts",
   "src/app/(workspace)/clients/actions.ts",
+  "src/app/(workspace)/staff/actions.ts",
+  "src/lib/mobile/admin-inbox.ts",
 ];
 
 // Literals in covered files that no screen shows: log lines, and the staff
@@ -28,6 +30,12 @@ const NOT_SHOWN = new Set([
   "notifyStaffOfAppointmentChange called with a staffMemberId outside businessId.",
   "Your clinic booked a new appointment for you.",
   "Your clinic changed one of your appointments.",
+  "Failed to generate mobile access code.",
+  "Failed to revoke mobile access.",
+  "Failed to send staff message.",
+  "Failed to mark staff thread read.",
+  "Failed to mark staff check-ins seen.",
+  "Failed to notify staff after saving an admin message.",
 ]);
 
 // Literal sentences an action shows a person: `error:`, `success:`, `message:`

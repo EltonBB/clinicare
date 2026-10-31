@@ -10,6 +10,7 @@ import { marketing as enMarketing } from "./en/marketing";
 import { modules as enModules } from "./en/modules";
 import { onboarding as enOnboarding } from "./en/onboarding";
 import { shell as enShell } from "./en/shell";
+import { staff as enStaff } from "./en/staff";
 import { auth as sqAuth } from "./sq/auth";
 import { billing as sqBilling } from "./sq/billing";
 import { calendar as sqCalendar } from "./sq/calendar";
@@ -21,6 +22,7 @@ import { marketing as sqMarketing } from "./sq/marketing";
 import { modules as sqModules } from "./sq/modules";
 import { onboarding as sqOnboarding } from "./sq/onboarding";
 import { shell as sqShell } from "./sq/shell";
+import { staff as sqStaff } from "./sq/staff";
 import type { Translation } from "./types";
 
 const en = {
@@ -35,6 +37,7 @@ const en = {
   dashboard: enDashboard,
   calendar: enCalendar,
   clients: enClients,
+  staff: enStaff,
 };
 
 export type Messages = Translation<typeof en>;
@@ -53,6 +56,7 @@ const sq: Messages = {
   dashboard: sqDashboard,
   calendar: sqCalendar,
   clients: sqClients,
+  staff: sqStaff,
 };
 
 export const messages: Record<Locale, Messages> = { en, sq };

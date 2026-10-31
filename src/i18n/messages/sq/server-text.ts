@@ -125,6 +125,25 @@ export const serverText: Record<string, string> = {
   "Reminder title and date are required.": "Titulli dhe data e kujtesës janë të detyrueshme.",
   "This record was not found in the patient file.": "Kjo e dhënë nuk u gjet në kartelën e pacientit.",
 
+  // Staff
+  "Staff member not found in this workspace.": "Anëtari i stafit nuk u gjet në këtë klinikë.",
+  "Staff member not found.": "Anëtari i stafit nuk u gjet.",
+  "Your session expired. Log in again to manage staff.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar stafin.",
+  "Check the staff details and try again.": "Kontrolloni të dhënat e stafit dhe provoni përsëri.",
+  "Staff name is required.": "Emri i anëtarit të stafit është i detyrueshëm.",
+  "We couldn't save the staff member.": "Nuk mundëm ta ruanim anëtarin e stafit.",
+  "Inactive staff cannot check in.": "Stafi joaktiv nuk mund të regjistrojë hyrjen.",
+  "This staff member is not inside a scheduled shift window.": "Ky anëtar i stafit nuk është brenda orarit të një ndërrimi të planifikuar.",
+  "This staff member is not checked in.": "Ky anëtar i stafit nuk e ka regjistruar hyrjen.",
+  "Mobile access can't be issued to an inactive staff member.": "Qasja nga telefoni nuk mund t'i jepet një anëtari joaktiv të stafit.",
+  "We couldn't generate a code. Please try again.": "Nuk mundëm të gjeneronim një kod. Ju lutemi provoni përsëri.",
+  "We couldn't update mobile access. Please try again.": "Nuk mundëm ta përditësonim qasjen nga telefoni. Ju lutemi provoni përsëri.",
+  "Message can't be empty.": "Mesazhi nuk mund të jetë bosh.",
+  "Message is too long.": "Mesazhi është shumë i gjatë.",
+  "We couldn't send your message. Please try again.": "Nuk mundëm ta dërgonim mesazhin tuaj. Ju lutemi provoni përsëri.",
+  "Invalid message selection.": "Përzgjedhje e pavlefshme mesazhesh.",
+  "Something went wrong.": "Diçka shkoi keq.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

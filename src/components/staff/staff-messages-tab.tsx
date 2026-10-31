@@ -5,6 +5,8 @@ import { SendHorizontal } from "lucide-react";
 
 import { markStaffThreadReadAction, sendStaffMessageAction } from "@/app/(workspace)/staff/actions";
 import { Button } from "@/components/ui/button";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import { cn, firstDisplayName } from "@/lib/utils";
 import type { AdminThreadMessage, AdminThreadView } from "@/lib/mobile/admin-inbox";
 
@@ -16,6 +18,9 @@ type StaffMessagesTabProps = {
 };
 
 export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountChange }: StaffMessagesTabProps) {
+  const { m } = useI18n();
+  const t = m.staff.messages;
+  const serverText = useServerText();
   const [messages, setMessages] = useState<AdminThreadMessage[]>(initial.messages);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
@@ -33,9 +38,9 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
       if (result.ok && result.unreadCount !== undefined) {
         setUnreadCount(result.unreadCount);
         onUnreadCountChange(result.unreadCount);
-      } else setError(result.error ?? "Could not update read status. Reopen messages to retry.");
+      } else setError(serverText(result.error) ?? t.readFailedReopen);
     }).catch(() => {
-      if (active && receiptVersion.current === version) setError("Could not update read status. Reopen messages to retry.");
+      if (active && receiptVersion.current === version) setError(t.readFailedReopen);
     });
     return () => {
       active = false;
@@ -57,13 +62,13 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
         const result = await markStaffThreadReadAction(staffId);
         if (receiptVersion.current !== version) return;
         if (!result.ok || result.unreadCount === undefined) {
-          setError(result.error ?? "Could not update read status. Please try again.");
+          setError(serverText(result.error) ?? t.readFailed);
           return;
         }
         setUnreadCount(result.unreadCount);
         onUnreadCountChange(result.unreadCount);
       } catch {
-        if (receiptVersion.current === version) setError("Could not update read status. Please try again.");
+        if (receiptVersion.current === version) setError(t.readFailed);
       }
     });
   }
@@ -78,14 +83,14 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
       mine: true,
       system: false,
       body,
-      timeLabel: "now",
-      dayLabel: "Today",
+      timeLabel: t.now,
+      dayLabel: m.staff.record.today,
     };
     setMessages((prev) => [...prev, optimistic]);
     startTransition(async () => {
       const result = await sendStaffMessageAction(staffId, body);
       if (!result.ok) {
-        setError(result.error ?? "We couldn't send your message.");
+        setError(serverText(result.error) ?? t.sendFailed);
         setMessages((prev) => prev.filter((message) => message.id !== optimistic.id));
         setDraft(body);
       }
@@ -96,14 +101,12 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
     <section className="surface-card flex h-[540px] flex-col p-0">
       <div className="shrink-0 border-b border-border/70 px-4 py-3">
         <h2 className="text-[15px] font-semibold leading-5 text-foreground">
-          Messages with {staffName}
+          {fmt(t.title, { name: staffName })}
         </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Private chat with this staff member in the Vela Staff app
-        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t.subtitle}</p>
         {unreadCount > 0 ? (
           <Button variant="ghost" size="sm" className="mt-1 h-8" disabled={isPending} onClick={markAllRead}>
-            Mark all read
+            {t.markAllRead}
           </Button>
         ) : null}
       </div>
@@ -111,8 +114,7 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <p className="m-auto max-w-xs text-center text-sm text-muted-foreground">
-            No messages yet. Send {firstDisplayName(staffName)} a message — it appears in their Vela
-            Staff app.
+            {fmt(t.empty, { name: firstDisplayName(staffName) })}
           </p>
         ) : (
           messages.map((message) =>
@@ -158,10 +160,10 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
               }
             }}
             rows={1}
-            placeholder="Write a message…"
+            placeholder={t.placeholder}
             className="max-h-28 min-h-10 flex-1 resize-none rounded-(--radius-card) border border-border bg-muted/40 px-3 py-2 text-sm outline-none focus:border-primary"
           />
-          <Button size="sm" onClick={send} disabled={isPending || !draft.trim()} className="h-10">
+          <Button size="sm" onClick={send} disabled={isPending || !draft.trim()} className="h-10" aria-label={t.send}>
             <SendHorizontal className="size-4" />
           </Button>
         </div>

@@ -100,6 +100,16 @@ describe("buildStaffDirectoryRecord — unreadMessages", () => {
   });
 });
 
+describe("buildStaffDirectoryRecord — language", () => {
+  it("writes the check-in button and its reason in the reader's language", () => {
+    expect(buildStaffDirectoryRecord(fakeStaffMember(), undefined, 0, false, "sq")).toMatchObject({
+      clockLabel: "Pa ndërrim",
+      clockDisabledReason: "Shtoni një ndërrim për sot para se të regjistroni hyrjen.",
+    });
+    expect(buildStaffDirectoryRecord(fakeStaffMember()).clockLabel).toBe("No shift");
+  });
+});
+
 describe("buildStaffDirectoryRecord — hasUnseenCheckIn", () => {
   it("defaults to false when omitted", () => {
     const record = buildStaffDirectoryRecord(fakeStaffMember());

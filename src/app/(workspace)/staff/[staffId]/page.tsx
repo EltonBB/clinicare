@@ -2,13 +2,17 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { StaffDetailsPage } from "@/components/staff/staff-details-page";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { getAdminThread } from "@/lib/mobile/admin-inbox";
 import { getMobileAccessStatus } from "@/lib/mobile/admin";
 import { buildStaffRecord, staffRecordAppointmentWindow } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
 
-export const metadata: Metadata = { title: "Staff member | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.staff.meta.member };
+}
 
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
@@ -93,17 +97,20 @@ export default async function StaffDetailsRoute({
     notFound();
   }
 
+  const { locale } = await getI18n();
   const [mobileAccess, adminThread] = await Promise.all([
-    getMobileAccessStatus(business.id, staffId),
+    getMobileAccessStatus(business.id, staffId, locale),
     getAdminThread(business.id, staffId),
   ]);
 
   return (
-    <StaffDetailsPage
-      initialStaff={buildStaffRecord(staff)}
-      mobileAccess={mobileAccess}
-      adminThread={adminThread}
-      initialTab={tab === "messages" ? "messages" : "overview"}
-    />
+    <WithMessages namespaces={["staff"]}>
+      <StaffDetailsPage
+        initialStaff={buildStaffRecord(staff, locale)}
+        mobileAccess={mobileAccess}
+        adminThread={adminThread}
+        initialTab={tab === "messages" ? "messages" : "overview"}
+      />
+    </WithMessages>
   );
 }

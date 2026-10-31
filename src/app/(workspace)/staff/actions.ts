@@ -167,7 +167,7 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
     },
   });
 
-  return buildStaffRecord(staff);
+  return buildStaffRecord(staff, (await getI18n()).locale);
 }
 
 // Surfaces local to a staff change: the directory (employment status, the

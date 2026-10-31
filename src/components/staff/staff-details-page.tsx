@@ -19,6 +19,8 @@ import { StaffMessagesTab } from "@/components/staff/staff-messages-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
 import {
   WorkspaceCard,
   WorkspaceEmptyState,
@@ -42,12 +44,6 @@ type StaffDetailsPageProps = {
 // Server Component) importing a value from one gets a client reference, not
 // the number itself (Codex). Keep both in sync if the tab list changes.
 
-const statusLabels: Record<StaffStatus, string> = {
-  ACTIVE: "Active",
-  AWAY: "Away",
-  INACTIVE: "Inactive",
-};
-
 const statusBadgeStyles: Record<StaffStatus, string> = {
   ACTIVE: "bg-primary/10 text-primary",
   AWAY: "bg-amber-100 text-amber-700",
@@ -60,6 +56,9 @@ export function StaffDetailsPage({
   adminThread,
   initialTab = "overview",
 }: StaffDetailsPageProps) {
+  const { locale, m } = useI18n();
+  const t = m.staff.record;
+  const serverText = useServerText();
   const [staff, setStaff] = useState(initialStaff);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -87,14 +86,14 @@ export function StaffDetailsPage({
         : await checkInStaffAction(staff.id);
 
       if (!result.ok || !result.staff) {
-        setError(result.error ?? "We couldn't update staff time.");
+        setError(serverText(result.error) ?? m.staff.directory.clockFailed);
         setMessage("");
         return;
       }
 
       setStaff(result.staff);
       setError("");
-      setMessage(staff.isCheckedIn ? "Staff checked out." : "Staff checked in.");
+      setMessage(staff.isCheckedIn ? t.checkedOut : t.checkedIn);
     });
   }
 
@@ -106,7 +105,7 @@ export function StaffDetailsPage({
           className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to staff
+          {t.backToStaff}
         </Link>
 
         <div className="flex flex-col gap-3.5 xl:flex-row xl:items-start xl:justify-between">
@@ -128,14 +127,14 @@ export function StaffDetailsPage({
                     statusBadgeStyles[staff.status]
                   )}
                 >
-                  {statusLabels[staff.status]}
+                  {m.staff.status[staff.status]}
                 </span>
               </div>
 
               {staff.isCheckedIn ? (
                 <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-emerald-600">
                   <span className="inline-block size-2 rounded-full bg-emerald-500" />
-                  Checked in now
+                  {m.staff.checkedInNow}
                 </p>
               ) : null}
             </div>
@@ -161,7 +160,7 @@ export function StaffDetailsPage({
                 )}
               >
                 <UserRoundPen className="size-4" />
-                Edit profile
+                {t.editProfile}
               </Link>
             </div>
             {!staff.isCheckedIn && !staff.canClock && staff.clockDisabledReason ? (
@@ -194,17 +193,17 @@ export function StaffDetailsPage({
           className="w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border/80 p-0"
         >
           <TabsTrigger className="flex-none px-0 pb-3" value="overview">
-            Overview
+            {t.tabs.overview}
           </TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="schedule">
-            Schedule
+            {t.tabs.schedule}
           </TabsTrigger>
           <TabsTrigger className="flex-none px-0 pb-3" value="messages">
-            Messages
+            {t.tabs.messages}
             {unreadForAdmin > 0 ? (
               <span
                 className="size-2 rounded-full bg-primary"
-                aria-label={`${unreadForAdmin} unread message${unreadForAdmin === 1 ? "" : "s"}`}
+                aria-label={plural(m.staff.unreadMessages, unreadForAdmin, locale)}
               />
             ) : null}
           </TabsTrigger>
@@ -216,7 +215,7 @@ export function StaffDetailsPage({
         >
           <div className="grid gap-3">
             <WorkspaceCard
-              title="Today"
+              title={t.today}
               action={
                 staff.shiftLabel ? (
                   <span className="text-xs font-semibold text-muted-foreground">{staff.shiftLabel}</span>
@@ -244,22 +243,22 @@ export function StaffDetailsPage({
               ) : (
                 <p className="text-sm text-muted-foreground">
                   {staff.shiftLabel
-                    ? "No appointments today."
+                    ? t.noAppointmentsToday
                     : staff.nextShift
-                      ? `No shift today. Next shift: ${staff.nextShift}.`
-                      : "No shift planned."}
+                      ? fmt(t.noShiftToday, { shift: staff.nextShift })
+                      : t.noShiftPlanned}
                 </p>
               )}
             </WorkspaceCard>
 
             <WorkspaceCard
-              title="Recent work"
+              title={t.recentWork}
               action={
                 <Link
                   href="/calendar"
                   className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                 >
-                  Open calendar
+                  {t.openCalendar}
                 </Link>
               }
             >
@@ -281,21 +280,24 @@ export function StaffDetailsPage({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No completed appointments yet.</p>
+                <p className="text-sm text-muted-foreground">{t.noCompleted}</p>
               )}
             </WorkspaceCard>
           </div>
 
           <div className="grid gap-3">
-            <WorkspaceCard title="Profile">
+            <WorkspaceCard title={t.profile}>
               <dl className="space-y-2.5">
-                <OverviewLine label="Role" value={staff.role || "Staff"} />
-                <OverviewLine label="Phone" value={staff.phone} />
-                <OverviewLine label="Email" value={staff.email} />
+                <OverviewLine
+                  label={t.role}
+                  value={staff.role ? storedLabel(m.staff.roles, staff.role) : m.staff.noRole}
+                />
+                <OverviewLine label={t.phone} value={staff.phone} />
+                <OverviewLine label={t.email} value={staff.email} />
               </dl>
               {staff.profileNote ? (
                 <div className="mt-3">
-                  <p className="text-sm text-muted-foreground">Notes</p>
+                  <p className="text-sm text-muted-foreground">{t.notes}</p>
                   <p className="mt-1 text-sm leading-5 text-foreground">{staff.profileNote}</p>
                 </div>
               ) : null}
@@ -308,21 +310,21 @@ export function StaffDetailsPage({
           {staff.schedule.length === 0 && staff.weekTimeEntries.length === 0 ? (
             <WorkspaceEmptyState
               icon={CalendarClock}
-              title="No shifts planned"
+              title={t.noShifts}
               className="py-12"
               actionHref={`/staff/${staff.id}/edit`}
-              actionLabel="Plan shifts"
+              actionLabel={t.planShifts}
             />
           ) : (
             <div className="grid items-start gap-3 xl:grid-cols-2">
               <WorkspaceCard
-                title="Planned shifts"
+                title={t.plannedShifts}
                 action={
                   <Link
                     href={`/staff/${staff.id}/edit`}
                     className="text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
                   >
-                    Manage
+                    {t.manage}
                   </Link>
                 }
               >
@@ -348,15 +350,15 @@ export function StaffDetailsPage({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No shifts planned.</p>
+                  <p className="text-sm text-muted-foreground">{t.noShiftsYet}</p>
                 )}
               </WorkspaceCard>
 
               <WorkspaceCard
-                title="Time tracked this week"
+                title={t.timeTracked}
                 action={
                   <span className="text-xs font-semibold text-muted-foreground">
-                    {staff.weeklyHours}h total
+                    {fmt(t.hoursTotal, { hours: numberFormatter(locale).format(staff.weeklyHours) })}
                   </span>
                 }
               >
@@ -381,14 +383,14 @@ export function StaffDetailsPage({
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
                             <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
-                            In progress
+                            {t.inProgress}
                           </span>
                         )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No time tracked yet.</p>
+                  <p className="text-sm text-muted-foreground">{t.noTimeTracked}</p>
                 )}
               </WorkspaceCard>
             </div>
@@ -422,12 +424,13 @@ function OverviewLine({ label, value }: { label: string; value: string }) {
 }
 
 function AppointmentStatusBadge({ status }: { status: string }) {
+  const { m } = useI18n();
   const normalized = status.toLowerCase().replace("_", "-");
 
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold capitalize",
+        "inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold",
         normalized === "completed" && "bg-emerald-100 text-emerald-700",
         normalized === "confirmed" && "bg-primary/10 text-primary",
         normalized === "cancelled" && "bg-destructive/10 text-destructive",
@@ -436,7 +439,7 @@ function AppointmentStatusBadge({ status }: { status: string }) {
         normalized === "scheduled" && "bg-secondary text-muted-foreground"
       )}
     >
-      {normalized}
+      {storedLabel(m.common.appointmentStatus, normalized)}
     </span>
   );
 }

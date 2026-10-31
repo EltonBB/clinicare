@@ -391,7 +391,7 @@ Table-first like Clients. **No KPI band** — the page is header → toolbar →
 - Rows: square initial tiles; name only (no email/phone line); Role pill; Today column shows today's shift or "Next: …" only (no appointment-count line beneath); completion rate with a flat bar (rendered only when non-zero).
 - Row actions: schedule-aware check-in/check-out (outline) beside a primary Details button.
 - No pagination furniture — staff lists are small and filter client-side.
-- The staff columns need ~1010px (two row-action buttons), so on a narrower card the table scrolls sideways (`WorkspaceTable`'s `minWidthClassName`) instead of clipping Completion and Actions. The Clients table instead uses narrow column minimums and fits a laptop-width card.
+- The staff columns need ~1050px (two row-action buttons, sized for the longer Albanian check-in label), so on a narrower card the table scrolls sideways (`WorkspaceTable`'s `minWidthClassName`) instead of clipping Completion and Actions. The Clients table instead uses narrow column minimums and fits a laptop-width card.
 - **Owner decision, 2026-09-16 (locked, do not re-add via review):** the email/phone line under the staff name and the "N appointments today" line under the shift were deliberately removed as visual clutter. A prior redesign pass dropped them by accident and a later review pass restored them citing this file — that restore is superseded by this entry. Do not flag their absence as a regression.
 
 Avoid: summary/coverage cards that restate table rows, fabricated metrics (e.g. utilization derived from an assumed capacity), fake pagination footers, right rails, the removed per-row contact/appointment-count lines above.

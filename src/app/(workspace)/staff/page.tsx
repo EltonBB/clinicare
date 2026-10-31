@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { StaffWorkspace } from "@/components/staff/staff-workspace";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { prisma } from "@/lib/prisma";
 import { buildStaffViewFromRecords } from "@/lib/staff";
@@ -12,7 +14,9 @@ import {
 } from "@/lib/staff-data";
 import { getZonedMonthWindow } from "@/lib/time-zone";
 
-export const metadata: Metadata = { title: "Staff | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.staff.meta.staff };
+}
 
 function staffShiftCutoff() {
   const now = new Date();
@@ -118,8 +122,13 @@ export default async function StaffPage({
     records,
     countsByStaff,
     unreadMessagesByStaff,
-    unseenCheckInsByStaff
+    unseenCheckInsByStaff,
+    (await getI18n()).locale
   );
 
-  return <StaffWorkspace initialView={initialView} />;
+  return (
+    <WithMessages namespaces={["staff"]}>
+      <StaffWorkspace initialView={initialView} />
+    </WithMessages>
+  );
 }

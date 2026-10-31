@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { format } from "date-fns";
 
+import type { Locale } from "@/i18n/config";
+import { useI18n, useServerText } from "@/i18n/client";
+import { dateText, fmt } from "@/i18n/format";
+
 import { deleteStaffAction, saveStaffAction } from "@/app/(workspace)/staff/actions";
 import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { Input } from "@/components/ui/input";
@@ -20,7 +24,8 @@ import {
   fieldTextareaClass,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
-import { staffRoles, staffStatuses, type StaffRecord, type StaffStatus } from "@/lib/staff";
+import type { StaffRecord } from "@/lib/staff";
+import { staffRoles, staffStatuses, type StaffStatus } from "@/lib/staff-options";
 
 type NewStaffFormProps = {
   staff?: StaffRecord;
@@ -69,6 +74,7 @@ function getBusinessHoursForDate(date: Date, businessHours: StaffBusinessHour[])
 }
 
 function buildInitialSchedule(
+  locale: Locale,
   staff?: StaffRecord,
   businessHours: StaffBusinessHour[] = []
 ): ScheduleDraft[] {
@@ -89,11 +95,7 @@ function buildInitialSchedule(
 
     return {
       date: dateKey,
-      day: date.toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      }),
+      day: dateText(locale, date, { weekday: "short", month: "short", day: "numeric" }),
       clinicStart: clinicHours.startTime,
       clinicEnd: clinicHours.endTime,
       enabled: Boolean(existing),
@@ -105,6 +107,9 @@ function buildInitialSchedule(
 
 export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   const router = useRouter();
+  const { locale, m } = useI18n();
+  const t = m.staff.form;
+  const serverText = useServerText();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -112,7 +117,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
   const [status, setStatus] = useState<StaffStatus>(staff?.status ?? "ACTIVE");
   const isEditing = Boolean(staff);
   const [schedule, setSchedule] = useState<ScheduleDraft[]>(() =>
-    buildInitialSchedule(staff, businessHours)
+    buildInitialSchedule(locale, staff, businessHours)
   );
 
   function updateSchedule(index: number, patch: Partial<ScheduleDraft>) {
@@ -143,7 +148,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
       });
 
       if (!result.ok || !result.staff) {
-        setError(result.error ?? `We couldn't ${isEditing ? "update" : "create"} this staff member.`);
+        setError(serverText(result.error) ?? (isEditing ? t.updateFailed : t.createFailed));
         return;
       }
 
@@ -162,7 +167,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
 
       if (!result.ok) {
         setConfirmingDelete(false);
-        setError(result.error ?? "We couldn't delete this staff member.");
+        setError(serverText(result.error) ?? t.deleteFailed);
         return;
       }
 
@@ -174,35 +179,43 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
     <form action={handleSubmit} className="space-y-3">
       <WorkspaceFormSection>
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Name" className="sm:col-span-2">
+          <FormField label={t.name} className="sm:col-span-2">
             <Input name="name" required defaultValue={staff?.name} className={fieldInputClass} />
           </FormField>
-          <FormSelect label="Role" name="role" value={role} options={staffRoles} onChange={setRole} />
+          <FormSelect
+            label={t.role}
+            name="role"
+            value={role}
+            options={staffRoles}
+            optionLabels={m.staff.roles}
+            onChange={setRole}
+          />
           {/* A new staff member is active by default; status (Away / Inactive) is
               only set later, so it's an edit-only control. */}
           {isEditing ? (
             <FormSelect
-              label="Status"
+              label={t.status}
               name="status"
               value={status}
               options={staffStatuses}
+              optionLabels={m.staff.status}
               onChange={(value) => setStatus(value as StaffStatus)}
             />
           ) : null}
-          <FormField label="Phone">
-            <Input name="phone" defaultValue={staff?.phone} placeholder="+1 555 000 0000" className={fieldInputClass} />
+          <FormField label={t.phone}>
+            <Input name="phone" defaultValue={staff?.phone} placeholder={t.phoneHint} className={fieldInputClass} />
           </FormField>
-          <FormField label="Email" className={isEditing ? undefined : "sm:col-span-2"}>
+          <FormField label={t.email} className={isEditing ? undefined : "sm:col-span-2"}>
             <Input name="email" type="email" defaultValue={staff?.email} className={fieldInputClass} />
           </FormField>
-          <FormField label="Note" className="sm:col-span-2">
+          <FormField label={t.note} className="sm:col-span-2">
             <Textarea name="profileNote" defaultValue={staff?.profileNote} className={fieldTextareaClass} />
           </FormField>
         </div>
       </WorkspaceFormSection>
 
       <WorkspaceFormSection
-        title="Weekly schedule"
+        title={t.weeklySchedule}
         action={
           schedule.length > 0 ? (
             <button
@@ -219,14 +232,14 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
               }
               className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
-              Use clinic hours
+              {t.useClinicHours}
             </button>
           ) : null
         }
         contentClassName="space-y-0.5"
       >
         {schedule.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No open clinic days coming up.</p>
+          <p className="text-sm text-muted-foreground">{t.noOpenDays}</p>
         ) : (
           schedule.map((item, index) => (
             <div
@@ -249,7 +262,7 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     value={item.startTime}
                     onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
                     className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
-                    aria-label={`${item.day} shift start`}
+                    aria-label={fmt(t.shiftStart, { day: item.day })}
                   />
                   <span className="text-muted-foreground">–</span>
                   <Input
@@ -257,11 +270,11 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
                     value={item.endTime}
                     onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
                     className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
-                    aria-label={`${item.day} shift end`}
+                    aria-label={fmt(t.shiftEnd, { day: item.day })}
                   />
                 </div>
               ) : (
-                <span className="text-sm text-muted-foreground">Off</span>
+                <span className="text-sm text-muted-foreground">{t.off}</span>
               )}
             </div>
           ))
@@ -272,12 +285,12 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
 
       <FormActions
         cancelHref={staff ? `/staff/${staff.id}` : "/staff"}
-        submitLabel={isEditing ? "Save" : "Create"}
+        submitLabel={isEditing ? m.common.save : t.create}
         isPending={isPending}
       >
         {staff ? (
           <DestructiveTextButton onClick={() => setConfirmingDelete(true)} disabled={isPending}>
-            Delete staff member
+            {t.deleteMember}
           </DestructiveTextButton>
         ) : null}
       </FormActions>
@@ -285,8 +298,8 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
       <ConfirmDeleteDialog
         open={confirmingDelete}
         onOpenChange={setConfirmingDelete}
-        title="Delete this staff member?"
-        description="This permanently removes their profile, schedule, and time records. This can't be undone."
+        title={t.deleteTitle}
+        description={t.deleteDescription}
         isPending={isPending}
         onConfirm={deleteStaff}
       />

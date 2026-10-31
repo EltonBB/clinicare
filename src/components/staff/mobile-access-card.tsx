@@ -8,6 +8,7 @@ import {
   revokeMobileAccessAction,
 } from "@/app/(workspace)/staff/actions";
 import { Button } from "@/components/ui/button";
+import { useI18n, useServerText } from "@/i18n/client";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,9 @@ type MobileAccessCardProps = {
 };
 
 export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
+  const { m } = useI18n();
+  const t = m.staff.mobile;
+  const serverText = useServerText();
   const [status, setStatus] = useState(initial);
   const [error, setError] = useState("");
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
@@ -38,7 +42,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
     startTransition(async () => {
       const result = await generateMobileAccessCodeAction(staffId);
       if (!result.ok || !result.code) {
-        setError(result.error ?? "We couldn't generate a code.");
+        setError(serverText(result.error) ?? t.generateFailed);
         return;
       }
       setStatus((prev) => ({ ...prev, hasActiveCode: true }));
@@ -53,7 +57,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
     startTransition(async () => {
       const result = await revokeMobileAccessAction(staffId);
       if (!result.ok) {
-        setError(result.error ?? "We couldn't update mobile access.");
+        setError(serverText(result.error) ?? t.updateFailed);
         return;
       }
       setStatus({ hasActiveCode: false, device: null });
@@ -75,8 +79,8 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
 
   return (
     <section className="surface-card flex flex-col p-3.5">
-      <h3 className="text-sm font-semibold text-foreground">Mobile access</h3>
-      <p className="text-xs text-muted-foreground">Vela Staff app sign-in</p>
+      <h3 className="text-sm font-semibold text-foreground">{t.title}</h3>
+      <p className="text-xs text-muted-foreground">{t.subtitle}</p>
 
       <div className="mt-3.5 rounded-(--radius-card) bg-primary/5 px-3.5 py-3">
         {status.device ? (
@@ -84,21 +88,17 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
             <div className="flex items-center justify-between gap-2">
               <p className="truncate text-sm font-semibold text-foreground">{status.device.label}</p>
               <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                Paired
+                {t.paired}
               </span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{status.device.lastSeenLabel}</p>
           </>
         ) : status.hasActiveCode ? (
-          <p className="text-sm text-muted-foreground">
-            Code active — waiting for the staff member to sign in on their phone.
-          </p>
+          <p className="text-sm text-muted-foreground">{t.codeActive}</p>
         ) : justRevoked ? (
-          <p className="text-sm text-muted-foreground">
-            Access revoked. They&apos;ll need a new code to sign back in.
-          </p>
+          <p className="text-sm text-muted-foreground">{t.revoked}</p>
         ) : (
-          <p className="text-sm text-muted-foreground">No device paired yet.</p>
+          <p className="text-sm text-muted-foreground">{t.noDevice}</p>
         )}
       </div>
 
@@ -106,7 +106,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
 
       <div className="mt-3.5 flex flex-col gap-2">
         <Button variant="outline" size="sm" onClick={generate} disabled={isPending} className="bg-white">
-          {hasAccess ? "Regenerate code" : "Generate code"}
+          {hasAccess ? t.regenerate : t.generate}
         </Button>
         {hasAccess ? (
           <Button
@@ -116,7 +116,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
             disabled={isPending}
             className="text-destructive hover:text-destructive"
           >
-            Revoke access
+            {t.revokeAccess}
           </Button>
         ) : null}
       </div>
@@ -125,10 +125,8 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
       <Dialog open={generatedCode !== null} onOpenChange={(open) => !open && setGeneratedCode(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Mobile access code</DialogTitle>
-            <DialogDescription>
-              Share this code with the staff member. It is shown once — copy it now.
-            </DialogDescription>
+            <DialogTitle>{t.codeTitle}</DialogTitle>
+            <DialogDescription>{t.codeDescription}</DialogDescription>
           </DialogHeader>
           <div className="rounded-(--radius-card) border border-border bg-muted/40 px-4 py-4 text-center">
             <span className="select-all font-mono text-xl font-semibold tracking-[0.18em] text-foreground">
@@ -138,10 +136,10 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={copyCode}>
               {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-              {copied ? "Copied" : "Copy code"}
+              {copied ? t.copied : t.copyCode}
             </Button>
             <Button size="sm" onClick={() => setGeneratedCode(null)}>
-              Done
+              {t.done}
             </Button>
           </div>
         </DialogContent>
@@ -151,15 +149,12 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
       <Dialog open={confirmRevoke} onOpenChange={(open) => !open && setConfirmRevoke(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Revoke mobile access?</DialogTitle>
-            <DialogDescription>
-              This signs the staff member out of the Vela Staff app and invalidates any unused
-              code. They will need a new code to sign back in.
-            </DialogDescription>
+            <DialogTitle>{t.revokeTitle}</DialogTitle>
+            <DialogDescription>{t.revokeDescription}</DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setConfirmRevoke(false)} disabled={isPending}>
-              Keep access
+              {t.keepAccess}
             </Button>
             <Button
               size="sm"
@@ -167,7 +162,7 @@ export function MobileAccessCard({ staffId, initial }: MobileAccessCardProps) {
               disabled={isPending}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              Revoke
+              {t.revoke}
             </Button>
           </div>
         </DialogContent>

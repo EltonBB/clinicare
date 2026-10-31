@@ -91,7 +91,7 @@ The terminology and tone every Albanian string in Vela follows: the website, the
 | Cancelled | Anuluar |
 | No-show | Mosparaqitje |
 | Active | Aktiv |
-| Away | Larg |
+| Away | Mungon (filter: *Mungojnë*) |
 | Inactive | Joaktiv |
 | Checked in now | Në punë tani |
 | At risk / Attention | Kërkon vëmendje |
@@ -132,7 +132,8 @@ The terminology and tone every Albanian string in Vela follows: the website, the
 | Upgrade to Pro | Kalo në Pro |
 | Compare plans | Krahaso planet |
 | Start free trial | Fillo provën falas |
-| Check in / Check out | Regjistro hyrjen / Regjistro daljen |
+| Check in / Check out | Regjistro hyrjen / Regjistro daljen (done: *Hyrja u regjistrua*) |
+| Revoke access | Hiq qasjen |
 | Mark as attended | Shëno si të paraqitur |
 
 ## Time words

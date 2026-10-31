@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { NewStaffForm } from "@/components/staff/new-staff-form";
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
 import { canUseWorkspace } from "@/lib/billing-access";
@@ -9,7 +12,9 @@ import { requireCurrentWorkspace } from "@/lib/business";
 import { buildStaffRecord, staffRecordAppointmentWindow } from "@/lib/staff";
 import { prisma } from "@/lib/prisma";
 
-export const metadata: Metadata = { title: "Edit staff member | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.staff.meta.editMember };
+}
 
 function staffTimeEntryCutoff() {
   return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
@@ -28,9 +33,10 @@ export default async function EditStaffPage({
   const { business } = await requireCurrentWorkspace("/staff", {
     missingBusinessRedirect: "/onboarding",
   });
+  const { locale, m } = await getI18n();
   if (!canUseWorkspace(business)) {
     return (
-      <CreatePageShell title="Edit staff member">
+      <CreatePageShell title={m.staff.form.editMember}>
         <WorkspaceLockedState />
       </CreatePageShell>
     );
@@ -114,11 +120,13 @@ export default async function EditStaffPage({
     notFound();
   }
 
-  const record = buildStaffRecord(staff);
+  const record = buildStaffRecord(staff, locale);
 
   return (
-    <CreatePageShell title={`Edit ${record.name}`}>
-      <NewStaffForm staff={record} businessHours={businessHours} />
+    <CreatePageShell title={fmt(m.staff.form.editTitle, { name: record.name })}>
+      <WithMessages namespaces={["staff"]}>
+        <NewStaffForm staff={record} businessHours={businessHours} />
+      </WithMessages>
     </CreatePageShell>
   );
 }
