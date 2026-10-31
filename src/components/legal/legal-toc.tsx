@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { fmt } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -9,7 +10,13 @@ import { cn } from "@/lib/utils";
  * rail fills cobalt as the reader moves through the document, and the header
  * shows how far along they are and the honest reading time for the page.
  */
-export function LegalToc({ items }: { items: { id: string; title: string }[] }) {
+export function LegalToc({
+  items,
+  labels,
+}: {
+  items: { id: string; title: string }[];
+  labels: { onThisPage: string; minRead: string };
+}) {
   const [active, setActive] = useState(items[0]?.id);
   const [progress, setProgress] = useState(0);
   const [minutes, setMinutes] = useState<number | null>(null);
@@ -59,11 +66,11 @@ export function LegalToc({ items }: { items: { id: string; title: string }[] }) 
   }, [items]);
 
   return (
-    <nav aria-label="On this page" className="lg:sticky lg:top-28">
+    <nav aria-label={labels.onThisPage} className="lg:sticky lg:top-28">
       <div className="flex items-baseline justify-between text-xs font-semibold text-muted-foreground">
-        <p>On this page</p>
+        <p>{labels.onThisPage}</p>
         <p className="tabular-nums">
-          {Math.round(progress * 100)}%{minutes ? <span className="font-normal"> · {minutes} min read</span> : null}
+          {Math.round(progress * 100)}%{minutes ? <span className="font-normal"> · {fmt(labels.minRead, { minutes })}</span> : null}
         </p>
       </div>
       <ol className="relative mt-4 border-l border-border/70">

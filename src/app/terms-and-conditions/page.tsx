@@ -1,25 +1,18 @@
 import type { Metadata } from "next";
 
 import { LegalPage } from "@/components/legal/legal-page";
+import { getI18n } from "@/i18n/server";
 import { WithMessages } from "@/i18n/with-messages";
-import { legalLastUpdated, termsSections } from "@/lib/legal-content";
 
-export const metadata: Metadata = {
-  title: "Terms of Service | Vela",
-  description:
-    "Terms of Service for Vela clinic operations software.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const copy = (await getI18n()).m.legal.terms;
+  return { title: copy.metaTitle, description: copy.metaDescription };
+}
 
 export default function TermsAndConditionsPage() {
   return (
     <WithMessages namespaces={["marketing", "modules"]}>
-    <LegalPage
-      current="terms"
-      title="Terms of Service"
-      description="These terms explain how clinics may use Vela, what the product provides, and the responsibilities that come with managing client records, appointments, messages, media, reports, and AI-assisted operational insights."
-      lastUpdated={legalLastUpdated}
-      sections={termsSections}
-    />
+      <LegalPage policy="terms" />
     </WithMessages>
   );
 }
