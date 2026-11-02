@@ -51,7 +51,7 @@ export const onboarding: Translation<typeof en> = {
     addFirst: "Ose shtoni anëtarin e parë të ekipit",
     fullName: "Emri i plotë",
     role: "Roli",
-    roles: ["Specialist", "Menaxher", "Recepsion"],
+    roles: { Specialist: "Specialist", Manager: "Menaxher", Reception: "Recepsion" },
     later: "Pjesën tjetër të ekipit e shtoni kur të doni te Stafi.",
   },
   buttons: {

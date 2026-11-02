@@ -21,6 +21,9 @@ import { cn, firstDisplayName, getInitials } from "@/lib/utils";
 
 import { FieldLabel, NativeSelect, Toggle } from "./form-parts";
 
+// Stored as these English values; only the labels are translated.
+const staffRoles = ["Specialist", "Manager", "Reception"];
+
 const timeOptions = [
   "07:00", "08:00", "09:00", "10:00", "11:00", "12:00",
   "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00",
@@ -336,7 +339,8 @@ export function TeamStep({
           <NativeSelect
             value={staffMember.role}
             onChange={(role) => onStaffChange({ role })}
-            options={t.roles}
+            options={staffRoles}
+            optionLabels={t.roles}
             ariaLabel={t.role}
             className="h-12 w-36 px-3.5 text-[15px]"
           />

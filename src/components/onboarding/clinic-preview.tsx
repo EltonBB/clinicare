@@ -489,7 +489,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-white">{member.name}</span>
                         <span className="block truncate text-xs text-white/60">
-                          {member.role}
+                          {storedLabel(m.onboarding.team.roles, member.role)}
                           {members.length === 1 ? t.takesAll : null}
                         </span>
                       </span>

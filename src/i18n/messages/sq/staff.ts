@@ -9,7 +9,7 @@ export const staff: Translation<typeof en> = {
     editMember: "Ndrysho anëtarin e stafit | Vela",
   },
   status: { ACTIVE: "Aktiv", AWAY: "Mungon", INACTIVE: "Joaktiv" },
-  roles: { Specialist: "Specialist", Receptionist: "Recepsionist", Manager: "Menaxher", Assistant: "Asistent" },
+  roles: { Specialist: "Specialist", Receptionist: "Recepsionist", Manager: "Menaxher", Assistant: "Asistent", Reception: "Recepsion" },
   noRole: "Staf",
   checkedInNow: "Në punë tani",
   unreadMessages: { one: "{count} mesazh i palexuar", other: "{count} mesazhe të palexuara" },

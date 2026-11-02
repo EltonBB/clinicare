@@ -49,7 +49,9 @@ export const onboarding = {
     addFirst: "Or add your first team member",
     fullName: "Full name",
     role: "Role",
-    roles: ["Specialist", "Manager", "Reception"],
+    // Labels for the stored role values, which stay English (the staff
+    // directory filters on them).
+    roles: { Specialist: "Specialist", Manager: "Manager", Reception: "Reception" },
     later: "Add the rest of the team anytime from Staff.",
   },
   buttons: {

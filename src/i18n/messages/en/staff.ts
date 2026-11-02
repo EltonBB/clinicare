@@ -8,7 +8,7 @@ export const staff = {
   // Keyed by StaffStatus.
   status: { ACTIVE: "Active", AWAY: "Away", INACTIVE: "Inactive" },
   // Stored role values (lib/staff-options staffRoles); a role outside the list shows as stored.
-  roles: { Specialist: "Specialist", Receptionist: "Receptionist", Manager: "Manager", Assistant: "Assistant" },
+  roles: { Specialist: "Specialist", Receptionist: "Receptionist", Manager: "Manager", Assistant: "Assistant", Reception: "Reception" },
   // Shown when a member has no role.
   noRole: "Staff",
   checkedInNow: "Checked in now",

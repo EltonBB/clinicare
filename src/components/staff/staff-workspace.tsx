@@ -89,13 +89,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
       const matchesQuery =
         normalizedQuery.length === 0
           ? true
-          : [member.name, member.role, member.email, member.phone].some((value) =>
+          : [member.name, member.role, storedLabel(m.staff.roles, member.role), member.email, member.phone].some((value) =>
               value.toLowerCase().includes(normalizedQuery)
             );
 
       return matchesFilter && matchesRole && matchesQuery;
     });
-  }, [staff, deferredQuery, filter, roleFilter]);
+  }, [staff, deferredQuery, filter, roleFilter, m.staff.roles]);
 
   function toggleClock(staffId: string) {
     const member = staff.find((item) => item.id === staffId);
