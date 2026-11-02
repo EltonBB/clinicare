@@ -39,3 +39,8 @@ export function resolveLocale(cookieValue: string | undefined, acceptLanguage: s
 
   return preferred.map((entry) => entry.language).find(isLocale) ?? defaultLocale;
 }
+
+/** A request without cookies, like the staff app's: its language comes from Accept-Language. */
+export function requestLocale(request: Request): Locale {
+  return resolveLocale(undefined, request.headers.get("accept-language"));
+}

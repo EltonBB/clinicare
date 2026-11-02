@@ -1,6 +1,6 @@
 import type { Business, StaffDevice, StaffMember } from "@prisma/client";
 
-import { resolveLocale, type Locale } from "@/i18n/config";
+import { requestLocale, type Locale } from "@/i18n/config";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -63,7 +63,7 @@ export type StaffContext = {
   staffMember: StaffMember;
   business: Business;
   device: StaffDevice;
-  /** The language the app asked for (see mobileLocale in lib/mobile/guard). */
+  /** The language the app asked for (Accept-Language). */
   locale: Locale;
 };
 
@@ -77,11 +77,6 @@ export type StaffAuthError = { error: string; status: number; retryAfterSeconds?
  * Tenant + principal isolation: callers MUST scope every query by
  * `ctx.business.id`, and per-doctor data additionally by `ctx.staffMember.id`.
  */
-/** The staff app sends its language as Accept-Language and never sends cookies. */
-export function mobileLocale(request: Request): Locale {
-  return resolveLocale(undefined, request.headers.get("accept-language"));
-}
-
 export async function requireStaffContext(
   request: Request
 ): Promise<StaffContext | StaffAuthError> {
@@ -142,5 +137,5 @@ export async function requireStaffContext(
   // timestamp) here — the single choke point for the HIPAA audit-log hook.
 
   const { staffMember, business } = device;
-  return { staffMember, business, device, locale: mobileLocale(request) };
+  return { staffMember, business, device, locale: requestLocale(request) };
 }

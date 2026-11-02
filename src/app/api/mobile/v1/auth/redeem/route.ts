@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { requestLocale } from "@/i18n/config";
 import { logger } from "@/lib/logger";
 import { mobileError } from "@/lib/mobile/guard";
 import { loadMobileMe } from "@/lib/mobile/me";
@@ -15,7 +16,6 @@ import {
   hashAccessCode,
   hashDeviceToken,
   isStaffMemberActive,
-  mobileLocale,
 } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -40,7 +40,7 @@ const GENERIC_INVALID =
   "That code is invalid or has expired. Ask your clinic admin for a new one.";
 
 export async function POST(request: Request) {
-  const locale = mobileLocale(request);
+  const locale = requestLocale(request);
   const ip = clientIpFromHeaders(request.headers);
   const rate = await checkRateLimit(`mobile-redeem:${ip}`, REDEEM_RATE_LIMIT);
   if (!rate.allowed) {

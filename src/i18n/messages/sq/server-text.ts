@@ -242,6 +242,7 @@ export const serverText: Record<string, string> = {
     "Ky kod është i pavlefshëm ose ka skaduar. Kërkojini administratës së klinikës një kod të ri.",
   "Too many attempts. Please wait a moment and try again.": "Shumë përpjekje. Prisni pak dhe provoni përsëri.",
   "Invalid request.": "Kërkesë e pavlefshme.",
+  "Request is too large.": "Kërkesa është shumë e madhe.",
   "We couldn't sign you in right now. Please try again.": "Hyrja nuk funksionoi tani. Ju lutemi provoni përsëri.",
   "Account unavailable.": "Llogaria nuk është e disponueshme.",
   "Unauthorized.": "Nuk keni qasje.",

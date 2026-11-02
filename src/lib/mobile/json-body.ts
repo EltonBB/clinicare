@@ -1,22 +1,25 @@
 import { NextResponse } from "next/server";
 
+import { requestLocale } from "@/i18n/config";
+import { translateServerText } from "@/i18n/server-text";
+
 // Enough for a 4,000-character message even when every character is JSON-escaped.
 export const MOBILE_JSON_MAX_BYTES = 32 * 1024;
 const BODY_READ_TIMEOUT_MS = 10_000;
 
 type BodyResult = { data: unknown } | { response: NextResponse };
 
-function rejected(status: number, error: string): BodyResult {
-  return { response: NextResponse.json({ error }, { status }) };
+function rejected(request: Request, status: number, error: string): BodyResult {
+  return { response: NextResponse.json({ error: translateServerText(error, requestLocale(request)) }, { status }) };
 }
 
 /** Bound bytes before JSON.parse; Content-Length alone does not cover chunked uploads. */
 export async function readMobileJson(request: Request, allowEmpty = false): Promise<BodyResult> {
   const length = request.headers.get("content-length");
   if (length && /^\d+$/.test(length) && Number(length) > MOBILE_JSON_MAX_BYTES) {
-    return rejected(413, "Request is too large.");
+    return rejected(request, 413, "Request is too large.");
   }
-  if (!request.body) return allowEmpty ? { data: undefined } : rejected(400, "Invalid request.");
+  if (!request.body) return allowEmpty ? { data: undefined } : rejected(request, 400, "Invalid request.");
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -33,7 +36,7 @@ export async function readMobileJson(request: Request, allowEmpty = false): Prom
       if (size > MOBILE_JSON_MAX_BYTES) {
         // Next proxy can tee the body. Awaiting cancel can wait on the other branch.
         void reader.cancel().catch(() => {});
-        return rejected(413, "Request is too large.");
+        return rejected(request, 413, "Request is too large.");
       }
       chunks.push(value);
     }
@@ -42,7 +45,7 @@ export async function readMobileJson(request: Request, allowEmpty = false): Prom
     return { data: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) };
   } catch {
     void reader.cancel().catch(() => {});
-    return rejected(400, "Invalid request.");
+    return rejected(request, 400, "Invalid request.");
   } finally {
     clearTimeout(timer);
     reader.releaseLock();

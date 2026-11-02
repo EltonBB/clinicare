@@ -35,6 +35,7 @@ const COVERED = [
   "src/lib/messaging/index.ts",
   "src/lib/staff-auth.ts",
   "src/lib/mobile/guard.ts",
+  "src/lib/mobile/json-body.ts",
   "src/lib/mobile/clock.ts",
   "src/lib/mobile/inbox.ts",
   "src/lib/mobile/thread-read.ts",
