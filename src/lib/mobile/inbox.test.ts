@@ -133,6 +133,12 @@ describe("in Albanian", () => {
       "Anuloi terminin e orës 09:30 me Arta Krasniqi. Ju lutemi riplanifikojeni."
     );
     expect(serializeMessage(message({ sender: "ADMIN", body: "New message" }), NOW, "sq").body).toBe("New message");
+    // An older notice stored with a 12-hour time reads as 24-hour in Albanian.
+    const older = "Cancelled the 1:00 PM appointment with Mia Robinson — please reschedule.";
+    expect(serializeMessage(message({ sender: "SYSTEM", body: older }), NOW, "sq").body).toBe(
+      "Anuloi terminin e orës 13:00 me Mia Robinson. Ju lutemi riplanifikojeni."
+    );
+    expect(serializeMessage(message({ sender: "SYSTEM", body: older }), NOW, "en").body).toBe(older);
     expect(
       serializeNotification(
         { id: "n1", kind: "MESSAGE", title: "New message", body: "You have a new message from your clinic.", linkType: null, linkId: null, readAt: null, createdAt: minsAgo(2) } as StaffNotification,

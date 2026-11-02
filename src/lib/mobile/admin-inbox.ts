@@ -1,9 +1,8 @@
 import type { Locale } from "@/i18n/config";
-import { translateServerText } from "@/i18n/server-text";
 import { ensureAdminThread } from "@/lib/mobile/inbox";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
-import { clockLabel, dayLabel } from "@/lib/mobile/relative-time";
+import { clockLabel, dayLabel, systemNoticeText } from "@/lib/mobile/relative-time";
 import { prisma } from "@/lib/prisma";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
 import { clinicMessageLocale } from "@/lib/automations-data";
@@ -64,7 +63,7 @@ export async function getAdminThread(
       mine: message.sender === "ADMIN",
       system: message.sender === "SYSTEM",
       // System notices are stored in English; people's own words stay as written.
-      body: message.sender === "SYSTEM" ? translateServerText(message.body, locale) : message.body,
+      body: message.sender === "SYSTEM" ? systemNoticeText(message.body, locale) : message.body,
       timeLabel: clockLabel(message.createdAt),
       dayLabel: dayLabel(message.createdAt, now, locale),
     })),

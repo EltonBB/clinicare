@@ -4,7 +4,7 @@ import type { Locale } from "@/i18n/config";
 import { storedLabel } from "@/i18n/format";
 import { messages } from "@/i18n/messages";
 import { translateServerText } from "@/i18n/server-text";
-import { clockLabel, dayLabel, isZonedToday, relativeLabel } from "@/lib/mobile/relative-time";
+import { clockLabel, dayLabel, isZonedToday, relativeLabel, systemNoticeText } from "@/lib/mobile/relative-time";
 
 /**
  * Pure view-model types + serializers for internal staff↔admin messaging and
@@ -63,7 +63,7 @@ export function serializeMessage(
     id: message.id,
     sender,
     // System notices are stored in English; people's own words stay as written.
-    body: sender === "system" ? translateServerText(message.body, locale) : message.body,
+    body: sender === "system" ? systemNoticeText(message.body, locale) : message.body,
     timeLabel: clockLabel(message.createdAt),
     dayLabel: dayLabel(message.createdAt, now, locale),
     // Only the staff's own (outbound) messages carry a delivery state.
