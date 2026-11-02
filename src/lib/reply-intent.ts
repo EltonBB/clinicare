@@ -1,11 +1,11 @@
 export type ReplyIntent = "confirm" | "cancel" | null;
 
-// English only for now — Albanian/common equivalents are deferred (this
-// plan's Deviation 1): guessing translations without the owner's review
-// risks silently misreading a real patient reply. Extend this list, don't
-// replace the matching strategy, when real translations are supplied.
-const CONFIRM_TOKENS = new Set(["1", "yes", "confirm"]);
-const CANCEL_TOKENS = new Set(["2", "cancel"]);
+// The reminders ask for 1 or 2 in either language. Beside the numbers, the same
+// plain words in English and Albanian ("po" = yes, "konfirmo" = confirm,
+// "anulo" = cancel). "no"/"jo" stay out on purpose: a bare no can answer
+// something else, and a misread reply cancels a real visit.
+const CONFIRM_TOKENS = new Set(["1", "yes", "confirm", "po", "konfirmo"]);
+const CANCEL_TOKENS = new Set(["2", "cancel", "anulo"]);
 
 /**
  * Reads an inbound message body for an exact confirm/cancel reply. Matches

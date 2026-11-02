@@ -82,6 +82,8 @@ const NOT_SHOWN = new Set([
   "Failed to post cancellation notice to the admin thread.",
   "Loading mobile profile after redeem failed.",
   "Mobile access code redemption failed.",
+  "Writing the automations in Albanian failed.",
+  "Writing a new clinic's messages in Albanian failed.",
   "Outbound message idempotency key is malformed; sending without it.",
   "Outbound message held back: the workspace is read-only.",
   "Outbound message held back: the clinic reached its sending ceiling.",

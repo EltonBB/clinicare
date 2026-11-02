@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   AUTOMATIONS,
   automationDefinition,
+  defaultAutomationText,
   insertTokenAt,
+  messageLocale,
+  visitDateTokens,
   isAutomationAvailable,
   renderAutomationMessage,
 } from "@/lib/automations";
@@ -132,5 +135,30 @@ describe("renderAutomationMessage", () => {
 describe("insertTokenAt", () => {
   it("inserts a token at the cursor and moves the cursor past it", () => {
     expect(insertTokenAt("Hi !", 3, "client_name")).toEqual({ text: "Hi {client_name}!", cursor: 16 });
+  });
+});
+
+describe("Albanian default wording", () => {
+  const tokens = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+  const variants = AUTOMATIONS.flatMap(({ kind }) =>
+    kind === "VISIT_CHANGED" ? [[kind, "moved"] as const, [kind, "cancelled"] as const] : [[kind, "moved"] as const]
+  );
+
+  it.each(variants)("%s (%s) carries the same details and reads as Albanian", (kind, variant) => {
+    const english = defaultAutomationText(kind, variant);
+    const albanian = defaultAutomationText(kind, variant, "sq");
+    expect(tokens(albanian)).toEqual(tokens(english));
+    expect(messageLocale(albanian)).toBe("sq");
+    expect(messageLocale(english)).toBe("en");
+    // The reply numbers the reminders ask for stay the same.
+    expect(albanian.match(/\b[12]\b/g) ?? []).toEqual(english.match(/\b[12]\b/g) ?? []);
+  });
+
+  it("writes the visit's date in the language of the message", () => {
+    const at = new Date("2026-11-03T09:30:00Z");
+    const albanian = visitDateTokens("FIRST_REMINDER", defaultAutomationText("FIRST_REMINDER", "moved", "sq"), at);
+    expect(albanian.date).toMatch(/nëntor 2026$/);
+    // Nothing saved means the English default, so an English date.
+    expect(visitDateTokens("FIRST_REMINDER", null, at).date).toMatch(/November/);
   });
 });

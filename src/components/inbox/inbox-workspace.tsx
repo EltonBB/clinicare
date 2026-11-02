@@ -70,6 +70,8 @@ function isReminderMessage(body: string) {
   return (
     normalized.includes("this is a reminder for your appointment") ||
     normalized.includes("appointment is coming up") ||
+    // The Albanian default reminder (lib/automations).
+    normalized.includes("ju kujtojmë terminin tuaj") ||
     normalized.startsWith("reminder:")
   );
 }

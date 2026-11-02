@@ -42,6 +42,7 @@ export default async function AutomationsPage() {
           editors={view.editors}
           clinicName={business.name}
           staffName={staff?.name ?? business.name}
+          englishWording={view.englishWording}
         />
       </WithMessages>
     </WorkspacePage>

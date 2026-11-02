@@ -1,6 +1,6 @@
 import type { AutomationKind, FollowUpDraftKind, Prisma } from "@prisma/client";
 
-import { automationDefinition, renderAutomationMessage } from "@/lib/automations";
+import { automationDefinition, renderAutomationMessage, visitDateTokens } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
 import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { logger } from "@/lib/logger";
@@ -249,8 +249,7 @@ export async function queueVisitMessage(args: {
       variant === "cancelled" ? setting.template2 : setting.template,
       {
         client_name: appointment.client.name,
-        date: formatZonedFullDate(appointment.startAt),
-        time: formatZonedTime(appointment.startAt),
+        ...visitDateTokens(kind, variant === "cancelled" ? setting.template2 : setting.template, appointment.startAt, variant),
         staff_name: appointment.staffMember?.name ?? business.name,
         clinic_name: business.name,
       },

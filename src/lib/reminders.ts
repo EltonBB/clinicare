@@ -2,7 +2,7 @@ import { addHours } from "date-fns";
 
 import type { Prisma } from "@prisma/client";
 
-import { renderAutomationMessage } from "@/lib/automations";
+import { renderAutomationMessage, visitDateTokens } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness, getAutomationSettings } from "@/lib/automations-data";
 import { workspaceUsableWhere } from "@/lib/billing-access";
 import { mapWithConcurrency, withDeadline } from "@/lib/concurrency";
@@ -328,8 +328,7 @@ export async function syncAppointmentRemindersForBusiness(
     const automationKind = REMINDER_AUTOMATION[reminderType];
     const body = renderAutomationMessage(automationKind, settings[automationKind].template, {
       client_name: appointment.client.name,
-      date: formatZonedFullDate(appointment.startAt),
-      time: formatZonedTime(appointment.startAt),
+      ...visitDateTokens(automationKind, settings[automationKind].template, appointment.startAt),
       staff_name: appointment.staffMember?.name ?? business.name,
       clinic_name: business.name,
     });

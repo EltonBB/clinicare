@@ -3,6 +3,8 @@ import { BusinessPlan, type Prisma, type ReminderSettings, type WorkflowSettings
 import {
   AUTOMATIONS,
   automationDefinition,
+  defaultAutomationText,
+  effectiveAutomationTemplate,
   isAutomationAvailable,
   type AutomationKind,
   type AutomationMode,
@@ -176,6 +178,56 @@ export function automationSettingsFromBusiness(business: AutomationSettingsSourc
     reminders: business.reminderSettings ?? null,
     workflows: business.workflowSettings ?? null,
   });
+}
+
+/**
+ * The row an automation behaves as today, before the plan's limits: its saved
+ * row, else the old settings, else the registry default (the same order as
+ * resolveAutomationSettings). Writing it back changes nothing, so a caller can
+ * save one field (the wording) without turning a switch or a mode with it.
+ */
+export function effectiveAutomationRow(kind: AutomationKind, business: AutomationSettingsSource): StoredRow {
+  const row = business.automationSettings?.find((stored) => stored.kind === kind);
+  if (row) return row;
+  const definition = automationDefinition(kind);
+  const legacy = legacyValues(kind, business.reminderSettings ?? null, business.workflowSettings ?? null);
+  return {
+    kind,
+    enabled: legacy.enabled ?? definition.defaultEnabled,
+    mode: definition.defaultMode,
+    timing: definition.timingUnit ? (legacy.timing ?? definition.defaultTiming) : null,
+    template: legacy.template ?? null,
+    template2: null,
+  };
+}
+
+/**
+ * Puts the Albanian default wording on every automation still using the
+ * English default (lib/automations). Wording the clinic wrote stays, and
+ * nothing but the wording changes (effectiveAutomationRow).
+ */
+export async function writeAlbanianDefaultWording(businessId: string): Promise<void> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: AUTOMATION_SETTINGS_SELECT });
+  if (!business) return;
+  const albanian = (kind: AutomationKind, stored: string | null, variant: "moved" | "cancelled") =>
+    effectiveAutomationTemplate(kind, stored, variant) === defaultAutomationText(kind, variant)
+      ? defaultAutomationText(kind, variant, "sq")
+      : stored;
+
+  const writes = AUTOMATIONS.flatMap(({ kind }) => {
+    const row = effectiveAutomationRow(kind, business);
+    const template = albanian(kind, row.template, "moved");
+    const template2 = kind === "VISIT_CHANGED" ? albanian(kind, row.template2, "cancelled") : row.template2;
+    if (template === row.template && template2 === row.template2) return [];
+    return [
+      prisma.automationSetting.upsert({
+        where: { businessId_kind: { businessId, kind } },
+        create: { ...row, businessId, template, template2 },
+        update: { template, template2 },
+      }),
+    ];
+  });
+  await prisma.$transaction(writes);
 }
 
 export async function getAutomationSettings(businessId: string): Promise<AutomationSettings> {

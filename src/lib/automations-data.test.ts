@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { resolveAutomationSettings } from "@/lib/automations-data";
+import { effectiveAutomationRow, resolveAutomationSettings } from "@/lib/automations-data";
 
 const LEGACY_REMINDERS = {
   send24HourReminder: true,
@@ -104,5 +104,21 @@ describe("resolveAutomationSettings", () => {
     });
 
     expect(settings.SECOND_REMINDER.mode).toBe("REVIEW");
+  });
+});
+
+describe("effectiveAutomationRow", () => {
+  it("is the saved row, or what the automation does today without one (plan limits aside)", () => {
+    const saved = { kind: "REBOOK" as const, enabled: false, mode: "AUTOMATIC" as const, timing: 3, template: "Hi", template2: null };
+    expect(effectiveAutomationRow("REBOOK", { plan: "BASIC", automationSettings: [saved] })).toBe(saved);
+    // A Basic clinic's Pro automation keeps its own default, not the plan's "off".
+    expect(
+      effectiveAutomationRow("REBOOK", { plan: "BASIC", reminderSettings: LEGACY_REMINDERS, workflowSettings: LEGACY_WORKFLOWS })
+    ).toMatchObject({ enabled: true, timing: 9, mode: "REVIEW", template: null });
+    expect(effectiveAutomationRow("FIRST_REMINDER", { plan: "PRO", reminderSettings: LEGACY_REMINDERS })).toMatchObject({
+      enabled: true,
+      timing: 14,
+      template: "Hi {client_name}!",
+    });
   });
 });

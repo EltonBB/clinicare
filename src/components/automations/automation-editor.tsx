@@ -15,11 +15,12 @@ import {
   insertTokenAt,
   MAX_AUTOMATION_MESSAGE_LENGTH,
   renderAutomationMessage,
+  visitDateTokens,
   type AutomationMode,
   type AutomationToken,
 } from "@/lib/automations";
 import type { AutomationEditorData } from "@/lib/automations-view";
-import { formatZonedFullDate, formatZonedTime, getZonedDateParts, zonedDateTimeToUtc } from "@/lib/time-zone";
+import { getZonedDateParts, zonedDateTimeToUtc } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 
 /** Tomorrow at 10:30 in the clinic's zone: the visit the preview describes. */
@@ -63,13 +64,15 @@ export function AutomationEditor({
 
   const hasSecondText = data.template2 !== null;
   const visit = useMemo(() => sampleVisit(), []);
-  const sample = {
-    client_name: "Maya",
-    clinic_name: clinicName,
-    staff_name: staffName,
-    date: formatZonedFullDate(visit),
-    time: formatZonedTime(visit),
-  };
+  const sample = { client_name: "Maya", clinic_name: clinicName, staff_name: staffName };
+  // The visit's date reads in the language the message is written in.
+  const preview = (box: Box, variant: "moved" | "cancelled") =>
+    renderAutomationMessage(
+      data.kind,
+      texts[box],
+      { ...sample, ...visitDateTokens(data.kind, texts[box], visit, variant) },
+      variant
+    );
   const timingOptions = timing !== null && !data.timingOptions.includes(timing) ? [...data.timingOptions, timing].sort((a, b) => a - b) : data.timingOptions;
 
   function insert(token: AutomationToken) {
@@ -216,10 +219,8 @@ export function AutomationEditor({
         <div className="flex flex-col gap-3 bg-[#eaf4ff] p-5">
           <span className="text-xs font-medium text-[#3b5b86]">{t.phone}</span>
           <div className="flex flex-1 flex-col justify-center gap-2">
-            <PreviewBubble text={renderAutomationMessage(data.kind, texts.template, sample, "moved")} />
-            {hasSecondText ? (
-              <PreviewBubble text={renderAutomationMessage(data.kind, texts.template2, sample, "cancelled")} />
-            ) : null}
+            <PreviewBubble text={preview("template", "moved")} />
+            {hasSecondText ? <PreviewBubble text={preview("template2", "cancelled")} /> : null}
           </div>
         </div>
       </DialogContent>

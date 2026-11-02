@@ -3,6 +3,8 @@ import type { AutomationKind, AutomationMode, BusinessPlan, FollowUpDraftKind } 
 import { isProBusinessPlan } from "@/lib/billing";
 import { DEFAULT_REMINDER_TEMPLATE, LEGACY_DEFAULT_REMINDER_TEMPLATE } from "@/lib/messaging/render";
 import { PAYMENT_REMINDER_DAY_OPTIONS, REBOOK_MONTH_OPTIONS, THANK_YOU_HOUR_OPTIONS } from "@/lib/settings";
+import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
+import type { Locale } from "@/i18n/config";
 
 export type { AutomationKind, AutomationMode };
 
@@ -253,10 +255,61 @@ export const FOLLOW_UP_KIND_TO_AUTOMATION: Record<FollowUpDraftKind, AutomationK
 
 const REMINDER_KINDS = new Set<AutomationKind>(["FIRST_REMINDER", "SECOND_REMINDER", "HIGH_RISK_REMINDER"]);
 
-/** The kind's default text ("cancelled" is VISIT_CHANGED's second text). */
-export function defaultAutomationText(kind: AutomationKind, variant: "moved" | "cancelled" = "moved"): string {
+/**
+ * The default wording in Albanian. A clinic's patients get the words the clinic
+ * saved, so a clinic writing in Albanian saves these (Reset to default, or
+ * "Write every message in Albanian" on the Automations page); nothing saved
+ * still means the English default above. Same details, same reply numbers, and
+ * every text carries an ë or ç, which is how messageLocale tells the language.
+ */
+const ALBANIAN_DEFAULTS: Record<AutomationKind, string> = {
+  BOOKING_CONFIRMATION:
+    "Përshëndetje {client_name}, vizita juaj te {clinic_name} është caktuar më {date} në orën {time}. Na shkruani këtu nëse duhet ta ndryshoni.",
+  NEW_PATIENT_WELCOME:
+    "Mirë se vini te {clinic_name}, {client_name}! Vizita juaj e parë është më {date} në orën {time}. Na shkruani këtu nëse keni pyetje.",
+  FIRST_REMINDER:
+    "Përshëndetje {client_name}, ju kujtojmë terminin tuaj më {date} në orën {time}. Përgjigjuni me 1 për ta konfirmuar ose me 2 për ta anuluar.",
+  SECOND_REMINDER: "Përshëndetje {client_name}, ju presim në orën {time} më {date}. Përgjigjuni me 2 nëse nuk mund të vini.",
+  HIGH_RISK_REMINDER:
+    "Përshëndetje {client_name}, a mund të vini ende në vizitën tuaj në orën {time} më {date}? Përgjigjuni me 1 për ta konfirmuar ose me 2 për ta anuluar, që t'ia ofrojmë orarin dikujt tjetër.",
+  VISIT_CHANGED:
+    "Përshëndetje {client_name}, vizita juaj u zhvendos më {date} në orën {time}. Na shkruani këtu nëse orari i ri nuk ju përshtatet.",
+  THANK_YOU: "Faleminderit që na vizituat, {client_name}! Shpresojmë t'ju shohim përsëri së shpejti.",
+  MISSED_VISIT: "Përshëndetje {client_name}, sot ju prisnim, por nuk erdhët. Dëshironi të caktoni një orë të re?",
+  PAYMENT_REMINDER:
+    "Përshëndetje {client_name}, ju kujtojmë me mirësjellje se keni një pagesë të papaguar te ne. Na kontaktoni nëse keni pyetje.",
+  CHECKUP_DUE: "Përshëndetje {client_name}, është koha për kontrollin tuaj te {clinic_name}. Dëshironi të caktoni një vizitë?",
+  REBOOK: "Përshëndetje {client_name}, ka kaluar pak kohë nga vizita juaj e fundit. Dëshironi të caktoni terminin e radhës?",
+  WAITLIST_OFFER: "Përshëndetje {client_name}, u lirua një orar më {date} në orën {time}. Na shkruani këtu nëse e dëshironi.",
+};
+const ALBANIAN_VISIT_CANCELLED =
+  "Përshëndetje {client_name}, vizita juaj më {date} në orën {time} u anulua. Na shkruani këtu për të caktuar një orë të re.";
+
+/** The kind's default text ("cancelled" is VISIT_CHANGED's second text), in English unless asked for Albanian. */
+export function defaultAutomationText(
+  kind: AutomationKind,
+  variant: "moved" | "cancelled" = "moved",
+  locale: Locale = "en"
+): string {
+  if (locale === "sq") return variant === "cancelled" && kind === "VISIT_CHANGED" ? ALBANIAN_VISIT_CANCELLED : ALBANIAN_DEFAULTS[kind];
   const definition = automationDefinition(kind);
   return variant === "cancelled" ? (definition.defaultTemplate2 ?? definition.defaultTemplate) : definition.defaultTemplate;
+}
+
+/** The language a message is written in: Albanian text has an ë or a ç, English never does. */
+export function messageLocale(text: string): Locale {
+  return /[ëç]/i.test(text) ? "sq" : "en";
+}
+
+/** A visit's {date} and {time}, written the way the message around them is ("3 nëntor 2026" in Albanian). */
+export function visitDateTokens(
+  kind: AutomationKind,
+  template: string | null | undefined,
+  at: Date,
+  variant: "moved" | "cancelled" = "moved"
+): { date: string; time: string } {
+  const locale = messageLocale(effectiveAutomationTemplate(kind, template, variant));
+  return { date: formatZonedFullDate(at, undefined, locale), time: formatZonedTime(at, undefined, locale) };
 }
 
 /**

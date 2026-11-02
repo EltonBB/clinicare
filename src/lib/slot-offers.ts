@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { renderAutomationMessage } from "@/lib/automations";
+import { renderAutomationMessage, visitDateTokens } from "@/lib/automations";
 import { AUTOMATION_SETTINGS_SELECT, automationSettingsFromBusiness } from "@/lib/automations-data";
 import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { workspaceUsableWhere } from "@/lib/billing-access";
@@ -61,8 +61,7 @@ const MAX_OPEN_DRAFTS = 20;
 export function slotOfferBody(clientName: string, startAt: Date, message?: DraftMessage) {
   return renderAutomationMessage("WAITLIST_OFFER", message?.template, {
     client_name: clientName,
-    date: formatZonedFullDate(startAt),
-    time: formatZonedTime(startAt),
+    ...visitDateTokens("WAITLIST_OFFER", message?.template, startAt),
     clinic_name: message?.clinicName,
   });
 }

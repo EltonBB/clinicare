@@ -60,6 +60,11 @@ export const automations: Translation<typeof en> = {
   modes: { Automatic: "Automatike", "Review first": "Rishiko së pari", Off: "Joaktive" },
   pro: "Pro",
   edit: "Ndrysho: {label}",
+  albanian: {
+    note: "Disa mesazhe për pacientët janë ende në anglisht.",
+    action: "Shkruaji në shqip",
+    done: "Mesazhet për pacientët tani janë në shqip.",
+  },
 
   editor: {
     on: "{label}: aktive",

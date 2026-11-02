@@ -3,7 +3,7 @@ import type { BusinessPlan } from "@prisma/client";
 import type { Locale } from "@/i18n/config";
 import { plural } from "@/i18n/format";
 import { messages } from "@/i18n/messages";
-import { AUTOMATIONS, type AutomationKind, type AutomationMode, type AutomationToken, type TimingUnit } from "@/lib/automations";
+import { AUTOMATIONS, defaultAutomationText, effectiveAutomationTemplate, type AutomationKind, type AutomationMode, type AutomationToken, type TimingUnit } from "@/lib/automations";
 import type { AutomationSettings } from "@/lib/automations-data";
 import { isProBusinessPlan } from "@/lib/billing";
 
@@ -44,6 +44,8 @@ export type AutomationsView = {
   editors: Partial<Record<AutomationKind, AutomationEditorData>>;
   showReviewTab: boolean;
   reviewCount: number;
+  /** An Albanian reader whose patients still get an English default text. */
+  englishWording: boolean;
 };
 
 export function buildAutomationsView(args: {
@@ -77,8 +79,9 @@ export function buildAutomationsView(args: {
         tokens: [...definition.tokens],
         template: setting.template ?? definition.defaultTemplate,
         template2: definition.defaultTemplate2 ? (setting.template2 ?? definition.defaultTemplate2) : null,
-        defaultTemplate: definition.defaultTemplate,
-        defaultTemplate2: definition.defaultTemplate2 ?? null,
+        // What "Reset to default" puts back: the default in the reader's language.
+        defaultTemplate: defaultAutomationText(definition.kind, "moved", locale),
+        defaultTemplate2: definition.defaultTemplate2 ? defaultAutomationText(definition.kind, "cancelled", locale) : null,
       };
     }
 
@@ -98,5 +101,18 @@ export function buildAutomationsView(args: {
 
   // Basic has no review queue, but a workspace downgraded with a live slot
   // offer still has to reach it to skip or book it (Codex).
-  return { cards, editors, showReviewTab: isPro || reviewCount > 0, reviewCount };
+  const onEnglishDefault = (kind: AutomationKind, stored: string | null, variant: "moved" | "cancelled") =>
+    effectiveAutomationTemplate(kind, stored, variant) === defaultAutomationText(kind, variant);
+  const englishWording =
+    locale === "sq" &&
+    AUTOMATIONS.some(({ kind }) => {
+      const setting = settings[kind];
+      return (
+        setting.available &&
+        (onEnglishDefault(kind, setting.template, "moved") ||
+          (kind === "VISIT_CHANGED" && onEnglishDefault(kind, setting.template2, "cancelled")))
+      );
+    });
+
+  return { cards, editors, showReviewTab: isPro || reviewCount > 0, reviewCount, englishWording };
 }
