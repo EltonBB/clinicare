@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { getI18n } from "@/i18n/server";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { closeOpenTimeEntryIfPresent, openTimeEntryIfAbsent } from "@/lib/mobile/clock";
 import { prisma } from "@/lib/prisma";
@@ -166,7 +167,7 @@ async function fetchStaffRecord(staffId: string, businessId: string) {
     },
   });
 
-  return buildStaffRecord(staff);
+  return buildStaffRecord(staff, (await getI18n()).locale);
 }
 
 // Surfaces local to a staff change: the directory (employment status, the
@@ -887,6 +888,7 @@ export type RecentCheckIn = {
  */
 export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
   const context = await getAuthedBusinessContext(undefined, { access: "read" });
+  const { locale } = await getI18n();
   if ("error" in context) {
     // Over the action budget, reject rather than answer "nothing recent": the
     // toaster would take an empty first answer as its baseline and later show
@@ -913,7 +915,7 @@ export async function getRecentStaffCheckInsAction(): Promise<RecentCheckIn[]> {
     entryId: entry.id,
     staffId: entry.staffMember.id,
     staffName: entry.staffMember.name,
-    atLabel: formatZonedTime(entry.checkedInAt),
+    atLabel: formatZonedTime(entry.checkedInAt, undefined, locale),
     atMs: entry.checkedInAt.getTime(),
   }));
 }
@@ -935,6 +937,7 @@ export type RecentStaffMessage = {
  */
 export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage[]> {
   const context = await getAuthedBusinessContext(undefined, { access: "read" });
+  const { locale } = await getI18n();
   if ("error" in context) {
     // Same as getRecentStaffCheckInsAction: a throttled poll must not become
     // the toaster's baseline (Codex #140).
@@ -970,7 +973,7 @@ export async function getRecentStaffMessagesAction(): Promise<RecentStaffMessage
     staffId: message.thread.staffMemberId,
     staffName: message.thread.staffMember.name,
     isSystem: message.sender === "SYSTEM",
-    atLabel: formatZonedTime(message.createdAt),
+    atLabel: formatZonedTime(message.createdAt, undefined, locale),
     atMs: message.createdAt.getTime(),
   }));
 }

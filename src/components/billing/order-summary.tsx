@@ -8,8 +8,8 @@ import {
   useLocalizedPrices,
 } from "@/components/billing/use-paddle";
 import { useI18n } from "@/i18n/client";
-import { intlLocale, type Locale } from "@/i18n/config";
-import { fmt } from "@/i18n/format";
+import type { Locale } from "@/i18n/config";
+import { fmt, numberFormatter } from "@/i18n/format";
 import type { PaidInterval } from "@/lib/paddle/paddle-config";
 import type { PublicPlan } from "@/lib/public-plans";
 
@@ -98,7 +98,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function moneyFormatter(currency: string | undefined, locale: Locale) {
   if (!currency) return null;
   try {
-    const format = new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency });
+    const format = numberFormatter(locale, { style: "currency", currency });
     return (amount: number) => format.format(amount);
   } catch {
     return null;

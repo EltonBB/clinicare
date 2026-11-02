@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState } from "react";
 
 import { useI18n } from "@/i18n/client";
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, localeNames, locales, type Locale } from "@/i18n/config";
@@ -14,17 +13,19 @@ function storeLocale(locale: Locale) {
 
 /**
  * EN / SQ as two separate text buttons. Choosing one stores the language in a
- * cookie and re-renders the page on the server in that language.
+ * cookie and reloads the page. A full reload, not a soft refresh: pages that
+ * seed local state from their first render (a client record, the calendar's
+ * loaded months) would otherwise keep the old language's dates and labels.
  */
 export function LanguageSwitcher({ tone = "default", className }: { tone?: "default" | "light"; className?: string }) {
   const { locale, m } = useI18n();
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
   function choose(next: Locale) {
     if (next === locale || pending) return;
     storeLocale(next);
-    startTransition(() => router.refresh());
+    setPending(true);
+    window.location.reload();
   }
 
   return (

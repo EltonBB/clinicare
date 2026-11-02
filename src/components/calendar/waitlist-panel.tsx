@@ -27,6 +27,9 @@ import {
   fieldTextareaClass,
   WorkspaceEmptyState,
 } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
 import type { CalendarSelectOption } from "@/lib/calendar";
 import { isInvalidPreferredWindow, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
 import type { WaitlistEntryRow } from "@/lib/waitlist-data";
@@ -41,7 +44,7 @@ type WaitlistPanelProps = {
 };
 
 // Monday=0..Sunday=6, matching BusinessHours.weekday and the matcher's convention.
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
 type FormState = {
   clientId: string;
@@ -67,19 +70,19 @@ function emptyForm(): FormState {
   };
 }
 
-function formatPreferredWindow(entry: WaitlistEntryRow) {
+function formatPreferredWindow(entry: WaitlistEntryRow, dayLabels: string[], t: Messages["calendar"]["waitlist"]) {
   const parts: string[] = [];
 
   if (entry.preferredDays.length > 0) {
-    parts.push(entry.preferredDays.map((day) => DAY_LABELS[day]).join(", "));
+    parts.push(entry.preferredDays.map((day) => dayLabels[day]).join(", "));
   }
 
   if (entry.preferredFrom || entry.preferredTo) {
-    parts.push(`${entry.preferredFrom ?? "any"}–${entry.preferredTo ?? "any"}`);
+    parts.push(`${entry.preferredFrom ?? t.any}–${entry.preferredTo ?? t.any}`);
   }
 
   if (entry.earliestDateLabel) {
-    parts.push(`from ${entry.earliestDateLabel}`);
+    parts.push(fmt(t.fromDate, { date: entry.earliestDateLabel }));
   }
 
   return parts.join(" · ");
@@ -94,6 +97,10 @@ function formatPreferredWindow(entry: WaitlistEntryRow) {
  */
 export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembers }: WaitlistPanelProps) {
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.calendar.waitlist;
+  const serverText = useServerText();
+  const dayLabels = WEEKDAYS.map((day) => m.common.weekdays[day].short);
   const [isAdding, startAdding] = useTransition();
   const [isRemoving, startRemoving] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -114,7 +121,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
     setError("");
 
     if (!form.clientId || !form.service.trim()) {
-      setError("Choose a client and enter a service before adding to the waiting list.");
+      setError(t.missing);
       return;
     }
 
@@ -140,12 +147,12 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
         // A rejected server action (network drop, 5xx, deploy skew) must not
         // throw out of the transition — that would swap the whole Calendar
         // for the error page. A plain message instead.
-        setError("Something went wrong. Try again.");
+        setError(t.failed);
         return;
       }
 
       if (!result.ok) {
-        setError(result.error ?? "We couldn't add this entry.");
+        setError(result.error ?? t.addFailed);
         return;
       }
 
@@ -167,13 +174,13 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
         result = await removeWaitlistEntryAction(id);
       } catch {
         // Same as submitAdd: never let a rejected action reach the error page.
-        setError("Something went wrong. Try again.");
+        setError(t.failed);
         setRemovingId(null);
         return;
       }
 
       if (!result.ok) {
-        setError(result.error ?? "We couldn't remove this entry.");
+        setError(result.error ?? t.removeFailed);
         setRemovingId(null);
         return;
       }
@@ -197,17 +204,17 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
       <DialogContent className="max-w-lg p-0 sm:max-w-lg">
         <div className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden">
           <DialogHeader className="shrink-0 gap-1 px-5 pb-4 pt-5">
-            <DialogTitle>Waiting list</DialogTitle>
+            <DialogTitle>{t.title}</DialogTitle>
             <DialogDescription className="sr-only">
-              Clients waiting for the next available slot.
+              {t.description}
             </DialogDescription>
           </DialogHeader>
 
           <div className="dialog-scroll-body min-h-0 flex-1 overflow-y-auto px-5 py-1">
             {entries.length === 0 && !showForm ? (
               <WorkspaceEmptyState
-                title="Nobody is waiting"
-                description="Add a client to be notified when a matching slot opens up."
+                title={t.emptyTitle}
+                description={t.emptyDetail}
                 compact
               />
             ) : (
@@ -220,13 +227,13 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-foreground">{entry.clientName}</p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {[entry.service, entry.staffMemberName, formatPreferredWindow(entry)]
+                        {[entry.service, entry.staffMemberName, formatPreferredWindow(entry, dayLabels, t)]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
                       {entry.offer ? (
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {entry.offer === "sent" ? "Offer sent" : "Offer pending"}
+                          {entry.offer === "sent" ? t.offerSent : t.offerPending}
                         </p>
                       ) : null}
                     </div>
@@ -236,7 +243,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                       disabled={isRemoving && removingId === entry.id}
                       className="shrink-0 text-xs font-semibold text-destructive transition-colors duration-(--duration-base) hover:text-destructive/80 disabled:opacity-60"
                     >
-                      {isRemoving && removingId === entry.id ? "Removing…" : "Remove"}
+                      {isRemoving && removingId === entry.id ? t.removing : t.remove}
                     </button>
                   </div>
                 ))}
@@ -245,21 +252,21 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
 
             {showForm ? (
               <div className="mt-2 grid gap-3 pb-1 pt-2 sm:grid-cols-2">
-                <FormField label="Client" className="sm:col-span-2">
+                <FormField label={t.client} className="sm:col-span-2">
                   <ClientCombobox
                     value={form.clientId}
                     onChange={(id) => setForm((current) => ({ ...current, clientId: id }))}
                     initialOptions={clients}
                   />
                 </FormField>
-                <FormField label="Service">
+                <FormField label={t.service}>
                   <Input
                     value={form.service}
                     onChange={(event) => setForm((current) => ({ ...current, service: event.target.value }))}
                     className={fieldInputClass}
                   />
                 </FormField>
-                <FormField label="Staff">
+                <FormField label={t.staff}>
                   <select
                     value={form.staffMemberId}
                     onChange={(event) =>
@@ -267,7 +274,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     }
                     className={fieldSelectClass}
                   >
-                    <option value="">No preference</option>
+                    <option value="">{t.noPreference}</option>
                     {staffMembers.map((member) => (
                       <option key={member.id} value={member.id}>
                         {member.name}
@@ -275,7 +282,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     ))}
                   </select>
                 </FormField>
-                <FormField label="Earliest date">
+                <FormField label={t.earliestDate}>
                   <Input
                     type="date"
                     value={form.earliestDate}
@@ -285,9 +292,9 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     className={fieldInputClass}
                   />
                 </FormField>
-                <FormField label="Preferred days" className="sm:col-span-2">
+                <FormField label={t.preferredDays} className="sm:col-span-2">
                   <div className="flex flex-wrap gap-3">
-                    {DAY_LABELS.map((label, day) => (
+                    {dayLabels.map((label, day) => (
                       <label key={label} className="flex items-center gap-1.5 text-sm text-foreground">
                         <input
                           type="checkbox"
@@ -300,7 +307,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     ))}
                   </div>
                 </FormField>
-                <FormField label="From">
+                <FormField label={t.from}>
                   <Input
                     type="time"
                     value={form.preferredFrom}
@@ -310,7 +317,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     className={fieldInputClass}
                   />
                 </FormField>
-                <FormField label="To">
+                <FormField label={t.to}>
                   <Input
                     type="time"
                     value={form.preferredTo}
@@ -318,7 +325,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     className={fieldInputClass}
                   />
                 </FormField>
-                <FormField label="Notes" className="sm:col-span-2">
+                <FormField label={t.notes} className="sm:col-span-2">
                   <Textarea
                     value={form.notes}
                     onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
@@ -328,7 +335,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
               </div>
             ) : null}
 
-            <FormError message={error} />
+            <FormError message={serverText(error) ?? ""} />
           </div>
 
           <DialogFooter>
@@ -342,7 +349,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                 }}
                 className="rounded-(--radius-tile)"
               >
-                Cancel
+                {t.cancel}
               </Button>
             ) : (
               <Button
@@ -357,7 +364,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
             )}
             {showForm ? (
               <Button type="button" onClick={submitAdd} disabled={isAdding} className="rounded-(--radius-tile)">
-                {isAdding ? "Adding..." : "Add to waiting list"}
+                {isAdding ? t.adding : t.addToList}
               </Button>
             ) : null}
           </DialogFooter>

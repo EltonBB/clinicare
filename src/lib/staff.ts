@@ -1,5 +1,8 @@
 import type { Appointment, StaffMember, StaffShift, StaffTimeEntry } from "@prisma/client";
 
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import {
   formatZonedDateKey,
@@ -12,17 +15,9 @@ import {
   getZonedWeekWindow,
 } from "@/lib/time-zone";
 
-export const staffRoles = [
-  "Specialist",
-  "Receptionist",
-  "Manager",
-  "Assistant",
-] as const;
+import { staffStatuses, type StaffStatus } from "@/lib/staff-options";
 
-export const staffStatuses = ["ACTIVE", "AWAY", "INACTIVE"] as const;
-
-export type StaffRole = (typeof staffRoles)[number];
-export type StaffStatus = (typeof staffStatuses)[number];
+export { staffRoles, staffStatuses, type StaffRole, type StaffStatus } from "@/lib/staff-options";
 
 export type StaffDirectoryItem = {
   id: string;
@@ -155,19 +150,21 @@ function currentWeekStart() {
   return getZonedWeekWindow().start;
 }
 
-function formatDuration(minutes: number) {
+type ViewCopy = (typeof messages)["en"]["staff"]["view"];
+
+function formatDuration(minutes: number, copy: ViewCopy) {
   const hours = Math.floor(minutes / 60);
   const remainder = Math.round(minutes % 60);
 
   if (hours === 0) {
-    return `${remainder}m`;
+    return fmt(copy.minutes, { minutes: remainder });
   }
 
   if (remainder === 0) {
-    return `${hours}h`;
+    return fmt(copy.hours, { hours });
   }
 
-  return `${hours}h ${remainder}m`;
+  return fmt(copy.hoursMinutes, { hours, minutes: remainder });
 }
 
 function calculateWeeklyHours(entries: Pick<StaffTimeEntry, "checkedInAt" | "checkedOutAt">[]) {
@@ -187,15 +184,19 @@ function calculateWeeklyHours(entries: Pick<StaffTimeEntry, "checkedInAt" | "che
   return Number((minutes / 60).toFixed(1));
 }
 
-function formatShift(startsAt?: Date, endsAt?: Date) {
+function formatShift(locale: Locale, startsAt?: Date, endsAt?: Date) {
   if (!startsAt || !endsAt) {
     return "";
   }
 
-  return `${formatZonedTime(startsAt)} - ${formatZonedTime(endsAt)}`;
+  return `${formatZonedTime(startsAt, undefined, locale)} - ${formatZonedTime(endsAt, undefined, locale)}`;
 }
 
-function nextShiftLabel(shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status">[]) {
+function nextShiftLabel(
+  shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status">[],
+  locale: Locale,
+  copy: ViewCopy
+) {
   const now = new Date();
   const nextShift = shifts
     .filter((shift) => shift.endsAt >= now)
@@ -207,13 +208,19 @@ function nextShiftLabel(shifts: Pick<StaffShift, "startsAt" | "endsAt" | "status
 
   const dayLabel =
     formatZonedDateKey(nextShift.startsAt) === formatZonedDateKey(now)
-      ? "Today"
-      : formatZonedShortDate(nextShift.startsAt);
-  return `${dayLabel}, ${formatZonedTime(nextShift.startsAt)}`;
+      ? copy.today
+      : formatZonedShortDate(nextShift.startsAt, undefined, locale);
+  return `${dayLabel}, ${formatZonedTime(nextShift.startsAt, undefined, locale)}`;
+}
+
+/** "Mon, Oct 26" / "hën, 26 tet". */
+function dayAndDate(date: Date, locale: Locale) {
+  return `${formatZonedDayName(date, undefined, locale)}, ${formatZonedShortDate(date, undefined, locale)}`;
 }
 
 function buildSchedule(
-  shifts: Pick<StaffShift, "id" | "startsAt" | "endsAt" | "status">[]
+  shifts: Pick<StaffShift, "id" | "startsAt" | "endsAt" | "status">[],
+  locale: Locale
 ) {
   return shifts
     .slice()
@@ -221,7 +228,7 @@ function buildSchedule(
     .map((shift) => ({
       id: shift.id,
       date: formatZonedDateKey(shift.startsAt),
-      day: `${formatZonedDayName(shift.startsAt)}, ${formatZonedShortDate(shift.startsAt)}`,
+      day: dayAndDate(shift.startsAt, locale),
       startTime: formatZonedTime24(shift.startsAt),
       endTime: formatZonedTime24(shift.endsAt),
       status: shift.status,
@@ -232,11 +239,16 @@ function clockState(args: {
   status: StaffStatus;
   isCheckedIn: boolean;
   shifts: Pick<StaffShift, "startsAt" | "endsAt">[];
+  locale: Locale;
+  copy: ViewCopy;
 }) {
+  const { copy } = args;
+  const time = (date: Date) => formatZonedTime(date, undefined, args.locale);
+
   if (args.isCheckedIn) {
     return {
       canClock: true,
-      clockLabel: "Check out",
+      clockLabel: copy.checkOut,
       clockDisabledReason: "",
     };
   }
@@ -244,8 +256,8 @@ function clockState(args: {
   if (args.status === "INACTIVE") {
     return {
       canClock: false,
-      clockLabel: "Off duty",
-      clockDisabledReason: "Inactive staff cannot check in.",
+      clockLabel: copy.offDuty,
+      clockDisabledReason: copy.inactiveCannotCheckIn,
     };
   }
 
@@ -261,7 +273,7 @@ function clockState(args: {
   if (findActiveShiftWindow(args.shifts, now)) {
     return {
       canClock: true,
-      clockLabel: "Check in",
+      clockLabel: copy.checkIn,
       clockDisabledReason: "",
     };
   }
@@ -275,8 +287,8 @@ function clockState(args: {
   if (upcoming) {
     return {
       canClock: false,
-      clockLabel: "Check in",
-      clockDisabledReason: `Check-in opens 30 min before ${formatZonedTime(upcoming.startsAt)}.`,
+      clockLabel: copy.checkIn,
+      clockDisabledReason: fmt(copy.checkInOpens, { time: time(upcoming.startsAt) }),
     };
   }
 
@@ -287,15 +299,15 @@ function clockState(args: {
   if (mostRecentlyEnded) {
     return {
       canClock: false,
-      clockLabel: "Check in",
-      clockDisabledReason: `Today's shift ended at ${formatZonedTime(mostRecentlyEnded.endsAt)}.`,
+      clockLabel: copy.checkIn,
+      clockDisabledReason: fmt(copy.shiftEnded, { time: time(mostRecentlyEnded.endsAt) }),
     };
   }
 
   return {
     canClock: false,
-    clockLabel: "No shift",
-    clockDisabledReason: "Add a shift for today before check-in.",
+    clockLabel: copy.noShift,
+    clockDisabledReason: copy.addShiftFirst,
   };
 }
 
@@ -360,8 +372,10 @@ export function buildStaffDirectoryRecord(
   member: StaffDirectoryWithRelations,
   counts: StaffDirectoryCounts = EMPTY_STAFF_COUNTS,
   unreadMessages = 0,
-  hasUnseenCheckIn = false
+  hasUnseenCheckIn = false,
+  locale: Locale = "en"
 ): StaffDirectoryItem {
+  const copy = messages[locale].staff.view;
   const todayKey = formatZonedDateKey();
   // For the "Today" column label only — a calendar-date match is the right
   // concept for "what's scheduled today" display text. Check-in eligibility
@@ -378,6 +392,8 @@ export function buildStaffDirectoryRecord(
     status: normalizedStatus,
     isCheckedIn,
     shifts: member.shifts,
+    locale,
+    copy,
   });
 
   return {
@@ -391,8 +407,8 @@ export function buildStaffDirectoryRecord(
     isCheckedIn,
     weeklyHours: calculateWeeklyHours(member.timeEntries),
     completionRate: counts.completionRate,
-    shiftLabel: todayShift ? formatShift(todayShift.startsAt, todayShift.endsAt) : "",
-    nextShift: nextShiftLabel(member.shifts),
+    shiftLabel: todayShift ? formatShift(locale, todayShift.startsAt, todayShift.endsAt) : "",
+    nextShift: nextShiftLabel(member.shifts, locale, copy),
     canClock: clock.canClock,
     clockLabel: clock.clockLabel,
     clockDisabledReason: clock.clockDisabledReason,
@@ -401,7 +417,8 @@ export function buildStaffDirectoryRecord(
   };
 }
 
-export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
+export function buildStaffRecord(member: StaffWithRelations, locale: Locale = "en"): StaffRecord {
+  const copy = messages[locale].staff.view;
   const completedAppointments = member.appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   );
@@ -409,8 +426,8 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
   const weekStart = currentWeekStart();
 
   return {
-    ...buildStaffDirectoryRecord(member, computeStaffDirectoryCounts(member.appointments)),
-    schedule: buildSchedule(member.shifts),
+    ...buildStaffDirectoryRecord(member, computeStaffDirectoryCounts(member.appointments), 0, false, locale),
+    schedule: buildSchedule(member.shifts, locale),
     todayAppointments: member.appointments
       .filter(
         (appointment) =>
@@ -422,14 +439,14 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
         id: appointment.id,
         title: appointment.title,
         clientName: appointment.client.name,
-        time: formatZonedTime(appointment.startAt),
+        time: formatZonedTime(appointment.startAt, undefined, locale),
         status: appointmentStatusKey(appointment.status),
       })),
     recentAppointments: completedAppointments.slice(0, 5).map((appointment) => ({
       id: appointment.id,
       title: appointment.title,
       clientName: appointment.client.name,
-      date: formatZonedShortDate(appointment.startAt),
+      date: formatZonedShortDate(appointment.startAt, undefined, locale),
       time: formatZonedTime24(appointment.startAt),
     })),
     weekTimeEntries: member.timeEntries
@@ -437,12 +454,13 @@ export function buildStaffRecord(member: StaffWithRelations): StaffRecord {
       .sort((left, right) => right.checkedInAt.getTime() - left.checkedInAt.getTime())
       .map((entry) => ({
         id: entry.id,
-        day: `${formatZonedDayName(entry.checkedInAt)}, ${formatZonedShortDate(entry.checkedInAt)}`,
-        checkedIn: formatZonedTime(entry.checkedInAt),
-        checkedOut: entry.checkedOutAt ? formatZonedTime(entry.checkedOutAt) : "",
+        day: dayAndDate(entry.checkedInAt, locale),
+        checkedIn: formatZonedTime(entry.checkedInAt, undefined, locale),
+        checkedOut: entry.checkedOutAt ? formatZonedTime(entry.checkedOutAt, undefined, locale) : "",
         duration: entry.checkedOutAt
           ? formatDuration(
-              Math.max(entry.checkedOutAt.getTime() - entry.checkedInAt.getTime(), 0) / 60000
+              Math.max(entry.checkedOutAt.getTime() - entry.checkedInAt.getTime(), 0) / 60000,
+              copy
             )
           : "",
       })),
@@ -453,14 +471,16 @@ export function buildStaffViewFromRecords(
   records: StaffDirectoryWithRelations[],
   countsByStaff: Map<string, StaffDirectoryCounts> = new Map(),
   unreadMessagesByStaff: Map<string, number> = new Map(),
-  unseenCheckInsByStaff: Map<string, number> = new Map()
+  unseenCheckInsByStaff: Map<string, number> = new Map(),
+  locale: Locale = "en"
 ): StaffViewModel {
   const staff = records.map((member) =>
     buildStaffDirectoryRecord(
       member,
       countsByStaff.get(member.id) ?? EMPTY_STAFF_COUNTS,
       unreadMessagesByStaff.get(member.id) ?? 0,
-      (unseenCheckInsByStaff.get(member.id) ?? 0) > 0
+      (unseenCheckInsByStaff.get(member.id) ?? 0) > 0,
+      locale
     )
   );
 

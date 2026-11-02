@@ -3,33 +3,27 @@
 import type { ReactNode } from "react";
 import { Pencil, Plus, Stethoscope } from "lucide-react";
 
-import type { RecordFormValues, RecordTypeOption } from "@/components/clients/record-form-dialog";
+import type { RecordFormValues } from "@/components/clients/record-form-dialog";
 import { AddLink, RecordRow } from "@/components/clients/record-list";
 import { Button } from "@/components/ui/button";
 import { WorkspaceCard, WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { useI18n } from "@/i18n/client";
+import { fmt, storedLabel } from "@/i18n/format";
 import type { ClientRecord } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 
 export type MedicalKind = "medication" | "health" | "treatment" | "note" | "background";
 
-export const medicalRecordTypes: (RecordTypeOption & { key: MedicalKind })[] = [
-  { key: "medication", title: "Medication", description: "What the patient is taking" },
-  { key: "health", title: "Allergy or health alert", description: "Allergies, conditions, vitals" },
-  { key: "treatment", title: "Treatment plan item", description: "A planned step of care" },
-  { key: "note", title: "Provider note", description: "Internal note from the care team" },
-  { key: "background", title: "Medical background", description: "History and previous treatments" },
-];
+/** The kinds "Add medical record" offers, in order (titles in `clients.medical.types`). */
+export const medicalRecordKinds: MedicalKind[] = ["medication", "health", "treatment", "note", "background"];
 
-// The free-text background fields, in display order. Shared by the card below
-// and the "Medical background" dialog so both read the same fields.
+// The free-text background fields, in display order (labels in
+// `clients.medical.background`). Shared by the card below and the "Medical
+// background" dialog so both read the same fields.
 export function medicalBackgroundFields(medical: ClientRecord["medical"]) {
-  return [
-    { key: "medicalHistory", label: "Medical history", value: medical.medicalHistory },
-    { key: "allergies", label: "Allergies", value: medical.allergies },
-    { key: "importantHealthNotes", label: "Health notes", value: medical.importantHealthNotes },
-    { key: "previousTreatments", label: "Previous treatments", value: medical.previousTreatments },
-    { key: "treatmentPlan", label: "Treatment plan", value: medical.treatmentPlan },
-  ];
+  return (
+    ["medicalHistory", "allergies", "importantHealthNotes", "previousTreatments", "treatmentPlan"] as const
+  ).map((key) => ({ key, value: medical[key] }));
 }
 
 type ClientMedicalTabProps = {
@@ -47,6 +41,8 @@ export function ClientMedicalTab({
   onEdit,
   onDelete,
 }: ClientMedicalTabProps) {
+  const { m } = useI18n();
+  const t = m.clients.medical;
   const background = medicalBackgroundFields(client.medical);
   const filledBackground = background.filter((field) => field.value);
   const sections: { key: string; node: ReactNode }[] = [];
@@ -55,7 +51,7 @@ export function ClientMedicalTab({
     sections.push({
       key: "health",
       node: (
-        <WorkspaceCard fill title="Health record" action={<AddLink onClick={() => onCreate("health")} />}>
+        <WorkspaceCard fill title={t.healthRecord} action={<AddLink onClick={() => onCreate("health")} />}>
           {client.healthItems.map((item) => (
             <RecordRow
               key={item.id}
@@ -67,7 +63,7 @@ export function ClientMedicalTab({
                   </span>
                 ) : undefined
               }
-              meta={[item.type, item.value].filter(Boolean).join(" · ")}
+              meta={[storedLabel(m.clients.healthTypes, item.type), item.value].filter(Boolean).join(" · ")}
               body={item.notes}
               onEdit={() =>
                 onEdit("health", item.id, {
@@ -90,7 +86,7 @@ export function ClientMedicalTab({
     sections.push({
       key: "medication",
       node: (
-        <WorkspaceCard fill title="Medications" action={<AddLink onClick={() => onCreate("medication")} />}>
+        <WorkspaceCard fill title={t.medications} action={<AddLink onClick={() => onCreate("medication")} />}>
           {client.medications.map((medication) => (
             <RecordRow
               key={medication.id}
@@ -104,7 +100,7 @@ export function ClientMedicalTab({
                       : "bg-secondary/80 text-muted-foreground"
                   )}
                 >
-                  {medication.isActive ? "Active" : "Inactive"}
+                  {medication.isActive ? t.active : t.inactive}
                 </span>
               }
               meta={[medication.dosage, medication.frequency].filter(Boolean).join(" · ")}
@@ -130,17 +126,17 @@ export function ClientMedicalTab({
     sections.push({
       key: "treatment",
       node: (
-        <WorkspaceCard fill title="Treatment plan" action={<AddLink onClick={() => onCreate("treatment")} />}>
+        <WorkspaceCard fill title={t.treatmentPlan} action={<AddLink onClick={() => onCreate("treatment")} />}>
           {client.treatmentPlanItems.map((item) => (
             <RecordRow
               key={item.id}
               title={item.title}
               badge={
                 <span className="rounded-full bg-secondary/80 px-2 py-0.5 text-[11px] font-semibold leading-4 text-muted-foreground">
-                  {item.status}
+                  {storedLabel(m.clients.treatmentStatuses, item.status)}
                 </span>
               }
-              meta={item.dueAt ? `Due ${item.dueAt}` : ""}
+              meta={item.dueAt ? fmt(t.due, { date: item.dueAt }) : ""}
               body={item.description}
               onEdit={() =>
                 onEdit("treatment", item.id, {
@@ -162,20 +158,20 @@ export function ClientMedicalTab({
     sections.push({
       key: "note",
       node: (
-        <WorkspaceCard fill title="Provider notes" action={<AddLink onClick={() => onCreate("note")} />}>
+        <WorkspaceCard fill title={t.providerNotes} action={<AddLink onClick={() => onCreate("note")} />}>
           {client.careNotes.map((note) => (
             <RecordRow
               key={note.id}
-              title={note.title}
+              title={note.title || m.clients.view.providerNote}
               meta={`${note.notedAt} · ${note.providerName}`}
               body={note.body}
               onEdit={() =>
                 onEdit("note", note.id, {
-                  title: note.title === "Provider note" ? "" : note.title,
+                  title: note.title,
                   body: note.body,
                 })
               }
-              onDelete={() => onDelete("note", note.id, note.title)}
+              onDelete={() => onDelete("note", note.id, note.title || m.clients.view.providerNote)}
             />
           ))}
         </WorkspaceCard>
@@ -189,7 +185,7 @@ export function ClientMedicalTab({
       node: (
         <WorkspaceCard
           fill
-          title="Background"
+          title={t.backgroundCard}
           action={
             <button
               type="button"
@@ -203,14 +199,14 @@ export function ClientMedicalTab({
               className="inline-flex items-center gap-1 text-xs font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
             >
               <Pencil className="size-3" />
-              Edit
+              {t.edit}
             </button>
           }
           contentClassName="grid gap-3 sm:grid-cols-2"
         >
           {filledBackground.map((field) => (
             <div key={field.key}>
-              <p className="text-sm font-semibold text-foreground">{field.label}</p>
+              <p className="text-sm font-semibold text-foreground">{t.background[field.key]}</p>
               <p className="mt-0.5 text-sm leading-5 text-muted-foreground">{field.value}</p>
             </div>
           ))}
@@ -223,12 +219,12 @@ export function ClientMedicalTab({
     return (
       <WorkspaceEmptyState
         icon={Stethoscope}
-        title="No medical records yet"
+        title={t.noRecords}
         className="py-12"
         action={
           <Button size="sm" onClick={onChoose} className="rounded-(--radius-tile)">
             <Plus className="size-4" />
-            Add medical record
+            {m.clients.record.addMedicalRecord}
           </Button>
         }
       />
@@ -240,7 +236,7 @@ export function ClientMedicalTab({
       <div className="flex justify-end">
         <Button size="sm" onClick={onChoose} className="rounded-(--radius-tile)">
           <Plus className="size-4" />
-          Add record
+          {t.addRecord}
         </Button>
       </div>
       <div className="grid items-stretch gap-3 xl:grid-cols-2">

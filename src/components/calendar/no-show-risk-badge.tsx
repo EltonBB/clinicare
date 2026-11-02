@@ -1,15 +1,11 @@
 import { useEffect, useState } from "react";
+import { useI18n, useServerText } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 
 const LEVEL_STYLES = {
   medium: "border border-amber-400 bg-white text-amber-700",
   high: "border border-red-400 bg-white text-red-700",
-} as const;
-
-const LEVEL_LABELS = {
-  medium: "Medium risk",
-  high: "High risk",
 } as const;
 
 type QualifyingRisk = NoShowRiskAssessment & { level: "medium" | "high" };
@@ -93,6 +89,8 @@ export function NoShowRiskBadge({
   expiresAtIso?: string | null;
 }) {
   const qualifyingRisk = useShowNoShowRisk(risk, expiresAtIso);
+  const labels = useI18n().m.common.noShowRisk;
+  const serverText = useServerText();
 
   if (!qualifyingRisk) {
     return null;
@@ -104,9 +102,9 @@ export function NoShowRiskBadge({
         "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium",
         LEVEL_STYLES[qualifyingRisk.level]
       )}
-      title={qualifyingRisk.reasons[0] ?? undefined}
+      title={serverText(qualifyingRisk.reasons[0]) ?? undefined}
     >
-      {LEVEL_LABELS[qualifyingRisk.level]}
+      {labels[qualifyingRisk.level]}
     </span>
   );
 }

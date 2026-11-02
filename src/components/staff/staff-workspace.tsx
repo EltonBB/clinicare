@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KpiValue } from "@/components/workspace/kpi-value";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
 import {
   FilterChip,
   WorkspaceEmptyState,
@@ -30,14 +32,10 @@ type StaffWorkspaceProps = {
   initialView: StaffViewModel;
 };
 
-const statusLabels: Record<StaffStatus, string> = {
-  ACTIVE: "Active",
-  AWAY: "Away",
-  INACTIVE: "Inactive",
-};
-
+// Every row is its own grid, so the actions column is a fixed width, sized for
+// the longer Albanian check-in label ("Regjistro hyrjen") beside Details.
 const staffTableGrid =
-  "lg:grid-cols-[minmax(230px,1.4fr)_120px_130px_minmax(170px,1fr)_120px_170px]";
+  "lg:grid-cols-[minmax(230px,1.4fr)_120px_130px_minmax(170px,1fr)_120px_210px]";
 
 function statusDot(status: StaffStatus) {
   return cn(
@@ -49,6 +47,10 @@ function statusDot(status: StaffStatus) {
 }
 
 export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
+  const { locale, m } = useI18n();
+  const t = m.staff.directory;
+  const serverText = useServerText();
+  const roleLabel = (role: string) => (role ? storedLabel(m.staff.roles, role) : m.staff.noRole);
   const [staff, setStaff] = useState(initialView.staff);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<StaffFilter>("all");
@@ -87,13 +89,13 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
       const matchesQuery =
         normalizedQuery.length === 0
           ? true
-          : [member.name, member.role, member.email, member.phone].some((value) =>
+          : [member.name, member.role, storedLabel(m.staff.roles, member.role), member.email, member.phone].some((value) =>
               value.toLowerCase().includes(normalizedQuery)
             );
 
       return matchesFilter && matchesRole && matchesQuery;
     });
-  }, [staff, deferredQuery, filter, roleFilter]);
+  }, [staff, deferredQuery, filter, roleFilter, m.staff.roles]);
 
   function toggleClock(staffId: string) {
     const member = staff.find((item) => item.id === staffId);
@@ -110,7 +112,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         : await checkInStaffAction(staffId);
 
       if (!result.ok || !result.staff) {
-        setClockError(result.error ?? "Could not update staff time.");
+        setClockError(serverText(result.error) ?? t.clockFailed);
         setClockingId("");
         return;
       }
@@ -138,14 +140,14 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
   return (
     <WorkspacePage>
       <WorkspaceHeader
-        title="Staff"
+        title={t.title}
         actions={
           <Link
             href="/staff/new"
             className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
           >
             <Plus className="size-4" />
-            New staff member
+            {t.newMember}
           </Link>
         }
       />
@@ -157,7 +159,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search staff by name, role, email, or phone..."
+              placeholder={t.search}
               className={searchFieldClass}
             />
           </div>
@@ -169,7 +171,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 count={counts[item.value]}
                 onClick={() => setFilter(item.value)}
               >
-                {item.label}
+                {t.filters[item.value]}
               </FilterChip>
             ))}
             {roles.length > 1 ? (
@@ -178,10 +180,10 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 onChange={(event) => setRoleFilter(event.target.value)}
                 className="h-9 rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm font-medium text-foreground outline-none transition-[border-color,box-shadow] duration-(--duration-base) focus:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
               >
-                <option value="all">All roles</option>
+                <option value="all">{t.allRoles}</option>
                 {roles.map((role) => (
                   <option key={role} value={role}>
-                    {role}
+                    {role === "Staff" ? m.staff.noRole : roleLabel(role)}
                   </option>
                 ))}
               </select>
@@ -197,17 +199,17 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
 
         <WorkspaceTable
           headerClassName="py-2.5"
-          // The columns need ~1010px (the row actions hold two buttons); on a
+          // The columns need ~1050px (the row actions hold two buttons); on a
           // laptop-width card the table scrolls sideways rather than clipping them.
-          minWidthClassName="lg:min-w-[1010px]"
+          minWidthClassName="lg:min-w-[1050px]"
           headers={
             <div className={cn("hidden w-full gap-3 lg:grid", staffTableGrid)}>
-              <span>Staff member</span>
-              <span>Role</span>
-              <span>Status</span>
-              <span>Today</span>
-              <span>Completion</span>
-              <span className="text-right">Actions</span>
+              <span>{t.columns.member}</span>
+              <span>{t.columns.role}</span>
+              <span>{t.columns.status}</span>
+              <span>{t.columns.today}</span>
+              <span>{t.columns.completion}</span>
+              <span className="text-right">{t.columns.actions}</span>
             </div>
           }
         >
@@ -215,17 +217,17 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
             <WorkspaceFirstRun
               gridClassName={staffTableGrid}
               cells={["identity", "pill", "pill", "wide", "text", "action"]}
-              title="No staff yet"
-              description="Add the people who take appointments, and their shifts and visits follow."
+              title={t.firstRunTitle}
+              description={t.firstRunCopy}
               actionHref="/staff/new"
-              actionLabel="Add staff member"
+              actionLabel={t.addMember}
             />
           ) : filteredStaff.length === 0 ? (
             <div className="px-6 py-8">
               <WorkspaceEmptyState
                 icon={Search}
-                title="No staff match this view"
-                description="Try a different search term, role, or status filter."
+                title={t.noMatchTitle}
+                description={t.noMatchCopy}
                 compact
               />
             </div>
@@ -259,10 +261,12 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                           className="size-1.5 shrink-0 rounded-full bg-primary"
                           aria-label={
                             member.unreadMessages > 0 && member.hasUnseenCheckIn
-                              ? `${member.unreadMessages} unread message${member.unreadMessages === 1 ? "" : "s"} and a check-in to review`
+                              ? fmt(t.unreadAndCheckIn, {
+                                  messages: plural(m.staff.unreadMessages, member.unreadMessages, locale),
+                                })
                               : member.unreadMessages > 0
-                                ? `${member.unreadMessages} unread message${member.unreadMessages === 1 ? "" : "s"}`
-                                : "Check-in to review"
+                                ? plural(m.staff.unreadMessages, member.unreadMessages, locale)
+                                : t.checkInToReview
                           }
                         />
                       ) : null}
@@ -271,17 +275,17 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                 </HoverPrefetchLink>
                 <div className="min-w-0">
                   <span className="inline-flex max-w-full truncate rounded-md bg-primary/8 px-2.5 py-1 text-xs font-semibold text-primary">
-                    {member.role || "Staff"}
+                    {roleLabel(member.role)}
                   </span>
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm text-foreground">
                     <span className={statusDot(member.status)} />
-                    <span>{statusLabels[member.status]}</span>
+                    <span>{m.staff.status[member.status]}</span>
                   </div>
                   {member.isCheckedIn ? (
                     <p className="mt-0.5 text-[11px] font-medium text-emerald-600">
-                      Checked in now
+                      {m.staff.checkedInNow}
                     </p>
                   ) : null}
                 </div>
@@ -289,16 +293,16 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   {member.shiftLabel ? (
                     <p className="truncate font-medium text-foreground">{member.shiftLabel}</p>
                   ) : member.nextShift ? (
-                    <p className="truncate text-muted-foreground">Next: {member.nextShift}</p>
+                    <p className="truncate text-muted-foreground">{fmt(t.next, { shift: member.nextShift })}</p>
                   ) : (
-                    <p className="text-muted-foreground">No shift planned</p>
+                    <p className="text-muted-foreground">{t.noShiftPlanned}</p>
                   )}
                 </div>
                 <div className="min-w-0">
                   {member.completionRate > 0 ? (
                     <>
                       <p className="text-sm font-semibold text-foreground">
-                        <KpiValue value={`${member.completionRate}%`} animateOnMount />
+                        <KpiValue value={`${numberFormatter(locale).format(member.completionRate)}%`} animateOnMount />
                       </p>
                       {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
                           Reports' staff-load bar, this directory has no period selector,
@@ -326,7 +330,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                     }
                     title={!member.isCheckedIn ? member.clockDisabledReason : undefined}
                   >
-                    {clockingId === member.id ? "Saving" : member.clockLabel}
+                    {clockingId === member.id ? m.common.saving : member.clockLabel}
                   </Button>
                   <HoverPrefetchLink
                     href={`/staff/${member.id}`}
@@ -334,9 +338,9 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                       buttonVariants({ variant: "solid", size: "sm" }),
                       "h-8 rounded-(--radius-tile) px-3 text-xs"
                     )}
-                    aria-label={`Open ${member.name}`}
+                    aria-label={fmt(t.open, { name: member.name })}
                   >
-                    Details
+                    {t.details}
                     <ChevronRight className="size-4" />
                   </HoverPrefetchLink>
                 </div>

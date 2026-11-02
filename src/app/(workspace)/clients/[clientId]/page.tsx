@@ -2,11 +2,15 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ClientDetailsPage } from "@/components/clients/client-details-page";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 
-export const metadata: Metadata = { title: "Client | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.clients.meta.client };
+}
 
 export default async function ClientDetailsRoute({
   params,
@@ -197,10 +201,14 @@ export default async function ClientDetailsRoute({
   // own. Settings' currency save calls router.refresh(), which re-runs this
   // page and gives a new-currency record — keying by the currency remounts
   // the component with it instead of leaving the old formatting stuck.
+  const { locale } = await getI18n();
+
   return (
-    <ClientDetailsPage
-      key={business.currency}
-      initialClient={await buildClientRecord(client, business.currency)}
-    />
+    <WithMessages namespaces={["clients"]}>
+      <ClientDetailsPage
+        key={business.currency}
+        initialClient={await buildClientRecord(client, business.currency, new Date(), locale)}
+      />
+    </WithMessages>
   );
 }

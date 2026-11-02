@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { LogoutButton } from "@/components/auth/logout-button";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { BrandMark } from "@/components/brand-mark";
 
 /**
@@ -28,7 +29,10 @@ export function OnboardingShell({
               /dashboard here could cache a redirect-to-onboarding response
               that outlives the moment bootstrap actually creates it. */}
           <BrandMark href="/dashboard" includeSubtitle={false} prefetch={false} />
-          <LogoutButton className="h-9 px-2.5 text-muted-foreground hover:bg-transparent hover:text-[var(--brand-ink)] [&_svg]:size-3.5" />
+          <div className="flex items-center gap-1">
+            <LanguageSwitcher />
+            <LogoutButton className="h-9 px-2.5 text-muted-foreground hover:bg-transparent hover:text-[var(--brand-ink)] [&_svg]:size-3.5" />
+          </div>
         </div>
 
         <div className="flex flex-1 items-center justify-center py-10">

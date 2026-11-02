@@ -1,5 +1,8 @@
 import { differenceInMinutes } from "date-fns";
 import type { Appointment, Business, Client } from "@prisma/client";
+import type { Locale } from "@/i18n/config";
+import { dateFormatter, fmt } from "@/i18n/format";
+import { messages, type Messages } from "@/i18n/messages";
 import { isProBusinessPlan, planDisplayName, planStatusLabel } from "@/lib/billing";
 import type { NoShowRiskAssessment } from "@/lib/no-show-risk";
 import { formatCurrency } from "@/lib/utils";
@@ -180,34 +183,36 @@ type TodayAppointmentWithRelations = Appointment & {
 
 type ClientSummaryRow = Pick<Client, "id" | "name" | "phone" | "updatedAt">;
 
-function formatUpdatedLabel(date: Date, now: Date, timeZone: string) {
+type ViewCopy = Messages["dashboard"]["view"];
+
+function formatUpdatedLabel(date: Date, now: Date, timeZone: string, copy: ViewCopy, locale: Locale) {
   const minutes = Math.max(Math.floor((now.getTime() - date.getTime()) / 60000), 0);
 
   if (minutes < 1) {
-    return "Updated just now";
+    return copy.updatedJustNow;
   }
 
   if (minutes < 60) {
-    return `Updated ${minutes}m ago`;
+    return fmt(copy.updatedMinutes, { count: minutes });
   }
 
   const hours = Math.floor(minutes / 60);
 
   if (hours < 24) {
-    return `Updated ${hours}h ago`;
+    return fmt(copy.updatedHours, { count: hours });
   }
 
   const days = Math.floor(hours / 24);
 
   if (days === 1) {
-    return "Updated yesterday";
+    return copy.updatedYesterday;
   }
 
   if (days < 7) {
-    return `Updated ${days}d ago`;
+    return fmt(copy.updatedDays, { count: days });
   }
 
-  return `Updated ${formatZonedShortDate(date, timeZone)}`;
+  return fmt(copy.updatedOn, { date: formatZonedShortDate(date, timeZone, locale) });
 }
 
 function toDashboardStatus(status: Appointment["status"]): DashboardAppointmentStatus {
@@ -246,8 +251,9 @@ export function buildVisitsSummary(args: {
   allTime: number;
   now: Date;
   timeZone: string;
+  locale?: Locale;
 }): DashboardVisitsSummary {
-  const { visitCountsByDay, allTime, now, timeZone } = args;
+  const { visitCountsByDay, allTime, now, timeZone, locale = "en" } = args;
   const countsByDay = new Map<string, number>();
 
   for (const bucket of visitCountsByDay) {
@@ -256,7 +262,7 @@ export function buildVisitsSummary(args: {
 
   // `zonedDayBefore` returns UTC-noon of the calendar date, so the weekday is
   // read in UTC — the clinic zone was already applied when picking the date.
-  const weekdayFormatter = new Intl.DateTimeFormat("en-US", {
+  const weekdayFormatter = dateFormatter(locale, {
     weekday: "short",
     timeZone: "UTC",
   });
@@ -299,10 +305,11 @@ export function buildVisitsSummary(args: {
 
 export function buildRevenueSummary(
   paymentGroups: DashboardPaymentStatusGroup[],
-  currency: string
+  currency: string,
+  locale: Locale = "en"
 ): DashboardRevenueSummary {
   // Compact tiles show whole amounts, in the clinic's own currency.
-  const formatDashboardMoney = (cents: number) => formatCurrency(cents, currency, { whole: true });
+  const formatDashboardMoney = (cents: number) => formatCurrency(cents, currency, { whole: true, locale });
   let paidCents = 0;
 
   for (const group of paymentGroups) {
@@ -344,6 +351,7 @@ export function buildDashboardViewFromWorkspace(args: {
   now?: Date;
   timeZone?: string;
   noShowRisk?: Map<string, NoShowRiskAssessment>;
+  locale?: Locale;
 }): DashboardViewModel {
   const {
     business,
@@ -362,7 +370,9 @@ export function buildDashboardViewFromWorkspace(args: {
     now = new Date(),
     timeZone = getAppTimeZone(),
     noShowRisk,
+    locale = "en",
   } = args;
+  const copy = messages[locale].dashboard.view;
   // Appointment metrics are aggregated in the DB (see lib/dashboard-data.ts) —
   // the rolling-window completion split, month-to-date completed count, mean
   // visit length, and per-day visit counts arrive pre-computed.
@@ -382,8 +392,9 @@ export function buildDashboardViewFromWorkspace(args: {
     allTime: allTimeVisitCount,
     now,
     timeZone,
+    locale,
   });
-  const revenueSummary = buildRevenueSummary(paymentGroups, business.currency);
+  const revenueSummary = buildRevenueSummary(paymentGroups, business.currency, locale);
   const conversationPreviews: DashboardConversationPreview[] = conversations.map(
     (conversation) => {
       const lastMessage = conversation.messages[0];
@@ -396,13 +407,14 @@ export function buildDashboardViewFromWorkspace(args: {
         contactName: conversationDisplayName(
           conversation.contactName,
           conversation.phoneNumber,
-          conversation.linkedClientName
+          conversation.linkedClientName,
+          locale
         ),
-        snippet: lastMessage?.body ?? "No messages yet",
+        snippet: lastMessage?.body ?? copy.noMessages,
         timeLabel:
           formatZonedDateKey(lastActivity, timeZone) === todayKey
-            ? formatZonedTime(lastActivity, timeZone)
-            : formatZonedShortDate(lastActivity, timeZone),
+            ? formatZonedTime(lastActivity, timeZone, locale)
+            : formatZonedShortDate(lastActivity, timeZone, locale),
         unreadCount: conversation.unreadCount,
       };
     }
@@ -429,17 +441,17 @@ export function buildDashboardViewFromWorkspace(args: {
           ? "no-today"
           : "active";
   const appointmentAction: DashboardQuickAction = {
-    label: appointmentCount === 0 ? "Book first appointment" : "New appointment",
+    label: appointmentCount === 0 ? copy.bookFirst : copy.newAppointment,
     href: bookingHref,
     tone: "primary",
   };
   const clientAction: DashboardQuickAction = {
-    label: "New client",
+    label: copy.newClient,
     href: "/clients/new",
     tone: "secondary",
   };
   const inboxAction: DashboardQuickAction = {
-    label: "Open inbox",
+    label: copy.openInbox,
     href: "/inbox",
     tone: "secondary",
   };
@@ -447,7 +459,7 @@ export function buildDashboardViewFromWorkspace(args: {
     appointmentAction,
     clientCount === 0
       ? {
-          label: "Add first client",
+          label: copy.addFirstClient,
           href: "/clients/new?next=calendar",
           tone: "secondary",
         }
@@ -457,7 +469,7 @@ export function buildDashboardViewFromWorkspace(args: {
   const nextDashboardAppointment = nextAppointment
     ? {
         id: nextAppointment.id,
-        time: formatZonedShortDateTime(nextAppointment.startAt, timeZone),
+        time: formatZonedShortDateTime(nextAppointment.startAt, timeZone, locale),
         startAtIso: nextAppointment.startAt.toISOString(),
         durationMinutes: Math.max(
           differenceInMinutes(nextAppointment.endAt, nextAppointment.startAt),
@@ -465,7 +477,7 @@ export function buildDashboardViewFromWorkspace(args: {
         ),
         clientName: nextAppointment.client.name,
         service: nextAppointment.title,
-        staffName: nextAppointment.staffMember?.name ?? "Workspace staff",
+        staffName: nextAppointment.staffMember?.name ?? copy.workspaceStaff,
         status: toDashboardStatus(nextAppointment.status),
         risk: noShowRisk?.get(nextAppointment.id),
       }
@@ -473,19 +485,19 @@ export function buildDashboardViewFromWorkspace(args: {
 
   return {
     businessName: business.name,
-    heading: "Today",
-    dateLabel: formatZonedLongDate(now, timeZone),
+    heading: copy.today,
+    dateLabel: formatZonedLongDate(now, timeZone, locale),
     activeAppointmentCount: appointments.filter(
       (appointment) => appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW"
     ).length,
     appointments: appointments.map((appointment) => ({
       id: appointment.id,
-      time: formatZonedTime(appointment.startAt, timeZone),
+      time: formatZonedTime(appointment.startAt, timeZone, locale),
       startAtIso: appointment.startAt.toISOString(),
       durationMinutes: Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0),
       clientName: appointment.client.name,
       service: appointment.title,
-      staffName: appointment.staffMember?.name ?? "Workspace staff",
+      staffName: appointment.staffMember?.name ?? copy.workspaceStaff,
       status: toDashboardStatus(appointment.status),
       risk: noShowRisk?.get(appointment.id),
     })),
@@ -493,17 +505,14 @@ export function buildDashboardViewFromWorkspace(args: {
       id: client.id,
       name: client.name,
       phone: client.phone,
-      updatedLabel: formatUpdatedLabel(client.updatedAt, now, timeZone),
+      updatedLabel: formatUpdatedLabel(client.updatedAt, now, timeZone, copy, locale),
     })),
     nextAppointment: nextDashboardAppointment,
     quickActions,
     unreadSummary: {
       unreadCount,
-      title: "Unread messages",
-      description:
-        unreadCount > 0
-          ? `Client replies are waiting for ${business.name}. Open inbox to keep response times tight and bookings moving.`
-          : `No unread client messages for ${business.name} right now. Open inbox to review the latest conversation history.`,
+      title: copy.unreadTitle,
+      description: fmt(unreadCount > 0 ? copy.unreadWaiting : copy.unreadNone, { clinic: business.name }),
     },
     planSummary: buildPlanSummary(business),
     visitsSummary,

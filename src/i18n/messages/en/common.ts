@@ -3,6 +3,33 @@ export const common = {
     label: "Language",
   },
   logOut: "Log out",
+  locked: {
+    title: "This workspace is read-only",
+    description: "Its plan has ended, so nothing can be added or changed. Renew the plan to keep working.",
+    renew: "Renew plan",
+  },
+  close: "Close",
+  cancel: "Cancel",
+  save: "Save",
+  delete: "Delete",
+  removing: "Removing...",
+  saving: "Saving...",
+  loading: "Loading…",
+  velaHome: "Vela home",
+  previousMonth: "Previous month",
+  nextMonth: "Next month",
+  // Monday first, two letters (month grids).
+  weekdayInitials: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+  // Keyed by the WhatsApp connection phase (lib/settings).
+  whatsappPhase: { NOT_STARTED: "Not connected", STARTING: "Connecting", CONNECTED: "Connected", NEEDS_SUPPORT: "Needs attention" },
+  noShowRisk: { medium: "Medium risk", high: "High risk" },
+  appointmentStatus: {
+    confirmed: "Confirmed",
+    pending: "Pending",
+    completed: "Completed",
+    cancelled: "Cancelled",
+    "no-show": "No-show",
+  },
   showPassword: "Show password",
   hidePassword: "Hide password",
   errors: {
@@ -19,6 +46,39 @@ export const common = {
   },
   meta: {
     description: "Modern client and appointment management for service businesses.",
+  },
+  // A weekday as a label ("Monday"), short ("Mon"), plural ("Mondays", for
+  // "Mondays are closed") and definite ("Monday", Albanian "E hëna").
+  weekdays: {
+    monday: { name: "Monday", short: "Mon", plural: "Mondays", definite: "Monday" },
+    tuesday: { name: "Tuesday", short: "Tue", plural: "Tuesdays", definite: "Tuesday" },
+    wednesday: { name: "Wednesday", short: "Wed", plural: "Wednesdays", definite: "Wednesday" },
+    thursday: { name: "Thursday", short: "Thu", plural: "Thursdays", definite: "Thursday" },
+    friday: { name: "Friday", short: "Fri", plural: "Fridays", definite: "Friday" },
+    saturday: { name: "Saturday", short: "Sat", plural: "Saturdays", definite: "Saturday" },
+    sunday: { name: "Sunday", short: "Sun", plural: "Sundays", definite: "Sunday" },
+  },
+  // Keyed by the stored value (lib/constants businessTypes).
+  businessTypes: {
+    Clinic: "Clinic",
+    Salon: "Salon",
+    Studio: "Studio",
+    Spa: "Spa",
+    Barbershop: "Barbershop",
+    "Wellness Center": "Wellness Center",
+  },
+  // Keyed by preset id (lib/branding).
+  accentColors: {
+    vela: "Vela",
+    blue: "Blue",
+    teal: "Teal",
+    indigo: "Indigo",
+    violet: "Violet",
+    rose: "Rose",
+    coral: "Coral",
+    amber: "Amber",
+    emerald: "Emerald",
+    custom: "Custom",
   },
   // Plan copy shared by the website, checkout, Settings › Billing and the Pro locks.
   plans: {

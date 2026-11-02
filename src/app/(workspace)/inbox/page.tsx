@@ -4,6 +4,8 @@ import { after } from "next/server";
 import { canUseWorkspace } from "@/lib/billing-access";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { buildInboxViewFromWorkspace } from "@/lib/inbox";
 import { buildWhatsAppConnectionSummary } from "@/lib/settings";
 import {
@@ -14,7 +16,9 @@ import {
 import { prisma } from "@/lib/prisma";
 import { syncWhatsAppConnectionForBusiness } from "@/lib/whatsapp-connection";
 
-export const metadata: Metadata = { title: "Inbox | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.inbox.meta.inbox };
+}
 
 export default async function InboxPage({
   searchParams,
@@ -83,6 +87,7 @@ export default async function InboxPage({
     conversations,
     clients,
     totalUnreadCount,
+    locale: (await getI18n()).locale,
   });
   const requestedConversationId =
     typeof conversation === "string" &&
@@ -91,6 +96,7 @@ export default async function InboxPage({
       : undefined;
 
   return (
+    <WithMessages namespaces={["inbox"]}>
     <InboxWorkspace
       initialView={{
         ...inboxView,
@@ -104,5 +110,6 @@ export default async function InboxPage({
       clientCount={clientCount}
       recommendedClientId={recentClient?.id}
     />
+    </WithMessages>
   );
 }

@@ -14,19 +14,15 @@ import type {
 } from "@prisma/client";
 import { format } from "date-fns";
 
+import type { Locale } from "@/i18n/config";
+import { dateText, fmt, numberFormatter, storedLabel } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 
 export type ClientStatus = "active" | "at-risk" | "inactive" | "archived";
-
-export type ClientHistoryEntry = {
-  id: string;
-  date: string;
-  title: string;
-  detail: string;
-};
 
 export type ClientTimelineEntry = {
   id: string;
@@ -36,13 +32,6 @@ export type ClientTimelineEntry = {
   title: string;
   detail: string;
   status?: string;
-};
-
-export type ClientMessageEntry = {
-  id: string;
-  sender: "client" | "business";
-  body: string;
-  timestamp: string;
 };
 
 export type ClientAppointmentEntry = {
@@ -159,7 +148,6 @@ export type ClientRecord = {
     assignedStaff: string;
     tags: string[];
   };
-  history: ClientHistoryEntry[];
   timeline: ClientTimelineEntry[];
   appointments: ClientAppointmentEntry[];
   /** The soonest pending or confirmed visit that hasn't started yet, if any. */
@@ -167,7 +155,6 @@ export type ClientRecord = {
   medications: ClientMedicationEntry[];
   documents: ClientDocumentEntry[];
   payments: ClientPaymentEntry[];
-  messages: ClientMessageEntry[];
   healthItems: ClientHealthItemEntry[];
   careNotes: ClientCareNoteEntry[];
   treatmentPlanItems: ClientTreatmentPlanEntry[];
@@ -314,54 +301,26 @@ export function toPrismaClientStatus(status: ClientStatus) {
   }
 }
 
-function formatLastVisit(client: ClientWithRelations) {
-  // Same source as the directory (`formatDirectoryLastVisit` below) — not the
-  // most recent appointment of any status, which could be a future booking or
-  // a cancellation and would then disagree with the directory row for the
-  // same client.
-  return client.lastVisitAt ? format(client.lastVisitAt, "MMM d, yyyy") : "No visits yet";
+type Copy = { locale: Locale; t: (typeof messages)["en"]["clients"] };
+
+function copyFor(locale: Locale): Copy {
+  return { locale, t: messages[locale].clients };
 }
 
-function formatDirectoryLastVisit(client: ClientDirectoryRow) {
-  // `lastVisitAt` is the last confirmed/completed visit (maintained server-side).
-  // Use it — not the most recent appointment of any status — so the column, the
-  // attention badge, and the "Attention" filter all agree and a future booking
-  // never reads as a past visit.
-  return client.lastVisitAt
-    ? format(client.lastVisitAt, "MMM d, yyyy")
-    : "No visits yet";
+/** "Oct 31, 2026" / "31 tet 2026". */
+function day(date: Date, { locale }: Copy) {
+  return dateText(locale, date, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function buildHistory(client: ClientWithRelations): ClientHistoryEntry[] {
-  if (client.appointments.length > 0) {
-    return client.appointments.map((appointment) => ({
-      id: appointment.id,
-      date: format(appointment.startAt, "MMM d, yyyy"),
-      title: appointment.title,
-      detail: `Appointment ${appointmentStatusKey(appointment.status)} in the clinic workspace.`,
-    }));
-  }
-
-  return [
-    {
-      id: `created-${client.id}`,
-      date: format(client.createdAt, "MMM d, yyyy"),
-      title: "Client created",
-      detail: "Profile created in the Vela clients workspace.",
-    },
-  ];
+// `lastVisitAt` is the last confirmed/completed visit (maintained server-side).
+// The record and the directory both use it — not the most recent appointment of
+// any status — so the column, the attention badge, and the "Attention" filter
+// all agree and a future booking never reads as a past visit.
+function formatLastVisit(lastVisitAt: Date | null, copy: Copy) {
+  return lastVisitAt ? day(lastVisitAt, copy) : copy.t.view.noVisitsYet;
 }
 
-function buildMessages(client: ClientWithRelations): ClientMessageEntry[] {
-  return client.messages.map((message) => ({
-    id: message.id,
-    sender: message.direction === "INBOUND" ? "client" : "business",
-    body: message.body,
-    timestamp: format(message.sentAt, "h:mm a"),
-  }));
-}
-
-function formatFileSize(bytes: number | null) {
+function formatFileSize(bytes: number | null, { locale }: Copy) {
   if (!bytes || bytes <= 0) {
     return "";
   }
@@ -370,25 +329,27 @@ function formatFileSize(bytes: number | null) {
     return `${Math.max(Math.round(bytes / 1024), 1)} KB`;
   }
 
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${numberFormatter(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / (1024 * 1024))} MB`;
 }
 
-function toAppointmentEntry(appointment: ClientWithRelations["appointments"][number]): ClientAppointmentEntry {
+function toAppointmentEntry(
+  appointment: ClientWithRelations["appointments"][number],
+  copy: Copy
+): ClientAppointmentEntry {
   return {
     id: appointment.id,
-    date: format(appointment.startAt, "MMM d, yyyy"),
+    date: day(appointment.startAt, copy),
     title: appointment.title,
     status: appointment.status,
     notes: appointment.notes ?? "",
   };
 }
 
-function buildAppointments(client: ClientWithRelations): ClientAppointmentEntry[] {
-  return client.appointments.map(toAppointmentEntry);
+function buildAppointments(client: ClientWithRelations, copy: Copy): ClientAppointmentEntry[] {
+  return client.appointments.map((appointment) => toAppointmentEntry(appointment, copy));
 }
 
-
-function buildMedications(client: ClientWithRelations): ClientMedicationEntry[] {
+function buildMedications(client: ClientWithRelations, copy: Copy): ClientMedicationEntry[] {
   return client.medications.map((medication) => ({
     id: medication.id,
     name: medication.name,
@@ -396,11 +357,11 @@ function buildMedications(client: ClientWithRelations): ClientMedicationEntry[] 
     frequency: medication.frequency ?? "",
     notes: medication.notes ?? "",
     isActive: medication.isActive,
-    createdAt: format(medication.createdAt, "MMM d, yyyy"),
+    createdAt: day(medication.createdAt, copy),
   }));
 }
 
-async function buildDocuments(client: ClientWithRelations): Promise<ClientDocumentEntry[]> {
+async function buildDocuments(client: ClientWithRelations, copy: Copy): Promise<ClientDocumentEntry[]> {
   // Sign every document URL in one batched pass (one request per bucket) rather
   // than a fresh client + round-trip per document.
   const urlMap = await resolveMediaDisplayUrls(
@@ -416,12 +377,14 @@ async function buildDocuments(client: ClientWithRelations): Promise<ClientDocume
       fileType: document.fileType,
       category: document.category ?? document.fileType,
       mimeType: document.mimeType ?? "",
-      fileSize: formatFileSize(document.fileSize ?? null),
+      fileSize: formatFileSize(document.fileSize ?? null, copy),
       fileUrl: (source && urlMap.get(source)) || "",
       storageUrl: document.storageUrl ?? document.fileUrl ?? "",
-      uploadedBy: document.uploadedBy ?? "Workspace staff",
+      // The action stores "Workspace staff" when nobody is named; the page shows
+      // that default in the reader's language.
+      uploadedBy: storedText(document.uploadedBy, "Workspace staff"),
       notes: storedText(document.notes),
-      createdAt: format(document.createdAt, "MMM d, yyyy"),
+      createdAt: day(document.createdAt, copy),
     };
   });
 }
@@ -437,12 +400,12 @@ export function storedText(value: string | null | undefined, ...extraFiller: str
   return LEGACY_FILLER.has(text) || extraFiller.includes(text) ? "" : text;
 }
 
-function buildPayments(client: ClientWithRelations, currency: string): ClientPaymentEntry[] {
+function buildPayments(client: ClientWithRelations, currency: string, copy: Copy): ClientPaymentEntry[] {
   return client.payments.map((payment) => ({
     id: payment.id,
     appointmentId: payment.appointmentId ?? "",
     amountCents: payment.amountCents,
-    amountDisplay: formatCurrency(payment.amountCents, currency),
+    amountDisplay: formatCurrency(payment.amountCents, currency, { locale: copy.locale }),
     amountInput: (payment.amountCents / 100).toFixed(2),
     status: payment.status,
     description: storedText(payment.description, "Payment record"),
@@ -451,13 +414,13 @@ function buildPayments(client: ClientWithRelations, currency: string): ClientPay
     paymentMethod: storedText(payment.paymentMethod, "Manual entry"),
     billingNote: payment.billingNote ?? "",
     receiptUrl: payment.receiptUrl ?? "",
-    paidAt: payment.paidAt ? format(payment.paidAt, "MMM d, yyyy") : "",
+    paidAt: payment.paidAt ? day(payment.paidAt, copy) : "",
     paidAtInput: payment.paidAt ? format(payment.paidAt, "yyyy-MM-dd") : "",
-    createdAt: format(payment.createdAt, "MMM d, yyyy"),
+    createdAt: day(payment.createdAt, copy),
   }));
 }
 
-function buildHealthItems(client: ClientWithRelations): ClientHealthItemEntry[] {
+function buildHealthItems(client: ClientWithRelations, copy: Copy): ClientHealthItemEntry[] {
   return client.healthItems.map((item) => ({
     id: item.id,
     type: item.type,
@@ -465,89 +428,98 @@ function buildHealthItems(client: ClientWithRelations): ClientHealthItemEntry[] 
     value: item.value ?? "",
     severity: item.severity ?? "",
     notes: item.notes ?? "",
-    recordedAt: format(item.recordedAt, "MMM d, yyyy"),
+    recordedAt: day(item.recordedAt, copy),
   }));
 }
 
-function buildCareNotes(client: ClientWithRelations): ClientCareNoteEntry[] {
+function buildCareNotes(client: ClientWithRelations, copy: Copy): ClientCareNoteEntry[] {
   return client.careNotes.map((note) => ({
     id: note.id,
-    title: note.title ?? "Provider note",
+    // Empty when untitled; the page shows "Provider note" in its place.
+    title: note.title ?? "",
     body: note.body,
-    providerName: note.staffMember?.name ?? "Workspace staff",
-    notedAt: format(note.notedAt, "MMM d, yyyy"),
+    providerName: note.staffMember?.name ?? copy.t.view.workspaceStaff,
+    notedAt: day(note.notedAt, copy),
   }));
 }
 
 function buildTreatmentPlanItems(
-  client: ClientWithRelations
+  client: ClientWithRelations,
+  copy: Copy
 ): ClientTreatmentPlanEntry[] {
   return client.treatmentPlanItems.map((item) => ({
     id: item.id,
     title: item.title,
     description: item.description ?? "",
     status: item.status,
-    dueAt: item.dueAt ? format(item.dueAt, "MMM d, yyyy") : "",
+    dueAt: item.dueAt ? day(item.dueAt, copy) : "",
     dueAtInput: item.dueAt ? format(item.dueAt, "yyyy-MM-dd") : "",
   }));
 }
 
 function buildFollowUpReminders(
-  client: ClientWithRelations
+  client: ClientWithRelations,
+  copy: Copy
 ): ClientFollowUpReminderEntry[] {
   return client.followUpReminders.map((reminder) => ({
     id: reminder.id,
     title: reminder.title,
     channel: reminder.channel,
     status: reminder.status,
-    remindAt: format(reminder.remindAt, "MMM d, yyyy"),
+    remindAt: day(reminder.remindAt, copy),
     remindAtInput: format(reminder.remindAt, "yyyy-MM-dd"),
     notes: reminder.notes ?? "",
   }));
 }
 
-function buildTimeline(client: ClientWithRelations, currency: string): ClientTimelineEntry[] {
+function buildTimeline(client: ClientWithRelations, currency: string, copy: Copy): ClientTimelineEntry[] {
+  const { t } = copy;
   const entries: ClientTimelineEntry[] = [
     ...client.appointments.map((appointment) => ({
       id: `appointment-${appointment.id}`,
       kind: "appointment" as const,
-      date: format(appointment.startAt, "MMM d, yyyy"),
+      date: day(appointment.startAt, copy),
       sortKey: appointment.startAt.getTime(),
       title: appointment.title,
-      detail: appointment.notes?.trim() || "Appointment",
+      detail: appointment.notes?.trim() || t.view.appointment,
       status: appointmentStatusKey(appointment.status),
     })),
     ...client.payments.map((payment) => ({
       id: `payment-${payment.id}`,
       kind: "payment" as const,
-      date: format(payment.paidAt ?? payment.createdAt, "MMM d, yyyy"),
+      date: day(payment.paidAt ?? payment.createdAt, copy),
       sortKey: (payment.paidAt ?? payment.createdAt).getTime(),
-      title: `${formatCurrency(payment.amountCents, currency)} ${payment.status.toLowerCase()}`,
-      detail: payment.description?.trim() || "Payment record",
+      title: fmt(t.view.paymentTitle, {
+        amount: formatCurrency(payment.amountCents, currency, { locale: copy.locale }),
+        status: storedLabel(t.paymentStatuses, payment.status).toLowerCase(),
+      }),
+      detail: payment.description?.trim() || t.view.paymentRecord,
       status: payment.status.toLowerCase(),
     })),
     ...client.careNotes.map((note) => ({
       id: `note-${note.id}`,
       kind: "note" as const,
-      date: format(note.notedAt, "MMM d, yyyy"),
+      date: day(note.notedAt, copy),
       sortKey: note.notedAt.getTime(),
-      title: note.title?.trim() || "Provider note",
+      title: note.title?.trim() || t.view.providerNote,
       detail: note.body,
     })),
     ...client.documents.map((document) => ({
       id: `document-${document.id}`,
       kind: "document" as const,
-      date: format(document.createdAt, "MMM d, yyyy"),
+      date: day(document.createdAt, copy),
       sortKey: document.createdAt.getTime(),
       title: document.fileName,
-      detail: `${document.category ?? document.fileType} document added`,
+      detail: fmt(t.view.documentAdded, {
+        category: storedLabel(t.documentCategories, document.category ?? document.fileType),
+      }),
     })),
     ...client.messages.map((message) => ({
       id: `message-${message.id}`,
       kind: "message" as const,
-      date: format(message.sentAt, "MMM d, yyyy"),
+      date: day(message.sentAt, copy),
       sortKey: message.sentAt.getTime(),
-      title: message.direction === "INBOUND" ? "Message received" : "Message sent",
+      title: message.direction === "INBOUND" ? t.view.messageReceived : t.view.messageSent,
       detail: message.body,
     })),
   ];
@@ -558,12 +530,16 @@ function buildTimeline(client: ClientWithRelations, currency: string): ClientTim
 /**
  * `currency` is the workspace's (`Business.currency`): every amount on the record
  * is formatted in it. It is a required argument so no caller can forget it.
+ * `locale` is the reader's language, for dates, amounts and the record's own text.
  */
 export async function buildClientRecord(
   client: ClientWithRelations,
   currency: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  locale: Locale = "en"
 ): Promise<ClientRecord> {
+  const copy = copyFor(locale);
+  const money = (cents: number) => formatCurrency(cents, currency, { locale });
   // The payments array on `client` is a display list capped at take:60
   // (most-recent-first) — fine for rendering history, but a patient with more
   // invoices than that would understate the paid/unpaid totals. Sum those over
@@ -618,14 +594,14 @@ export async function buildClientRecord(
     email: client.email ?? "",
     phone: client.phone,
     gender: storedText(client.gender),
-    dateOfBirth: client.dateOfBirth ? format(client.dateOfBirth, "MMM d, yyyy") : "",
+    dateOfBirth: client.dateOfBirth ? day(client.dateOfBirth, copy) : "",
     dateOfBirthInput: client.dateOfBirth ? format(client.dateOfBirth, "yyyy-MM-dd") : "",
     address: storedText(client.address),
     patientType: client.patientType ?? "New Patient",
     // Vestigial (clinic-type-per-patient isn't a real concept) and never
     // rendered anywhere — an empty string here, not a fabricated "Clinic".
     clinicType: client.clinicType ?? "",
-    lastVisit: formatLastVisit(client),
+    lastVisit: formatLastVisit(client.lastVisitAt, copy),
     totalVisits: client._count?.appointments ?? client.appointments.length,
     status: formatStatus(client.status, client.isArchived),
     notes: storedText(client.notes),
@@ -645,23 +621,21 @@ export async function buildClientRecord(
       assignedStaff: client.assignedStaffName ?? "",
       tags: client.tags,
     },
-    history: buildHistory(client),
-    timeline: buildTimeline(client, currency),
-    appointments: buildAppointments(client),
-    nextAppointment: nextAppointment ? toAppointmentEntry(nextAppointment) : null,
-    medications: buildMedications(client),
-    documents: await buildDocuments(client),
-    payments: buildPayments(client, currency),
-    messages: buildMessages(client),
-    healthItems: buildHealthItems(client),
-    careNotes: buildCareNotes(client),
-    treatmentPlanItems: buildTreatmentPlanItems(client),
-    followUpReminders: buildFollowUpReminders(client),
+    timeline: buildTimeline(client, currency, copy),
+    appointments: buildAppointments(client, copy),
+    nextAppointment: nextAppointment ? toAppointmentEntry(nextAppointment, copy) : null,
+    medications: buildMedications(client, copy),
+    documents: await buildDocuments(client, copy),
+    payments: buildPayments(client, currency, copy),
+    healthItems: buildHealthItems(client, copy),
+    careNotes: buildCareNotes(client, copy),
+    treatmentPlanItems: buildTreatmentPlanItems(client, copy),
+    followUpReminders: buildFollowUpReminders(client, copy),
     paymentStats: {
       unpaidBalanceCents,
-      totalPaidDisplay: formatCurrency(totalPaidCents, currency),
-      unpaidBalanceDisplay: formatCurrency(unpaidBalanceCents, currency),
-      totalBilledDisplay: formatCurrency(totalBilledCents, currency),
+      totalPaidDisplay: money(totalPaidCents),
+      unpaidBalanceDisplay: money(unpaidBalanceCents),
+      totalBilledDisplay: money(totalBilledCents),
       totalCount: totalPaymentCount,
       totalPaidCount,
     },
@@ -670,7 +644,7 @@ export async function buildClientRecord(
       type: item.type === "BEFORE" ? "before" : "after",
       imageUrl: (item.imageUrl && galleryUrlMap.get(item.imageUrl)) || "",
       caption: item.caption ?? "",
-      createdAt: format(item.createdAt, "MMM d, yyyy"),
+      createdAt: day(item.createdAt, copy),
     })),
   };
 }
@@ -702,8 +676,10 @@ export function buildClientDirectoryViewFromRecords(
     page: number;
     pageSize: number;
     counts: ClientDirectoryCounts;
-  }
+  },
+  locale: Locale = "en"
 ): ClientsViewModel {
+  const copy = copyFor(locale);
   const clients = records.map((client) => {
     const latestAppointment = client.appointments[0];
     const status = formatStatus(client.status, client.isArchived);
@@ -713,7 +689,7 @@ export function buildClientDirectoryViewFromRecords(
       name: client.name,
       email: client.email ?? "",
       phone: client.phone,
-      lastVisit: formatDirectoryLastVisit(client),
+      lastVisit: formatLastVisit(client.lastVisitAt, copy),
       totalVisits: client._count?.appointments ?? 0,
       status,
       lastService: latestAppointment?.title ?? "",

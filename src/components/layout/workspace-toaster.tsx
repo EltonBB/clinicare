@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, UserRoundCheck, X } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import {
   getRecentStaffCheckInsAction,
   getRecentStaffMessagesAction,
@@ -34,6 +36,7 @@ type Toast = {
  */
 export function WorkspaceToaster() {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const t = useI18n().m.shell.toasts;
   // null until the first poll establishes each stream's baseline.
   const seenCheckins = useRef<Set<string> | null>(null);
   const seenMessages = useRef<Set<string> | null>(null);
@@ -148,26 +151,22 @@ export function WorkspaceToaster() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-foreground">
-                {isCheckin
-                  ? `${toast.staffName} checked in`
-                  : toast.isSystem
-                    ? `Update from ${toast.staffName}`
-                    : `${toast.staffName} sent a message`}
+                {fmt(isCheckin ? t.checkedIn : toast.isSystem ? t.update : t.sent, { name: toast.staffName })}
               </p>
               <p className="text-xs text-muted-foreground">
-                {isCheckin ? `Checked in at ${toast.atLabel}` : `Sent at ${toast.atLabel}`}
+                {fmt(isCheckin ? t.checkedInAt : t.sentAt, { time: toast.atLabel })}
               </p>
             </div>
             <Link
               href={isCheckin ? `/staff/${toast.staffId}` : `/staff/${toast.staffId}?tab=messages`}
               className="shrink-0 rounded-(--radius-tile) bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
             >
-              {isCheckin ? "Verify" : toast.isSystem ? "View" : "Reply"}
+              {isCheckin ? t.verify : toast.isSystem ? t.view : t.reply}
             </Link>
             <button
               type="button"
               onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-              aria-label="Dismiss"
+              aria-label={t.dismiss}
               className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
             >
               <X className="size-4" />

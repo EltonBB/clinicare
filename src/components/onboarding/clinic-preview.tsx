@@ -10,6 +10,9 @@ import {
 } from "framer-motion";
 import { Check } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
+import type { Locale } from "@/i18n/config";
+import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
 import { renderReminder } from "@/lib/messaging/render";
 import { addZonedDays, formatZonedFullDate, getZonedDateParts } from "@/lib/time-zone";
 import { hoursBetweenTimes, weekdayOrder, type WeekdayKey, type WorkingHoursState } from "@/lib/onboarding";
@@ -50,8 +53,6 @@ const DAY_START = 7;
 const DAY_SPAN = 12;
 const TICKS = [9, 12, 15, 18];
 
-const dayLabel = (day: WeekdayKey) => day[0].toUpperCase() + day.slice(1);
-
 function toHours(time: string) {
   const [hour = 0, minute = 0] = time.split(":").map(Number);
   return hour + minute / 60;
@@ -67,13 +68,13 @@ const weekdayOf = (utcDay: number) => weekdayOrder[(utcDay + 6) % 7];
  * reminders are sent in), with that date already formatted, or null when the
  * week is closed. Day search and date math both stay on the zone's calendar.
  */
-function nextOpenDay(hours: WorkingHoursState) {
+function nextOpenDay(hours: WorkingHoursState, locale: Locale) {
   const today = getZonedDateParts(new Date());
   for (let ahead = 1; ahead <= 7; ahead++) {
     const { year, month, day } = addZonedDays(today, ahead);
     const calendarDay = new Date(Date.UTC(year, month - 1, day, 12));
     const weekday = weekdayOf(calendarDay.getUTCDay());
-    if (hours[weekday].enabled) return { day: weekday, label: formatZonedFullDate(calendarDay, "UTC") };
+    if (hours[weekday].enabled) return { day: weekday, label: formatZonedFullDate(calendarDay, "UTC", locale) };
   }
   return null;
 }
@@ -87,8 +88,9 @@ function clinicNow() {
   };
 }
 
-function formatHours(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+/** "37.5" / "37,5": whole hours stay whole, half hours get one decimal. */
+function formatHours(value: number, locale: Locale) {
+  return numberFormatter(locale, { maximumFractionDigits: 1 }).format(value);
 }
 
 /** A number that counts to its new value instead of jumping (jumps under reduced motion). */
@@ -130,6 +132,10 @@ type Change = { id: number; text: string };
  * team text wait until typing pauses so the feed doesn't fire per keystroke.
  */
 function useChangeFeed(props: ClinicPreviewProps) {
+  const { m } = useI18n();
+  const t = m.onboarding.preview.changes;
+  const days = m.common.weekdays;
+  const typeNames: Record<string, string> = m.common.businessTypes;
   const [changes, setChanges] = useState<Change[]>([]);
   const { name, type, logoRef = "", accent, hours, team, announceChanges = false } = props;
   const member = team[0]?.name.trim() ?? "";
@@ -155,24 +161,25 @@ function useChangeFeed(props: ClinicPreviewProps) {
     const before = previous.current;
     previous.current = { ...before, type, logoRef, accent, hours };
     if (!armed.current) return;
-    if (accent !== before.accent) push("Brand color set. Buttons, the calendar and your records now use it.");
+    if (accent !== before.accent) push(t.color);
     // Compared by the stored reference: the signed display URL resolves later.
-    if (logoRef && !before.logoRef) push("Logo added. It shows across your workspace.");
-    if (type !== before.type) push(`Set up as a ${type.toLowerCase()}.`);
+    if (logoRef && !before.logoRef) push(t.logo);
+    if (type !== before.type) push(fmt(t.type, { type: (typeNames[type] ?? type).toLowerCase() }));
     for (const day of weekdayOrder) {
       const now = hours[day];
       const was = before.hours[day];
       if (now.enabled !== was.enabled) {
         push(
           now.enabled
-            ? `${dayLabel(day)}s are now bookable, ${now.start} to ${now.end}.`
-            : `${dayLabel(day)}s are closed. Nothing can be booked then.`
+            ? fmt(t.opened, { days: days[day].plural, start: now.start, end: now.end })
+            : fmt(t.closed, { days: days[day].plural })
         );
       } else if (now.enabled && (now.start !== was.start || now.end !== was.end)) {
-        push(`${dayLabel(day)} now runs ${now.start} to ${now.end}.`);
+        push(fmt(t.runs, { day: days[day].definite, start: now.start, end: now.end }));
       }
     }
-  }, [type, logoRef, accent, hours]);
+    // The copy is a dependency only so a language switch keeps the feed in that language.
+  }, [type, logoRef, accent, hours, t, days, typeNames]);
 
   // Typed text waits for a pause, so it isn't announced per keystroke.
   useEffect(() => {
@@ -182,11 +189,11 @@ function useChangeFeed(props: ClinicPreviewProps) {
       const before = previous.current;
       previous.current = { ...before, name: trimmed, member };
       if (!announce) return;
-      if (trimmed && trimmed !== before.name) push(`Your workspace is now ${trimmed}.`);
-      if (member && member !== before.member) push(`${member} can now take appointments.`);
+      if (trimmed && trimmed !== before.name) push(fmt(t.name, { name: trimmed }));
+      if (member && member !== before.member) push(fmt(t.member, { name: member }));
     }, 900);
     return () => window.clearTimeout(id);
-  }, [name, member]);
+  }, [name, member, t]);
 
   // Declared after the effects above, so the render that brings the restored
   // draft is recorded as the baseline before announcing starts.
@@ -227,6 +234,8 @@ function Card({ lit, label, children, className }: { lit: boolean; label: string
 export function ClinicPreview(props: ClinicPreviewProps) {
   const { name, type, logoUrl, accent, hours, team, reminderTemplate, focus } = props;
   const still = useReducedMotion() ?? false;
+  const { locale, m } = useI18n();
+  const t = m.onboarding.preview;
   const latest = useChangeFeed(props)[0];
   const [hoveredDay, setHoveredDay] = useState<WeekdayKey | null>(null);
   // Today and the time of day (clinic zone) change while the page is open, so
@@ -245,7 +254,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
   const openDays = weekdayOrder.filter((day) => hours[day].enabled);
   const dayHours = (day: WeekdayKey) => hoursBetweenTimes(hours[day].start, hours[day].end);
   const weeklyHours = openDays.reduce((total, day) => total + dayHours(day), 0);
-  const nextOpen = nextOpenDay(hours);
+  const nextOpen = nextOpenDay(hours, locale);
   const reminder = nextOpen
     ? renderReminder({
         kind: "appointment_reminder",
@@ -309,7 +318,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                   ) : null}
                   <span className="relative size-2 rounded-full bg-[var(--clinic-bright)]" />
                 </span>
-                {focus === "done" ? "Ready for day one" : "Live preview"}
+                {focus === "done" ? t.ready : t.live}
               </motion.p>
             )}
           </AnimatePresence>
@@ -328,7 +337,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
       </div>
 
       <div className="space-y-2">
-        <Card lit={lit("clinic")} label="Clinic">
+        <Card lit={lit("clinic")} label={t.clinicCard}>
           <div className="flex items-center gap-4">
             <span
               className={cn(
@@ -341,12 +350,12 @@ export function ClinicPreview(props: ClinicPreviewProps) {
               {logoUrl ? (
                 <span aria-hidden className="size-full bg-cover bg-center" style={{ backgroundImage: `url("${logoUrl}")` }} />
               ) : (
-                getInitials(clinicName || "Your clinic")
+                getInitials(clinicName || t.yourClinic)
               )}
             </span>
             <div className="min-w-0 flex-1">
               <p className={cn("flex items-center truncate text-xl font-semibold tracking-tight", clinicName ? "text-white" : "text-white/40")}>
-                <span className="truncate">{clinicName || "Your clinic"}</span>
+                <span className="truncate">{clinicName || t.yourClinic}</span>
                 {focus === "clinic" && !still ? (
                   <motion.span
                     aria-hidden
@@ -356,38 +365,38 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                   />
                 ) : null}
               </p>
-              <p className="mt-0.5 text-sm text-white/65">{type}</p>
+              <p className="mt-0.5 text-sm text-white/65">{storedLabel(m.common.businessTypes, type)}</p>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2" aria-hidden>
             <span className="inline-flex h-7 items-center rounded-(--radius-field) bg-[var(--clinic-accent)] px-3 text-xs font-semibold text-white transition-colors duration-(--duration-slow)">
-              Book appointment
+              {t.book}
             </span>
             <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--clinic-accent)_22%,transparent)] px-2.5 text-xs font-medium text-[var(--clinic-bright)] transition-colors duration-(--duration-slow)">
               <Check className="size-3" />
-              Confirmed
+              {t.confirmed}
             </span>
             <span className="ml-auto font-mono text-[11px] uppercase text-white/50">{accent}</span>
           </div>
         </Card>
 
-        <Card lit={lit("hours")} label="Opening hours">
+        <Card lit={lit("hours")} label={t.hoursCard}>
           <div className="flex items-baseline justify-between text-sm">
-            <p className="font-medium text-white">Your week</p>
+            <p className="font-medium text-white">{t.yourWeek}</p>
             <p className="text-xs text-white/65" aria-live="polite">
               {hovered && hoveredDay ? (
                 hovered.enabled ? (
-                  `${dayLabel(hoveredDay)} · ${hovered.start} to ${hovered.end} · ${formatHours(dayHours(hoveredDay))}h`
+                  fmt(t.dayRange, { day: m.common.weekdays[hoveredDay].name, start: hovered.start, end: hovered.end, hours: formatHours(dayHours(hoveredDay), locale) })
                 ) : (
-                  `${dayLabel(hoveredDay)} · closed`
+                  fmt(t.dayClosed, { day: m.common.weekdays[hoveredDay].name })
                 )
               ) : openDays.length ? (
                 <>
-                  <CountUp value={weeklyHours} format={(v) => formatHours(Math.round(v * 2) / 2)} />h open · {openDays.length}{" "}
-                  {openDays.length === 1 ? "day" : "days"}
+                  <CountUp value={weeklyHours} format={(v) => formatHours(Math.round(v * 2) / 2, locale)} />
+                  {t.hoursOpen} {plural(t.day, openDays.length, locale)}
                 </>
               ) : (
-                "Closed all week"
+                t.closedAllWeek
               )}
             </p>
           </div>
@@ -422,9 +431,9 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                         hoveredDay === day || isToday ? "text-white" : item.enabled ? "text-white/70" : "text-white/35"
                       )}
                     >
-                      {dayLabel(day).slice(0, 3)}
+                      {m.common.weekdays[day].short}
                       {isToday ? (
-                        <span title="Today" className="absolute -left-2.5 top-1/2 size-1 -translate-y-1/2 rounded-full bg-white" />
+                        <span title={t.today} className="absolute -left-2.5 top-1/2 size-1 -translate-y-1/2 rounded-full bg-white" />
                       ) : null}
                     </span>
                     <span
@@ -459,7 +468,7 @@ export function ClinicPreview(props: ClinicPreviewProps) {
           </div>
         </Card>
 
-        <Card lit={lit("team")} label="Team">
+        <Card lit={lit("team")} label={t.teamCard}>
           <div className="flex items-center justify-between gap-4">
             <ul className="min-w-0 flex-1 space-y-2">
               <AnimatePresence initial={false} mode="popLayout">
@@ -480,15 +489,15 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-white">{member.name}</span>
                         <span className="block truncate text-xs text-white/60">
-                          {member.role}
-                          {members.length === 1 ? " · takes every appointment" : null}
+                          {storedLabel(m.onboarding.team.roles, member.role)}
+                          {members.length === 1 ? t.takesAll : null}
                         </span>
                       </span>
                     </motion.li>
                   ))
                 ) : (
                   <motion.li key="empty" exit={{ opacity: 0 }} className="text-sm text-white/50">
-                    Your first team member shows here.
+                    {t.firstMember}
                   </motion.li>
                 )}
               </AnimatePresence>
@@ -499,9 +508,9 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                   <CountUp value={Math.floor(weeklyHours * 2)} />
                 </p>
                 <p className="text-[11px] leading-4 text-white/60">
-                  bookable
+                  {t.bookable}
                   <br />
-                  half-hours a week
+                  {t.halfHours}
                 </p>
               </div>
             ) : null}
@@ -509,10 +518,10 @@ export function ClinicPreview(props: ClinicPreviewProps) {
         </Card>
 
         {reminder ? (
-          <Card lit={lit("hours") || lit("clinic")} label="Reminder preview">
+          <Card lit={lit("hours") || lit("clinic")} label={t.reminderCard}>
             <p className="flex justify-between text-xs text-white/60">
-              What a patient receives
-              <span className="text-white/45">Name and time only</span>
+              {t.receives}
+              <span className="text-white/45">{t.nameTime}</span>
             </p>
             <div className="mt-2.5 flex gap-2.5">
               <span
@@ -525,12 +534,12 @@ export function ClinicPreview(props: ClinicPreviewProps) {
                 {logoUrl ? (
                   <span className="size-full bg-cover bg-center" style={{ backgroundImage: `url("${logoUrl}")` }} />
                 ) : (
-                  getInitials(clinicName || "Your clinic")
+                  getInitials(clinicName || t.yourClinic)
                 )}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-white/80">
-                  {clinicName || "Your clinic"} <span className="font-normal text-white/40">· WhatsApp</span>
+                  {clinicName || t.yourClinic} <span className="font-normal text-white/40">· WhatsApp</span>
                 </p>
                 <p
                   aria-label={reminder}

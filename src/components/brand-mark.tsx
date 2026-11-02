@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
  
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 type BrandMarkProps = {
@@ -26,6 +29,7 @@ export function BrandMark({
   tone = "default",
   prefetch,
 }: BrandMarkProps) {
+  const { m } = useI18n();
   const isLg = size === "lg";
   const isLight = tone === "light";
 
@@ -37,7 +41,7 @@ export function BrandMark({
         "inline-flex items-center gap-2.5 rounded-[0.55rem] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
         className
       )}
-      aria-label="Vela home"
+      aria-label={m.common.velaHome}
     >
       <span
         className={cn(

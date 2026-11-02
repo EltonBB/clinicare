@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { isProBusinessPlan } from "@/lib/billing";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
@@ -11,7 +13,9 @@ import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
 import { formatZonedDateKey } from "@/lib/time-zone";
 
-export const metadata: Metadata = { title: "Edit appointment | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.calendar.meta.editBooking };
+}
 
 export default async function EditAppointmentPage({
   params,
@@ -23,7 +27,7 @@ export default async function EditAppointmentPage({
   });
   if (!canUseWorkspace(business)) {
     return (
-      <CreatePageShell title="Edit booking">
+      <CreatePageShell title={(await getI18n()).m.calendar.form.editTitle}>
         <WorkspaceLockedState />
       </CreatePageShell>
     );
@@ -123,7 +127,8 @@ export default async function EditAppointmentPage({
   const initialAppointment = calendarView.appointments[0];
 
   return (
-    <CreatePageShell title="Edit booking">
+    <WithMessages namespaces={["calendar"]}>
+    <CreatePageShell title={(await getI18n()).m.calendar.form.editTitle}>
       <NewAppointmentForm
         clients={calendarView.clients}
         staffMembers={calendarView.staffMembers}
@@ -134,5 +139,6 @@ export default async function EditAppointmentPage({
         canRecordNoShows={isProBusinessPlan(business.plan)}
       />
     </CreatePageShell>
+    </WithMessages>
   );
 }

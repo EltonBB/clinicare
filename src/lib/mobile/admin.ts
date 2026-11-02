@@ -1,3 +1,6 @@
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
 import { prisma } from "@/lib/prisma";
 import { unrevokedStaffDeviceWhere } from "@/lib/staff-device-policy";
 import { formatZonedFullDate, formatZonedShortDateTime } from "@/lib/time-zone";
@@ -18,8 +21,10 @@ export type MobileAccessStatus = {
 
 export async function getMobileAccessStatus(
   businessId: string,
-  staffMemberId: string
+  staffMemberId: string,
+  locale: Locale = "en"
 ): Promise<MobileAccessStatus> {
+  const copy = messages[locale].staff.mobile;
   const [activeCode, device] = await Promise.all([
     prisma.staffAccessCode.findFirst({
       where: {
@@ -43,10 +48,12 @@ export async function getMobileAccessStatus(
     hasActiveCode: Boolean(activeCode),
     device: device
       ? {
-          label: device.deviceLabel ?? "Paired device",
+          label: device.deviceLabel ?? copy.pairedDevice,
           platform: device.platform,
-          pairedLabel: `Paired ${formatZonedFullDate(device.createdAt)}`,
-          lastSeenLabel: `Last active ${formatZonedShortDateTime(device.lastSeenAt)}`,
+          pairedLabel: fmt(copy.pairedOn, { date: formatZonedFullDate(device.createdAt, undefined, locale) }),
+          lastSeenLabel: fmt(copy.lastActive, {
+            date: formatZonedShortDateTime(device.lastSeenAt, undefined, locale),
+          }),
         }
       : null,
   };

@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { EditClientForm } from "@/components/clients/edit-client-form";
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
 import { canUseWorkspace } from "@/lib/billing-access";
@@ -9,7 +12,9 @@ import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 
-export const metadata: Metadata = { title: "Edit client | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.clients.meta.editClient };
+}
 
 export default async function EditClientPage({
   params,
@@ -19,9 +24,10 @@ export default async function EditClientPage({
   const { business } = await requireCurrentWorkspace("/clients", {
     missingBusinessRedirect: "/onboarding",
   });
+  const { locale, m } = await getI18n();
   if (!canUseWorkspace(business)) {
     return (
-      <CreatePageShell title="Edit client">
+      <CreatePageShell title={m.clients.form.editClient}>
         <WorkspaceLockedState />
       </CreatePageShell>
     );
@@ -173,11 +179,13 @@ export default async function EditClientPage({
     notFound();
   }
 
-  const record = await buildClientRecord(client, business.currency);
+  const record = await buildClientRecord(client, business.currency, new Date(), locale);
 
   return (
-    <CreatePageShell title={`Edit ${record.name}`}>
-      <EditClientForm client={record} />
+    <CreatePageShell title={fmt(m.clients.form.editTitle, { name: record.name })}>
+      <WithMessages namespaces={["clients"]}>
+        <EditClientForm client={record} />
+      </WithMessages>
     </CreatePageShell>
   );
 }

@@ -8,6 +8,7 @@ import { ClientProfileFields } from "@/components/clients/client-profile-fields"
 import { ConfirmDeleteDialog } from "@/components/clients/record-form-dialog";
 import { DestructiveTextButton, FormActions, FormError } from "@/components/workspace/form-parts";
 import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
 import type { ClientRecord, ClientStatus } from "@/lib/clients";
 
 type EditClientFormProps = {
@@ -16,6 +17,9 @@ type EditClientFormProps = {
 
 export function EditClientForm({ client }: EditClientFormProps) {
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.clients.form;
+  const serverText = useServerText();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -47,7 +51,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
       });
 
       if (!result.ok || !result.client) {
-        setError(result.error ?? "We couldn't update this patient.");
+        setError(serverText(result.error) ?? t.updateFailed);
         return;
       }
 
@@ -62,7 +66,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
 
       if (!result.ok) {
         setConfirmingDelete(false);
-        setError(result.error ?? "We couldn't delete this patient.");
+        setError(serverText(result.error) ?? t.deleteFailed);
         return;
       }
 
@@ -80,17 +84,17 @@ export function EditClientForm({ client }: EditClientFormProps) {
 
       <FormError message={error} />
 
-      <FormActions cancelHref={`/clients/${client.id}`} submitLabel="Save" isPending={isPending}>
+      <FormActions cancelHref={`/clients/${client.id}`} submitLabel={m.common.save} isPending={isPending}>
         <DestructiveTextButton onClick={() => setConfirmingDelete(true)} disabled={isPending}>
-          Delete patient
+          {t.deletePatient}
         </DestructiveTextButton>
       </FormActions>
 
       <ConfirmDeleteDialog
         open={confirmingDelete}
         onOpenChange={setConfirmingDelete}
-        title="Delete this patient?"
-        description="This permanently removes the patient record, including appointments, documents, and payment history. This can't be undone."
+        title={t.deleteTitle}
+        description={t.deleteDescription}
         isPending={isPending}
         onConfirm={deleteClient}
       />

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { prisma } from "@/lib/prisma";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { ClientsWorkspace } from "@/components/clients/clients-workspace";
@@ -11,7 +13,9 @@ import {
   type ClientDirectoryFilter,
 } from "@/lib/clients";
 
-export const metadata: Metadata = { title: "Clients | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.clients.meta.clients };
+}
 
 const PAGE_SIZE = 25;
 
@@ -197,6 +201,7 @@ export default async function ClientsPage({
     take: PAGE_SIZE,
   });
 
+  const { locale } = await getI18n();
   const initialView = buildClientDirectoryViewFromRecords(records, {
     total,
     page: currentPage,
@@ -210,13 +215,15 @@ export default async function ClientsPage({
       attention: attentionCount,
       noVisits: noVisitsCount,
     },
-  });
+  }, locale);
 
   return (
-    <ClientsWorkspace
-      initialView={initialView}
-      initialQuery={query}
-      activeFilter={filter}
-    />
+    <WithMessages namespaces={["clients"]}>
+      <ClientsWorkspace
+        initialView={initialView}
+        initialQuery={query}
+        activeFilter={filter}
+      />
+    </WithMessages>
   );
 }

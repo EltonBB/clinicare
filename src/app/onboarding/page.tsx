@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { getCurrentBusiness } from "@/lib/business";
 import {
   isOnboardingCompleted,
@@ -9,7 +11,9 @@ import {
 } from "@/lib/onboarding";
 import { createClient } from "@/utils/supabase/server";
 
-export const metadata: Metadata = { title: "Set up your workspace | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.onboarding.meta.title };
+}
 
 export default async function OnboardingPage() {
   const supabase = await createClient();
@@ -72,11 +76,13 @@ export default async function OnboardingPage() {
   };
 
   return (
-    <OnboardingFlow
-      initialState={hydratedInitialState}
-      businessName={businessName}
-      ownerName={ownerName}
-      userId={user.id}
-    />
+    <WithMessages namespaces={["onboarding"]}>
+      <OnboardingFlow
+        initialState={hydratedInitialState}
+        businessName={businessName}
+        ownerName={ownerName}
+        userId={user.id}
+      />
+    </WithMessages>
   );
 }

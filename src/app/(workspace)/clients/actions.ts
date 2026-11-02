@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 
+import { getLocale } from "@/i18n/server";
 import { prisma } from "@/lib/prisma";
 import { retireMovedCheckupDrafts } from "@/lib/automation-events";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
@@ -560,7 +561,7 @@ async function fetchClientRecord(businessId: string, clientId: string) {
     },
   });
 
-  return buildClientRecord(client, client.business.currency);
+  return buildClientRecord(client, client.business.currency, new Date(), await getLocale());
 }
 
 async function requireOwnedClient(clientId: string) {

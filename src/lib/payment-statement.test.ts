@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPaymentStatementCsv } from "@/lib/payment-statement";
+import { clients as en } from "@/i18n/messages/en/clients";
+import { clients as sq } from "@/i18n/messages/sq/clients";
+import { buildPaymentStatementCsv as build } from "@/lib/payment-statement";
 
-const payment = (overrides: Partial<Parameters<typeof buildPaymentStatementCsv>[0][number]> = {}) => ({
+const buildPaymentStatementCsv = (payments: Parameters<typeof build>[0]) => build(payments, en);
+
+const payment = (overrides: Partial<Parameters<typeof build>[0][number]> = {}) => ({
   paidAt: "Sep 20, 2026",
   createdAt: "Sep 18, 2026",
   invoiceNumber: "INV-1",
@@ -55,5 +59,14 @@ describe("buildPaymentStatementCsv", () => {
 
   it("gives an empty statement just the header", () => {
     expect(buildPaymentStatementCsv([])).toBe('"Date","Invoice","Description","Amount","Status","Payment method","Receipt"');
+  });
+
+  it("writes the statement in the reader's language", () => {
+    expect(build([payment({ status: "Unpaid", paymentMethod: "" })], sq)).toBe(
+      [
+        '"Data","Fatura","Përshkrimi","Shuma","Statusi","Mënyra e pagesës","Dëftesa"',
+        '"Sep 20, 2026","INV-1","Whitening","€125.00","Pa paguar","Manuale","R-1"',
+      ].join("\n")
+    );
   });
 });

@@ -25,6 +25,9 @@ import {
   uploadWorkspaceImage,
 } from "@/lib/media-storage-client";
 import { cn, firstDisplayName } from "@/lib/utils";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
 
 import { ClinicPreview } from "./clinic-preview";
 import { inkButtonClassName } from "./form-parts";
@@ -38,14 +41,6 @@ const legacyDraftStorageKey = "vela:onboarding-draft";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
-// The panel's closing line follows the step, saying what that step gives the clinic.
-const panelLines = {
-  welcome: ["Your clinic,", "taking shape."],
-  clinic: ["Your name,", "on every screen."],
-  hours: ["Your week,", "ready for bookings."],
-  team: ["Your team,", "on the calendar."],
-} as const;
-
 type OnboardingFlowProps = {
   initialState: OnboardingState;
   businessName: string;
@@ -54,37 +49,39 @@ type OnboardingFlowProps = {
   userId: string;
 };
 
-function getStepError(state: OnboardingState, solo: boolean): string | null {
+type Errors = Messages["onboarding"]["errors"];
+
+function getStepError(state: OnboardingState, solo: boolean, t: Errors): string | null {
   const step = onboardingSteps[Math.min(Math.max(state.currentStep, 1), onboardingSteps.length) - 1];
 
   if (step.id === "clinic") {
     if (!state.clinic.name.trim()) {
-      return "Enter your clinic name before continuing.";
+      return t.clinicName;
     }
     if (!state.owner.name.trim()) {
-      return "Enter your name before continuing.";
+      return t.ownerName;
     }
     if (!businessTypes.includes(state.clinic.type as (typeof businessTypes)[number])) {
-      return "Choose what kind of clinic this is.";
+      return t.type;
     }
     if (state.clinic.accentColor === "custom" && !normalizeBrandHexColor(state.clinic.accentHex)) {
-      return "Enter a valid brand color, for example #3142D8.";
+      return t.color;
     }
     return null;
   }
 
   if (step.id === "hours") {
     if (!weekdayOrder.some((day) => state.workingHours[day].enabled)) {
-      return "Open at least one day so patients can book.";
+      return t.openDay;
     }
     if (weekdayOrder.some((day) => state.workingHours[day].enabled && hoursBetweenTimes(state.workingHours[day].start, state.workingHours[day].end) <= 0)) {
-      return "Each open day needs a closing time after its opening time.";
+      return t.closingTime;
     }
     return null;
   }
 
   if (step.id === "team" && !solo && !state.staffMember.name.trim()) {
-    return "Add your first team member, or choose “It's just me for now”.";
+    return t.team;
   }
 
   return null;
@@ -100,6 +97,9 @@ function getStepError(state: OnboardingState, solo: boolean): string | null {
 export function OnboardingFlow({ initialState, businessName, ownerName, userId }: OnboardingFlowProps) {
   const router = useRouter();
   const reduce = useReducedMotion();
+  const { m } = useI18n();
+  const t = m.onboarding;
+  const serverText = useServerText();
   const draftKey = `${legacyDraftStorageKey}:${userId}`;
 
   // Seed from initialState only, so the server render and the first client render
@@ -121,7 +121,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
   const stepIndex = Math.min(Math.max(state.currentStep, 1), onboardingSteps.length) - 1;
   const step = onboardingSteps[stepIndex];
   const isLastStep = state.currentStep >= onboardingSteps.length;
-  const ownerFirstName = firstDisplayName(state.owner.name || ownerName) || "there";
+  const ownerFirstName = firstDisplayName(state.owner.name || ownerName) || t.welcome.fallbackName;
 
   const stepVariants: Variants = {
     initial: { opacity: 0, y: reduce ? 0 : 12 },
@@ -186,7 +186,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
       const result = await saveOnboardingStateAction(nextState);
       if (!result.ok || !result.state) {
         if (result.state) setState(result.state);
-        setErrorMessage(result.error ?? "We couldn't save your progress.");
+        setErrorMessage(result.error ?? t.errors.save);
         return;
       }
       setState(result.state);
@@ -199,7 +199,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
   }
 
   function handleNext() {
-    const validationError = getStepError(state, solo);
+    const validationError = getStepError(state, solo, t.errors);
     if (validationError) {
       setErrorMessage(validationError);
       return;
@@ -236,11 +236,11 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
   async function handleLogoUpload(file: File | null) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setErrorMessage("Upload an image file for the clinic logo.");
+      setErrorMessage(t.errors.logoType);
       return;
     }
     if (file.size > 750_000) {
-      setErrorMessage("Logo file is too large. Upload an image under 750 KB.");
+      setErrorMessage(t.errors.logoSize);
       return;
     }
     setIsLogoUploading(true);
@@ -250,7 +250,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
       setLogoPreviewUrl(uploadedLogo.signedUrl);
       setErrorMessage("");
     } catch (error) {
-      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this logo."));
+      setErrorMessage(safeUploadErrorMessage(error, t.errors.logoUpload));
     } finally {
       setIsLogoUploading(false);
     }
@@ -281,8 +281,8 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
   return (
     <OnboardingShell
       panel={panel}
-      panelLead={showWelcome ? panelLines.welcome[0] : panelLines[step.id][0]}
-      panelTail={showWelcome ? panelLines.welcome[1] : panelLines[step.id][1]}
+      panelLead={showWelcome ? t.panel.welcome[0] : t.panel[step.id][0]}
+      panelTail={showWelcome ? t.panel.welcome[1] : t.panel[step.id][1]}
     >
       {!showWelcome ? (
         <div className="mb-8">
@@ -299,7 +299,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
             ))}
           </div>
           <p className="mt-3 text-sm text-muted-foreground">
-            Step {stepIndex + 1} of {onboardingSteps.length} · {step.shortLabel}
+            {fmt(t.stepOf, { step: stepIndex + 1, total: onboardingSteps.length, label: t.steps[step.id].short })}
           </p>
         </div>
       ) : null}
@@ -317,9 +317,9 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
           ) : (
             <>
               <h1 className="text-[2rem] font-semibold leading-[1.08] tracking-[-0.03em] text-[var(--brand-ink)]">
-                {step.title}
+                {t.steps[step.id].title}
               </h1>
-              <p className="mt-2 text-[15px] leading-7 text-muted-foreground">{step.why}</p>
+              <p className="mt-2 text-[15px] leading-7 text-muted-foreground">{t.steps[step.id].why}</p>
               <div className="mt-7">
                 {step.id === "clinic" ? (
                   <ClinicStep
@@ -364,7 +364,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
             role="alert"
             className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
           >
-            {errorMessage}
+            {serverText(errorMessage)}
           </p>
         ) : null}
 
@@ -378,7 +378,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
               setShowWelcome(false);
             }}
           >
-            Set up my clinic
+            {t.buttons.start}
             <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" data-icon="inline-end" />
           </Button>
         ) : (
@@ -392,7 +392,7 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
               disabled={isPending}
             >
               <ArrowLeft data-icon="inline-start" />
-              Back
+              {t.buttons.back}
             </Button>
             <Button
               type="button"
@@ -404,11 +404,11 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
               {isPending ? (
                 <>
                   <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
-                  {isLastStep ? "Creating your workspace..." : "Saving..."}
+                  {isLastStep ? t.buttons.creating : t.buttons.saving}
                 </>
               ) : (
                 <>
-                  {isLastStep ? "Finish setup" : "Continue"}
+                  {isLastStep ? t.buttons.finish : t.buttons.continue}
                   <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/next:translate-x-0.5" data-icon="inline-end" />
                 </>
               )}

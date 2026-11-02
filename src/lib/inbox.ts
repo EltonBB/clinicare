@@ -5,6 +5,9 @@ import type {
   MessageDeliveryStatus,
 } from "@prisma/client";
 
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
+import { messages as dictionaries } from "@/i18n/messages";
 import {
   formatZonedDayName,
   formatZonedFullDate,
@@ -106,50 +109,49 @@ export function phoneLookupKey(value: string) {
 export function conversationDisplayName(
   contactName: string,
   phoneNumber: string,
-  linkedClientName?: string | null
+  linkedClientName?: string | null,
+  locale: Locale = "en"
 ): string {
   if (linkedClientName) {
     return linkedClientName;
   }
   return contactName.trim().length > 0 && phoneLookupKey(contactName) !== phoneLookupKey(phoneNumber)
     ? contactName
-    : "Unregistered contact";
+    : dictionaries[locale].inbox.view.unregistered;
 }
 
-function formatConversationTimestamp(date: Date, now: Date, timeZone: string) {
+type Copy = { locale: Locale; t: (typeof dictionaries)["en"]["inbox"]["view"] };
+
+function formatConversationTimestamp(date: Date, now: Date, timeZone: string, { locale, t }: Copy) {
   const daysAgo = zonedCalendarDaysBetween(date, now, timeZone);
 
   if (daysAgo <= 0) {
-    return formatZonedTime(date, timeZone);
+    return formatZonedTime(date, timeZone, locale);
   }
 
   if (daysAgo === 1) {
-    return "Yesterday";
+    return t.yesterday;
   }
 
   if (daysAgo < 7) {
-    return formatZonedDayName(date, timeZone);
+    return formatZonedDayName(date, timeZone, locale);
   }
 
-  return formatZonedShortDate(date, timeZone);
+  return formatZonedShortDate(date, timeZone, locale);
 }
 
-function formatMessageTimestamp(date: Date, timeZone: string) {
-  return formatZonedTime(date, timeZone);
-}
-
-function formatMessageDayLabel(date: Date, now: Date, timeZone: string) {
+function formatMessageDayLabel(date: Date, now: Date, timeZone: string, { locale, t }: Copy) {
   const daysAgo = zonedCalendarDaysBetween(date, now, timeZone);
 
   if (daysAgo <= 0) {
-    return "Today";
+    return t.today;
   }
 
   if (daysAgo === 1) {
-    return "Yesterday";
+    return t.yesterday;
   }
 
-  return formatZonedFullDate(date, timeZone);
+  return formatZonedFullDate(date, timeZone, locale);
 }
 
 function toMessageSender(direction: Message["direction"]): InboxMessage["sender"] {
@@ -174,28 +176,12 @@ function toInboxDeliveryStatus(
   return status.toLowerCase() as InboxMessage["deliveryStatus"];
 }
 
-function deliveryLabel(status: MessageDeliveryStatus | null) {
+function deliveryLabel(status: MessageDeliveryStatus | null, { t }: Copy) {
   if (!status) {
     return undefined;
   }
 
-  if (status === "FAILED") {
-    return "Failed";
-  }
-
-  if (status === "READ") {
-    return "Read";
-  }
-
-  if (status === "DELIVERED") {
-    return "Delivered";
-  }
-
-  if (status === "SENT") {
-    return "Sent";
-  }
-
-  return "Queued";
+  return t.delivery[status as keyof Copy["t"]["delivery"]] ?? t.delivery.QUEUED;
 }
 
 // Index clients by their digit phone key once, so each conversation resolves its
@@ -220,8 +206,10 @@ export function buildInboxConversation(
   clients: InboxClientLink[],
   now: Date = new Date(),
   timeZone: string = getAppTimeZone(),
-  clientIndex?: Map<string, InboxClientLink>
+  clientIndex?: Map<string, InboxClientLink>,
+  locale: Locale = "en"
 ): InboxConversation {
+  const copy: Copy = { locale, t: dictionaries[locale].inbox.view };
   const index = clientIndex ?? buildClientPhoneIndex(clients);
   const linkedClient = index.get(phoneLookupKey(conversation.phoneNumber));
   const sortedMessages = [...conversation.messages].sort(
@@ -231,10 +219,10 @@ export function buildInboxConversation(
     id: message.id,
     sender: toMessageSender(message.direction),
     body: message.body,
-    timestamp: formatMessageTimestamp(message.sentAt, timeZone),
-    dayLabel: formatMessageDayLabel(message.sentAt, now, timeZone),
+    timestamp: formatZonedTime(message.sentAt, timeZone, locale),
+    dayLabel: formatMessageDayLabel(message.sentAt, now, timeZone, copy),
     deliveryStatus: toInboxDeliveryStatus(message.deliveryStatus),
-    deliveryLabel: deliveryLabel(message.deliveryStatus),
+    deliveryLabel: deliveryLabel(message.deliveryStatus, copy),
   }));
   const lastMessage = sortedMessages[sortedMessages.length - 1];
   const lastActivityAt = lastMessage?.sentAt ?? conversation.updatedAt;
@@ -242,7 +230,8 @@ export function buildInboxConversation(
   const displayName = conversationDisplayName(
     conversation.contactName,
     conversation.phoneNumber,
-    linkedClient?.name
+    linkedClient?.name,
+    locale
   );
 
   return {
@@ -252,15 +241,15 @@ export function buildInboxConversation(
     clientName: displayName,
     displayName,
     isLinkedClient,
-    contactStatusLabel: linkedClient ? "Client linked" : "Unregistered contact",
+    contactStatusLabel: linkedClient ? copy.t.clientLinked : copy.t.unregistered,
     preview: lastMessage?.body ?? "",
     unreadCount: conversation.unreadCount,
-    lastMessageAt: formatConversationTimestamp(lastActivityAt, now, timeZone),
+    lastMessageAt: formatConversationTimestamp(lastActivityAt, now, timeZone, copy),
     activeLabel: linkedClient
       ? lastMessage
-        ? `Last message ${formatConversationTimestamp(lastActivityAt, now, timeZone)}`
+        ? fmt(copy.t.lastMessage, { time: formatConversationTimestamp(lastActivityAt, now, timeZone, copy) })
         : ""
-      : "Reply first, then convert to client",
+      : copy.t.replyFirst,
     messages,
     hasFullHistory: conversation.hasFullHistory ?? true,
   };
@@ -274,12 +263,13 @@ export function buildInboxViewFromWorkspace(args: {
   // `conversations` itself, since that array is the same capped page the
   // sum must not match.
   totalUnreadCount: number;
+  locale?: Locale;
 }): InboxViewModel {
   const now = new Date();
   const timeZone = getAppTimeZone();
   const clientIndex = buildClientPhoneIndex(args.clients);
   const conversations = args.conversations.map((conversation) =>
-    buildInboxConversation(conversation, args.clients, now, timeZone, clientIndex)
+    buildInboxConversation(conversation, args.clients, now, timeZone, clientIndex, args.locale)
   );
 
   return {

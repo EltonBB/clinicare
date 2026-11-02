@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronRight, Plus, Search } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useI18n } from "@/i18n/client";
+import { fmt, plural } from "@/i18n/format";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -80,6 +82,8 @@ export function ClientsWorkspace({
   activeFilter,
 }: ClientsWorkspaceProps) {
   const router = useRouter();
+  const { locale, m } = useI18n();
+  const t = m.clients.directory;
   const [query, setQuery] = useState(initialQuery);
   const [isNavigating, startNavigating] = useTransition();
   const skipNextSearchSync = useRef(true);
@@ -129,14 +133,14 @@ export function ClientsWorkspace({
   return (
     <WorkspacePage>
       <WorkspaceHeader
-        title="Clients"
+        title={t.title}
         actions={
           <Link
             href="/clients/new"
             className={cn(buttonVariants({ variant: "solid" }), "h-10 rounded-(--radius-card) px-4")}
           >
             <Plus className="size-4" />
-            New client
+            {t.newClient}
           </Link>
         }
       />
@@ -148,7 +152,7 @@ export function ClientsWorkspace({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search clients by name, email, or phone..."
+              placeholder={t.search}
               className={searchFieldClass}
             />
           </div>
@@ -174,7 +178,7 @@ export function ClientsWorkspace({
                   count={count}
                   onClick={() => applyFilter(item.value)}
                 >
-                  {item.label}
+                  {t.filters[item.value]}
                 </FilterChip>
               );
             })}
@@ -183,8 +187,9 @@ export function ClientsWorkspace({
 
         {hasClients && isFiltering ? (
           <p className="text-xs font-medium text-muted-foreground">
-            Showing {view.clients.length === 0 ? 0 : `${rangeStart}–${rangeEnd}`} of{" "}
-            {view.total} matching clients
+            {plural(t.showing, view.total, locale, {
+              range: view.clients.length === 0 ? "0" : `${rangeStart}–${rangeEnd}`,
+            })}
           </p>
         ) : null}
 
@@ -198,12 +203,12 @@ export function ClientsWorkspace({
             headerClassName="py-2.5"
             headers={
               <div className={cn("hidden w-full gap-3 lg:grid", clientTableGrid)}>
-                <span>Name</span>
-                <span>Last visit</span>
-                <span>Latest appointment</span>
-                <span>Total visits</span>
-                <span>Status</span>
-                <span className="text-right">Actions</span>
+                <span>{t.columns.name}</span>
+                <span>{t.columns.lastVisit}</span>
+                <span>{t.columns.latestAppointment}</span>
+                <span>{t.columns.totalVisits}</span>
+                <span>{t.columns.status}</span>
+                <span className="text-right">{t.columns.actions}</span>
               </div>
             }
           >
@@ -211,17 +216,17 @@ export function ClientsWorkspace({
               <WorkspaceFirstRun
                 gridClassName={clientTableGrid}
                 cells={["identity", "text", "wide", "text", "pill", "action"]}
-                title="No clients yet"
-                description="Each client's visits, messages, files and payments live on one record."
+                title={t.firstRunTitle}
+                description={t.firstRunCopy}
                 actionHref="/clients/new"
-                actionLabel="Add a client"
+                actionLabel={t.addClient}
               />
             ) : view.clients.length === 0 ? (
               <div className="px-6 py-8">
                 <WorkspaceEmptyState
                   icon={Search}
-                  title="No clients match this view"
-                  description="Try a different search term or filter."
+                  title={t.noMatchTitle}
+                  description={t.noMatchCopy}
                   compact
                 />
               </div>
@@ -245,18 +250,18 @@ export function ClientsWorkspace({
                     </div>
                   </HoverPrefetchLink>
                   <p className="text-sm text-muted-foreground lg:block">
-                    <span className="font-medium text-foreground lg:hidden">Last visit: </span>
+                    <span className="font-medium text-foreground lg:hidden">{t.lastVisitLabel} </span>
                     {client.lastVisit}
                   </p>
                   <div className="min-w-0 text-sm">
                     {client.lastService ? (
                       <p className="truncate font-medium text-foreground">{client.lastService}</p>
                     ) : (
-                      <p className="text-muted-foreground">No appointments yet</p>
+                      <p className="text-muted-foreground">{t.noAppointments}</p>
                     )}
                   </div>
                   <p className="text-sm text-foreground">
-                    <span className="font-medium lg:hidden">Visits: </span>
+                    <span className="font-medium lg:hidden">{t.visitsLabel} </span>
                     {client.totalVisits}
                   </p>
                   <div className="min-w-0">
@@ -267,7 +272,7 @@ export function ClientsWorkspace({
                       )}
                     >
                       <span className={statusDot(client.status)} />
-                      <span className="capitalize">{client.status}</span>
+                      <span>{m.clients.status[client.status]}</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -278,7 +283,7 @@ export function ClientsWorkspace({
                         "h-8 rounded-(--radius-tile) px-3 text-xs"
                       )}
                     >
-                      Details
+                      {t.details}
                       <ChevronRight className="size-4" />
                     </HoverPrefetchLink>
                   </div>
@@ -291,7 +296,7 @@ export function ClientsWorkspace({
         {view.total > view.pageSize ? (
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-medium text-muted-foreground">
-              Page {view.page} of {pageCount}
+              {fmt(t.pageOf, { page: view.page, count: pageCount })}
             </p>
             <div className="flex gap-2">
               <button
@@ -303,7 +308,7 @@ export function ClientsWorkspace({
                   "rounded-(--radius-tile)"
                 )}
               >
-                Previous
+                {t.previous}
               </button>
               <button
                 type="button"
@@ -314,7 +319,7 @@ export function ClientsWorkspace({
                   "rounded-(--radius-tile)"
                 )}
               >
-                Next
+                {t.next}
               </button>
             </div>
           </div>

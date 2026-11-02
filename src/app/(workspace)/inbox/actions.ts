@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { getLocale } from "@/i18n/server";
 import { MAX_MESSAGE_BODY_LENGTH } from "@/lib/messaging/limits";
 import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
@@ -110,7 +111,14 @@ async function hydrateConversation(conversationId: string, businessId: string) {
       })
     : null;
 
-  return buildInboxConversation(conversation, matchedClient ? [matchedClient] : []);
+  return buildInboxConversation(
+    conversation,
+    matchedClient ? [matchedClient] : [],
+    undefined,
+    undefined,
+    undefined,
+    await getLocale()
+  );
 }
 
 async function loadInboxView(businessId: string) {
@@ -124,6 +132,7 @@ async function loadInboxView(businessId: string) {
     conversations,
     clients,
     totalUnreadCount,
+    locale: await getLocale(),
   });
 }
 

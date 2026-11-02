@@ -7,6 +7,7 @@ import { saveClientAction } from "@/app/(workspace)/clients/actions";
 import { ClientProfileFields } from "@/components/clients/client-profile-fields";
 import { FormActions, FormError } from "@/components/workspace/form-parts";
 import { WorkspaceFormSection } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
 
 type NewClientFormProps = {
   nextAfterCreate?: "calendar";
@@ -14,6 +15,8 @@ type NewClientFormProps = {
 
 export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
   const router = useRouter();
+  const { m } = useI18n();
+  const serverText = useServerText();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
@@ -40,7 +43,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
       });
 
       if (!result.ok || !result.client) {
-        setError(result.error ?? "We couldn't create this patient.");
+        setError(serverText(result.error) ?? m.clients.form.createFailed);
         return;
       }
 
@@ -63,7 +66,7 @@ export function NewClientForm({ nextAfterCreate }: NewClientFormProps) {
 
       <FormError message={error} />
 
-      <FormActions cancelHref="/clients" submitLabel="Create" isPending={isPending} />
+      <FormActions cancelHref="/clients" submitLabel={m.clients.form.create} isPending={isPending} />
     </form>
   );
 }

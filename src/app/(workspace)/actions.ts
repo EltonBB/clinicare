@@ -1,5 +1,7 @@
 "use server";
 
+import { plural } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
 import { canUseWorkspace } from "@/lib/billing-access";
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { checkinDetail } from "@/lib/notification-copy";
@@ -181,12 +183,12 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
       ? "errored"
       : "disconnected";
 
+  const { locale, m } = await getI18n();
+  const copy = m.shell.notifications;
   const inboxItems = notificationRows.map((row) => ({
     id: `conversation:${row.id}`,
     title: row.contactName,
-    detail: `${row.unreadCount} unread message${
-      row.unreadCount === 1 ? "" : "s"
-    } waiting in the inbox.`,
+    detail: plural(copy.inboxItem, row.unreadCount, locale),
     href: "/inbox",
     atMs: row.updatedAt.getTime(),
   }));
@@ -194,9 +196,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
   const staffItems = staffThreadRows.map((row) => ({
     id: `staff:${row.staffMemberId}`,
     title: row.staffMember.name,
-    detail: `${row.unreadForAdmin} unread message${
-      row.unreadForAdmin === 1 ? "" : "s"
-    } in your team thread.`,
+    detail: plural(copy.staffItem, row.unreadForAdmin, locale),
     href: `/staff/${row.staffMemberId}?tab=messages`,
     atMs: row.lastMessageAt.getTime(),
   }));
@@ -204,7 +204,7 @@ export async function refreshWorkspaceNotificationsAction(): Promise<{
   const checkinItems = checkInRows.map((row) => ({
     id: `checkin:${row.id}`,
     title: row.staffMember.name,
-    detail: checkinDetail(row.checkedInAt),
+    detail: checkinDetail(row.checkedInAt, new Date(), locale, copy),
     href: `/staff/${row.staffMemberId}`,
     atMs: row.checkedInAt.getTime(),
   }));

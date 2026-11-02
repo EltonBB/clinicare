@@ -1,4 +1,5 @@
-import { intlLocale, type Locale } from "@/i18n/config";
+import type { Locale } from "@/i18n/config";
+import { dateFormatter } from "@/i18n/format";
 
 const DEFAULT_APP_TIME_ZONE = "Europe/Budapest";
 
@@ -313,7 +314,7 @@ export function formatZonedDateKey(date = new Date(), timeZone = getAppTimeZone(
 }
 
 export function formatZonedLongDate(date = new Date(), timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     weekday: "long",
     month: "long",
@@ -323,21 +324,21 @@ export function formatZonedLongDate(date = new Date(), timeZone = getAppTimeZone
 }
 
 export function formatZonedDayName(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     weekday: "short",
   }).format(date);
 }
 
 export function formatZonedMonthName(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     month: "short",
   }).format(date);
 }
 
 export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     month: "short",
     day: "numeric",
@@ -345,7 +346,7 @@ export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone(), lo
 }
 
 export function formatZonedWeekdayShortDate(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     weekday: "short",
     month: "short",
@@ -354,7 +355,7 @@ export function formatZonedWeekdayShortDate(date: Date, timeZone = getAppTimeZon
 }
 
 export function formatZonedFullDate(date = new Date(), timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     month: "long",
     day: "numeric",
@@ -378,7 +379,7 @@ export function zonedCalendarDaysBetween(
 }
 
 export function formatZonedMonthYear(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     month: "long",
     year: "numeric",
@@ -386,7 +387,7 @@ export function formatZonedMonthYear(date: Date, timeZone = getAppTimeZone(), lo
 }
 
 export function formatZonedTime(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     hour: "numeric",
     minute: "2-digit",
@@ -425,7 +426,7 @@ export function getZonedWallClockMinutesBetween(start: Date, end: Date, timeZone
 }
 
 export function formatZonedShortDateTime(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
-  return new Intl.DateTimeFormat(intlLocale(locale), {
+  return dateFormatter(locale, {
     timeZone,
     month: "short",
     day: "numeric",

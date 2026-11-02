@@ -6,6 +6,7 @@ import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { lockClientShared, lockStaffMemberShared } from "@/lib/row-locks";
 import { isSameService, type WaitlistCandidate } from "@/lib/slot-fill-matching";
 import { APPOINTMENT_STAFF_AVAILABLE_WHERE, AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
+import type { Locale } from "@/i18n/config";
 import { formatZonedShortDate } from "@/lib/time-zone";
 import {
   MAX_ACTIVE_WAITLIST_ENTRIES,
@@ -46,7 +47,11 @@ function activeWaitlistEntryWhere(businessId: string): Prisma.WaitlistEntryWhere
  * Everyone still on the waiting list — waiting, or holding an offer that
  * hasn't been booked, declined, or expired yet — oldest first.
  */
-export async function listWaitingEntries(businessId: string, now: Date = new Date()): Promise<WaitlistEntryRow[]> {
+export async function listWaitingEntries(
+  businessId: string,
+  now: Date = new Date(),
+  locale: Locale = "en"
+): Promise<WaitlistEntryRow[]> {
   const rows = await prisma.waitlistEntry.findMany({
     where: activeWaitlistEntryWhere(businessId),
     include: {
@@ -88,7 +93,7 @@ export async function listWaitingEntries(businessId: string, now: Date = new Dat
       service: row.service,
       staffMemberId: row.staffMemberId,
       staffMemberName: row.staffMember?.name ?? null,
-      earliestDateLabel: row.earliestDate ? formatZonedShortDate(row.earliestDate) : null,
+      earliestDateLabel: row.earliestDate ? formatZonedShortDate(row.earliestDate, undefined, locale) : null,
       preferredDays: row.preferredDays,
       preferredFrom: row.preferredFrom,
       preferredTo: row.preferredTo,

@@ -51,12 +51,14 @@ export function NativeSelect({
   value,
   onChange,
   options,
+  optionLabels,
   ariaLabel,
   className,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
+  optionLabels?: Readonly<Record<string, string>>;
   ariaLabel: string;
   className?: string;
 }) {
@@ -71,7 +73,7 @@ export function NativeSelect({
       {options.includes(value) ? null : <option value={value}>{value}</option>}
       {options.map((option) => (
         <option key={option} value={option}>
-          {option}
+          {optionLabels?.[option] ?? option}
         </option>
       ))}
     </select>
