@@ -6,7 +6,8 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { MODULE_GLYPHS } from "../shared/module-glyphs";
 import { PauseToggle } from "../shared/pause-toggle";
-import { MODULES } from "../shared/modules";
+import { MODULE_COUNT, useModules } from "../shared/modules";
+import { useI18n } from "@/i18n/client";
 
 /**
  * The six modules as a slow, endless strip under the hero, each with its drawn
@@ -20,11 +21,13 @@ import { MODULES } from "../shared/modules";
 export function ModuleStrip() {
   const [hovered, setHovered] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
-  const items = [...MODULES, ...MODULES];
+  const t = useI18n().m.marketing;
+  const modules = useModules();
+  const items = [...modules, ...modules];
 
   return (
     <nav
-      aria-label="Modules"
+      aria-label={t.modulesNav}
       className="group/strip relative overflow-hidden border-y border-border/60 marquee-mask"
       onBlur={(e) => {
         if (e.currentTarget.contains(e.relatedTarget)) return;
@@ -39,14 +42,14 @@ export function ModuleStrip() {
         style={paused ? { animationPlayState: "paused" } : undefined}
       >
         {items.map((mod, i) => {
-          const index = i % MODULES.length;
+          const index = i % MODULE_COUNT;
           const Glyph = MODULE_GLYPHS[index];
           const on = hovered === index;
           return (
-            <li key={i} aria-hidden={i >= MODULES.length || undefined} className="border-r border-border/60">
+            <li key={i} aria-hidden={i >= MODULE_COUNT || undefined} className="border-r border-border/60">
               <Link
                 href={`/product?module=${index}#modules`}
-                tabIndex={i >= MODULES.length ? -1 : undefined}
+                tabIndex={i >= MODULE_COUNT ? -1 : undefined}
                 onPointerEnter={() => setHovered(index)}
                 onFocus={() => setHovered(index)}
                 className={cn(
@@ -68,7 +71,7 @@ export function ModuleStrip() {
       <PauseToggle
         paused={paused}
         onToggle={() => setPaused((p) => !p)}
-        label="module strip"
+        label={t.pause.modules}
         className="absolute right-3 top-1/2 z-10 -translate-y-1/2"
       />
     </nav>

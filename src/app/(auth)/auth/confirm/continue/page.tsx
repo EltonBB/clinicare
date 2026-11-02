@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { getI18n } from "@/i18n/server";
 import { confirmEmailLinkAction } from "@/app/(auth)/actions";
 import {
   authConfirmContinuationPath,
@@ -9,7 +10,9 @@ import {
 } from "@/lib/app-url-policy";
 import { SubmitButton } from "@/components/auth/submit-button";
 
-export const metadata: Metadata = { title: "Confirm your email | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.auth.confirmContinue.meta };
+}
 
 type ConfirmContinuePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -41,24 +44,27 @@ export default async function ConfirmContinuePage({ searchParams }: ConfirmConti
     redirect(INVALID_CONFIRM_LINK_REDIRECT);
   }
 
+  const { m } = await getI18n();
+  const t = m.auth.confirmContinue;
+
   return (
     <>
 
       <div className="space-y-2">
         <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-          Confirm your email
+          {t.title}
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">
-          For your security, confirm below to continue.
+          {t.lede}
         </p>
       </div>
 
       <form action={confirmEmailLinkAction.bind(null, tokenHash, type, next)} className="mt-8">
         <SubmitButton
-          pendingLabel="Confirming..."
+          pendingLabel={m.auth.resetConfirm.pending}
           className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"
         >
-          Continue
+          {m.auth.resetConfirm.continue}
         </SubmitButton>
       </form>
     </>

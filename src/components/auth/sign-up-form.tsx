@@ -8,20 +8,26 @@ import { SubmitButton } from "@/components/auth/submit-button";
 import { authFieldClassName } from "@/components/auth/field-styles";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Input } from "@/components/ui/input";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
+import { TRIAL_DAYS } from "@/lib/checkout-state";
 import { cn } from "@/lib/utils";
 
 const initialState: AuthActionState = {};
 
 function FieldError({ message }: { message?: string }) {
+  const serverText = useServerText();
   if (!message) {
     return null;
   }
 
-  return <p className="state-pop text-xs text-destructive">{message}</p>;
+  return <p className="state-pop text-xs text-destructive">{serverText(message)}</p>;
 }
 
 export function SignUpForm() {
   const [state, formAction] = useActionState(signUpAction, initialState);
+  const t = useI18n().m.auth;
+  const serverText = useServerText();
   const [length, setLength] = useState(0);
   const long = length >= 8;
 
@@ -29,20 +35,20 @@ export function SignUpForm() {
     <form action={formAction} onReset={() => setLength(0)} className="space-y-5">
       {state.error ? (
         <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {state.error}
+          {serverText(state.error)}
         </div>
       ) : null}
 
       <div className="space-y-2">
         <label htmlFor="email" className="text-sm font-semibold text-foreground">
-          Email
+          {t.fields.email}
         </label>
         <Input
           id="email"
           name="email"
           type="email"
           autoComplete="email"
-          placeholder="name@clinic.com"
+          placeholder={t.fields.emailPlaceholder}
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(authFieldClassName, state.fieldErrors?.email && "border-destructive")}
@@ -52,13 +58,13 @@ export function SignUpForm() {
 
       <div className="space-y-2">
         <label htmlFor="password" className="text-sm font-semibold text-foreground">
-          Password
+          {t.fields.password}
         </label>
         <PasswordInput
           id="password"
           name="password"
           autoComplete="new-password"
-          placeholder="Create a password"
+          placeholder={t.fields.createPasswordPlaceholder}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           aria-describedby="password-rule"
           onChange={(e) => setLength(e.target.value.length)}
@@ -78,7 +84,7 @@ export function SignUpForm() {
           </span>
           <span id="password-rule" className={cn("flex items-center gap-1 text-xs font-medium transition-colors duration-(--duration-base)", long ? "text-primary" : "text-muted-foreground")}>
             <Check className={cn("size-3.5 transition-[opacity,transform] duration-(--duration-base)", long ? "scale-100 opacity-100" : "scale-75 opacity-0")} />
-            At least 8 characters
+            {t.fields.minLength}
           </span>
         </div>
         <FieldError message={state.fieldErrors?.password} />
@@ -86,12 +92,12 @@ export function SignUpForm() {
 
       <div className="space-y-3 pt-1">
         <SubmitButton
-          pendingLabel="Creating account..."
+          pendingLabel={t.signUp.pending}
           className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"
         >
-          Create account
+          {t.signUp.submit}
         </SubmitButton>
-        <p className="text-center text-xs text-muted-foreground">Then set up your clinic and start your 14-day free trial.</p>
+        <p className="text-center text-xs text-muted-foreground">{fmt(t.signUp.trialNote, { days: TRIAL_DAYS })}</p>
       </div>
     </form>
   );

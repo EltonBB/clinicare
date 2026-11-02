@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { legalLastUpdatedOn, policySections, type Policy } from "@/lib/legal-content";
 import { SUPPORT_EMAIL } from "@/lib/public-contact";
+import { formatZonedFullDate } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
 import { MarketingShell } from "@/components/marketing/shell/marketing-shell";
 import { WordReveal } from "@/components/marketing/motion/word-reveal";
@@ -13,32 +17,29 @@ export type LegalSection = {
 };
 
 const POLICIES = [
-  { key: "terms", label: "Terms", href: "/terms-and-conditions" },
-  { key: "privacy", label: "Privacy", href: "/privacy" },
-  { key: "refund", label: "Refunds", href: "/refund" },
+  { key: "terms", href: "/terms-and-conditions" },
+  { key: "privacy", href: "/privacy" },
+  { key: "refund", href: "/refund" },
 ] as const;
-
-type LegalPageProps = {
-  current: (typeof POLICIES)[number]["key"];
-  title: string;
-  description: string;
-  lastUpdated: string;
-  sections: LegalSection[];
-};
 
 /**
  * A policy as a readable document inside the marketing shell: a switcher
  * between the three policies, a scroll-tracking table of contents, and plain
  * typography instead of a card around every section.
  */
-export function LegalPage({ current, title, description, lastUpdated, sections }: LegalPageProps) {
+export async function LegalPage({ policy: current }: { policy: Policy }) {
+  const { locale, m } = await getI18n();
+  const copy = m.legal;
+  const { title, description } = copy[current];
+  const sections = policySections(copy, current);
+  const lastUpdated = formatZonedFullDate(legalLastUpdatedOn, undefined, locale);
   const items = sections.map((section) => ({ id: slugify(section.title), title: section.title }));
 
   return (
     <MarketingShell>
       <section className="pb-16 pt-24 sm:pb-20 sm:pt-32">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <nav aria-label="Policies" className="section-reveal inline-flex rounded-full border border-border/70 bg-white p-1">
+          <nav aria-label={copy.chrome.policiesNav} className="section-reveal inline-flex rounded-full border border-border/70 bg-white p-1">
             {POLICIES.map((policy) => (
               <Link
                 key={policy.key}
@@ -49,7 +50,7 @@ export function LegalPage({ current, title, description, lastUpdated, sections }
                   policy.key === current ? "bg-[var(--brand-ink)] text-white" : "text-muted-foreground hover:text-[var(--brand-ink)]",
                 )}
               >
-                {policy.label}
+                {copy.chrome.policies[policy.key]}
               </Link>
             ))}
           </nav>
@@ -58,7 +59,8 @@ export function LegalPage({ current, title, description, lastUpdated, sections }
           </h1>
           <div className="hero-follow">
             <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">{description}</p>
-            <p className="mt-6 text-sm font-medium text-[var(--brand-ink)]">Last updated {lastUpdated}</p>
+            <p className="mt-6 text-sm font-medium text-[var(--brand-ink)]">{fmt(copy.chrome.lastUpdated, { date: lastUpdated })}</p>
+            {locale === "en" ? null : <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.chrome.translationNote}</p>}
           </div>
         </div>
       </section>
@@ -66,7 +68,7 @@ export function LegalPage({ current, title, description, lastUpdated, sections }
       <section className="border-t border-border/60 py-16 sm:py-24">
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 px-4 sm:px-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-20 lg:px-8">
           <div className="hidden lg:block">
-            <LegalToc items={items} />
+            <LegalToc items={items} labels={{ onThisPage: copy.chrome.onThisPage, minRead: copy.chrome.minRead }} />
           </div>
 
           <article className="max-w-3xl">
@@ -88,9 +90,9 @@ export function LegalPage({ current, title, description, lastUpdated, sections }
             ))}
 
             <div className="mt-6 rounded-(--radius-mkt-card) border border-border/70 bg-[var(--brand-wash)]/40 p-8">
-              <p className="text-lg font-semibold text-[var(--brand-ink)]">Questions about this policy?</p>
+              <p className="text-lg font-semibold text-[var(--brand-ink)]">{copy.chrome.questions}</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                For account, privacy, billing, or data requests, write to us directly.
+                {copy.chrome.questionsCopy}
               </p>
               <a
                 href={`mailto:${SUPPORT_EMAIL}`}
@@ -115,6 +117,9 @@ export function LegalPage({ current, title, description, lastUpdated, sections }
 
 function slugify(value: string) {
   return value
+    // Albanian letters keep their base letter in the anchor ("ë" → "e", "ç" → "c").
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");

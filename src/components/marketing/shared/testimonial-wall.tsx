@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { PauseToggle } from "./pause-toggle";
 import { SectionHeader } from "./section-header";
@@ -96,22 +97,29 @@ function Row({ items, direction, duration, paused }: { items: Testimonial[]; dir
  *  or numbers. */
 export function TestimonialWall() {
   const [paused, setPaused] = useState(false);
+  const { m } = useI18n();
+  const t = m.marketing.testimonials;
+  // The quotes and roles in the visitor's language; names and clinics stay as written.
+  const rows = ROWS.map((row, r) => ({
+    ...row,
+    items: row.items.map((item, i) => ({ ...item, ...t.items[r * 5 + i] })),
+  }));
   return (
     <section className="py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeader
           className="mb-12"
-          lead="What clinics say"
-          rest="once the day slows down."
+          lead={t.lead}
+          rest={t.rest}
           aside={
             <div className="flex items-center gap-3">
-              <p className="text-sm text-muted-foreground">Illustrative quotes, not real customers.</p>
-              <PauseToggle paused={paused} onToggle={() => setPaused((p) => !p)} label="testimonials" />
+              <p className="text-sm text-muted-foreground">{t.illustrative}</p>
+              <PauseToggle paused={paused} onToggle={() => setPaused((p) => !p)} label={m.marketing.pause.testimonials} />
             </div>
           }
         />
         <div className="testimonial-wall marquee-mask flex flex-col gap-1">
-          {ROWS.map((row, i) => (
+          {rows.map((row, i) => (
             <Row key={i} {...row} paused={paused} />
           ))}
         </div>

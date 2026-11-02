@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/i18n/client";
+
 import { useMarketingScroll } from "../motion/scroll-context";
 import { Highlight, WordReveal } from "../motion/word-reveal";
 import { PrimaryCta, SecondaryCta } from "../shared/cta-links";
@@ -15,6 +17,7 @@ import { VelaSchool } from "./vela-school";
  */
 export function HomeHero() {
   const { reduced } = useMarketingScroll();
+  const t = useI18n().m.marketing.home.hero;
 
   return (
     <section className="relative overflow-hidden">
@@ -26,16 +29,16 @@ export function HomeHero() {
         <div>
           <h1 className="display-1 max-w-3xl text-balance text-[var(--brand-ink)] lg:text-[clamp(3.5rem,5vw+0.6rem,5.75rem)]">
             <WordReveal>
-              The clinic day, <Highlight>run calmly.</Highlight>
+              {t.title} <Highlight>{t.highlight}</Highlight>
             </WordReveal>
           </h1>
           <div className="hero-follow">
             <p className="mt-6 max-w-md text-pretty text-lg leading-8 text-muted-foreground">
-              Appointments, patients, staff, and messages in one quiet workspace.
+              {t.lede}
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <PrimaryCta href="/sign-up">Start free</PrimaryCta>
-              <SecondaryCta href="/product">See the product</SecondaryCta>
+              <PrimaryCta href="/sign-up">{t.startFree}</PrimaryCta>
+              <SecondaryCta href="/product">{t.seeProduct}</SecondaryCta>
             </div>
             <a
               href="#clinic-day"
@@ -44,7 +47,7 @@ export function HomeHero() {
               <span className="relative h-8 w-px overflow-hidden bg-border">
                 <span className="hero-cue absolute inset-x-0 top-0 h-3 bg-primary" />
               </span>
-              Scroll through a clinic day, 08:00 to 18:00
+              {t.cue}
             </a>
           </div>
         </div>

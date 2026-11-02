@@ -9,38 +9,42 @@ import {
 import { SubmitButton } from "@/components/auth/submit-button";
 import { authFieldClassName } from "@/components/auth/field-styles";
 import { PasswordInput } from "@/components/auth/password-input";
+import { useI18n, useServerText } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 const initialState: PasswordResetActionState = {};
 
 function FieldError({ message }: { message?: string }) {
+  const serverText = useServerText();
   if (!message) {
     return null;
   }
 
-  return <p className="state-pop text-xs text-destructive">{message}</p>;
+  return <p className="state-pop text-xs text-destructive">{serverText(message)}</p>;
 }
 
 export function ResetPasswordForm() {
   const [state, formAction] = useActionState(resetPasswordAction, initialState);
+  const t = useI18n().m.auth;
+  const serverText = useServerText();
 
   return (
     <form action={formAction} className="space-y-5">
       {state.error ? (
         <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {state.error}
+          {serverText(state.error)}
         </div>
       ) : null}
 
       <div className="space-y-2">
         <label htmlFor="password" className="text-sm font-semibold text-foreground">
-          New password
+          {t.fields.newPassword}
         </label>
         <PasswordInput
           id="password"
           name="password"
           autoComplete="new-password"
-          placeholder="Create a new password"
+          placeholder={t.fields.newPasswordPlaceholder}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />
@@ -49,13 +53,13 @@ export function ResetPasswordForm() {
 
       <div className="space-y-2">
         <label htmlFor="confirmPassword" className="text-sm font-semibold text-foreground">
-          Confirm password
+          {t.fields.confirmPassword}
         </label>
         <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
           autoComplete="new-password"
-          placeholder="Repeat the new password"
+          placeholder={t.fields.confirmPlaceholder}
           aria-invalid={Boolean(state.fieldErrors?.confirmPassword)}
           className={cn(authFieldClassName, state.fieldErrors?.confirmPassword && "border-destructive")}
         />
@@ -63,10 +67,10 @@ export function ResetPasswordForm() {
       </div>
 
       <SubmitButton
-        pendingLabel="Resetting password..."
+        pendingLabel={t.reset.pending}
         className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"
       >
-        Set new password
+        {t.reset.submit}
       </SubmitButton>
     </form>
   );

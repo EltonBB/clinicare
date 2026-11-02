@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { animate, m, useMotionValue, useTransform } from "framer-motion";
 import { Check, CheckCheck } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
+import { money } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import { EASE } from "../motion/ease";
 
@@ -17,6 +19,8 @@ import { EASE } from "../motion/ease";
 
 type SceneProps = { active: boolean; still: boolean };
 
+const useScene = () => useI18n().m.marketing.home.day.scenes;
+
 const enter = (active: boolean, still: boolean, delay = 0) => ({
   initial: false as const,
   animate: active || still ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 14, filter: "blur(4px)" },
@@ -28,30 +32,33 @@ function Frame({ children, className }: { children: React.ReactNode; className?:
 }
 
 function ReminderScene({ active, still }: SceneProps) {
+  const t = useScene();
   return (
     <Frame className="flex flex-col items-end gap-2">
       <m.div {...enter(active, still, 0.15)} className="max-w-[19rem] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-white shadow-[0_12px_30px_-14px_rgba(10,34,255,0.6)]">
-        Hi Maya, this is a reminder for your appointment at 09:30 on Thursday. Reply 1 to confirm or 2 to cancel.
+        {t.reminder}
       </m.div>
       <m.p {...enter(active, still, 0.4)} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        08:00 <CheckCheck className="size-3.5 text-primary" /> Delivered
+        08:00 <CheckCheck className="size-3.5 text-primary" /> {t.delivered}
       </m.p>
       {/* Maya answers from the reminder itself; the visit confirms on its own. */}
       <m.div {...enter(active, still, 0.75)} className="self-start rounded-2xl rounded-bl-md bg-white px-4 py-2 text-sm font-semibold text-[var(--brand-ink)] ring-1 ring-border/70">
         1
       </m.div>
       <m.p {...enter(active, still, 1)} className="self-start text-xs font-medium text-primary">
-        08:04 · Visit confirmed
+        {t.confirmed}
       </m.p>
     </Frame>
   );
 }
 
 function VisitScene({ active, still }: SceneProps) {
+  const { locale } = useI18n();
+  const t = useScene();
   const rows = [
-    ["Last visit", "12 Aug"],
-    ["Documents", "3 files"],
-    ["Balance", "€40.00"],
+    [t.lastVisit, t.lastVisitValue],
+    [t.documents, t.documentsValue],
+    [t.balance, money(locale, 40)],
   ];
   return (
     <Frame className="px-0 py-0">
@@ -59,7 +66,7 @@ function VisitScene({ active, still }: SceneProps) {
         <span className="flex size-9 items-center justify-center rounded-(--radius-mkt-tile) border border-border/70 bg-white text-[11px] font-bold text-primary">MN</span>
         <p className="text-sm font-semibold text-[var(--brand-ink)]">Maya Novak</p>
         <m.span {...enter(active, still, 0.5)} className="ml-auto rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-white">
-          Checked in
+          {t.checkedIn}
         </m.span>
       </div>
       {rows.map(([label, value], i) => (
@@ -77,6 +84,7 @@ function VisitScene({ active, still }: SceneProps) {
 }
 
 function MessageScene({ active, still }: SceneProps) {
+  const t = useScene();
   return (
     <Frame className="flex flex-col items-start gap-2">
       <div className="grid">
@@ -95,17 +103,18 @@ function MessageScene({ active, still }: SceneProps) {
           {...enter(active, still, 0.9)}
           className="col-start-1 row-start-1 max-w-[17rem] rounded-2xl rounded-bl-md bg-white px-4 py-3 text-sm leading-6 text-foreground ring-1 ring-border/70"
         >
-          Hi, could I move my visit to Friday instead?
+          {t.messageText}
         </m.div>
       </div>
       <m.p {...enter(active, still, 1.1)} className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <span className="size-1.5 rounded-full bg-primary" /> Daniel Kim · 11:00 · Unread
+        <span className="size-1.5 rounded-full bg-primary" /> {t.messageMeta}
       </m.p>
     </Frame>
   );
 }
 
 function CalendarScene({ active, still }: SceneProps) {
+  const t = useScene();
   const moved = active || still;
   const delay = active && !still ? 0.45 : 0;
   // Two days, 09:00 to 12:00. Daniel's 10:00 visit leaves Wednesday (a dashed
@@ -122,8 +131,8 @@ function CalendarScene({ active, still }: SceneProps) {
     <Frame>
       <div className="grid grid-cols-[2rem_1fr_1fr] gap-2 text-xs font-semibold text-muted-foreground">
         <span />
-        <span>Wed 14</span>
-        <span>Fri 16</span>
+        <span>{t.wednesday}</span>
+        <span>{t.friday}</span>
       </div>
       <div className="relative mt-2 grid h-36 grid-cols-[2rem_1fr_1fr] gap-2">
         {[0, 1, 2].map((h) => (
@@ -156,7 +165,7 @@ function CalendarScene({ active, still }: SceneProps) {
                 )}
                 style={{ top: `calc(${row(1)} + 2px)`, height: `calc(${100 / 3}% - 4px)`, transitionDelay: `${delay}s` }}
               >
-                {moved ? "Moved to Fri" : "Daniel Kim"}
+                {moved ? t.movedTo : "Daniel Kim"}
               </div>
             ) : (
               <m.div
@@ -167,22 +176,24 @@ function CalendarScene({ active, still }: SceneProps) {
                 style={{ top: `calc(${row(1)} + 2px)`, height: `calc(${100 / 3}% - 4px)` }}
               >
                 <p className="truncate text-[11px] font-semibold leading-4 text-white">Daniel Kim</p>
-                <p className="truncate text-[10px] leading-4 text-white/75">Consultation, 10:00</p>
+                <p className="truncate text-[10px] leading-4 text-white/75">{t.consultationAt}</p>
               </m.div>
             )}
           </div>
         ))}
       </div>
       <m.p {...enter(active, still, 1.1)} className="mt-3 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <Check className="size-3.5 text-primary" /> Calendar and record updated together
+        <Check className="size-3.5 text-primary" /> {t.updatedTogether}
       </m.p>
     </Frame>
   );
 }
 
 function PaymentScene({ active, still }: SceneProps) {
+  const { locale } = useI18n();
+  const t = useScene();
   const balance = useMotionValue(40);
-  const label = useTransform(balance, (v) => `€${v.toFixed(2)}`);
+  const label = useTransform(balance, (v) => money(locale, v));
 
   useEffect(() => {
     if (still) {
@@ -200,15 +211,15 @@ function PaymentScene({ active, still }: SceneProps) {
   return (
     <Frame className="px-0 py-0">
       <div className="flex items-center justify-between border-b border-border/60 px-7 py-3 text-sm">
-        <span className="text-muted-foreground">Consultation</span>
-        <span className="font-medium text-[var(--brand-ink)] tabular-nums">€40.00</span>
+        <span className="text-muted-foreground">{t.consultation}</span>
+        <span className="font-medium text-[var(--brand-ink)] tabular-nums">{money(locale, 40)}</span>
       </div>
       <m.div {...enter(active, still, 0.25)} className="flex items-center justify-between border-b border-border/60 px-7 py-3 text-sm">
-        <span className="text-muted-foreground">Paid by card</span>
-        <span className="font-medium text-primary tabular-nums">−€40.00</span>
+        <span className="text-muted-foreground">{t.paidByCard}</span>
+        <span className="font-medium text-primary tabular-nums">{money(locale, -40)}</span>
       </m.div>
       <div className="flex items-center justify-between bg-white px-7 py-4">
-        <span className="text-sm font-semibold text-[var(--brand-ink)]">Balance</span>
+        <span className="text-sm font-semibold text-[var(--brand-ink)]">{t.balance}</span>
         <m.span className="text-2xl font-semibold tracking-tight text-[var(--brand-ink)] tabular-nums">{label}</m.span>
       </div>
     </Frame>
@@ -216,11 +227,12 @@ function PaymentScene({ active, still }: SceneProps) {
 }
 
 function ReportScene({ active, still }: SceneProps) {
+  const t = useScene();
   const drawn = active || still;
   return (
     <Frame className="px-0 pb-0 pt-5">
       <m.p {...enter(active, still, 0.1)} className="px-7 text-sm leading-6 text-foreground">
-        Thursday mornings fill first. <span className="font-semibold text-primary">Open one more early slot.</span>
+        {t.reportLine} <span className="font-semibold text-primary">{t.reportAction}</span>
       </m.p>
       <svg viewBox="0 0 300 90" preserveAspectRatio="none" className="mt-4 h-24 w-full" aria-hidden>
         <defs>

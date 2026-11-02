@@ -1,22 +1,18 @@
 import type { Metadata } from "next";
 
 import { LegalPage } from "@/components/legal/legal-page";
-import { legalLastUpdated, privacySections } from "@/lib/legal-content";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy | Vela",
-  description:
-    "Privacy Policy for Vela clinic operations software.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const copy = (await getI18n()).m.legal.privacy;
+  return { title: copy.metaTitle, description: copy.metaDescription };
+}
 
 export default function PrivacyPage() {
   return (
-    <LegalPage
-      current="privacy"
-      title="Privacy Policy"
-      description="This policy explains what information Vela processes, how clinic and client data is used to run the workspace, and how account owners can request support with privacy, export, correction, or deletion."
-      lastUpdated={legalLastUpdated}
-      sections={privacySections}
-    />
+    <WithMessages namespaces={["marketing", "modules"]}>
+      <LegalPage policy="privacy" />
+    </WithMessages>
   );
 }

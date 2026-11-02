@@ -1,3 +1,4 @@
+import { intlLocale, type Locale } from "@/i18n/config";
 import type { PaddleTransaction } from "@/lib/paddle/paddle-api";
 import { formatZonedFullDate } from "@/lib/time-zone";
 
@@ -56,9 +57,9 @@ export function buildBillingHistory(transactions: PaddleTransaction[], timeZone?
   return { card, rows };
 }
 
-/** 86900 + "EUR" → "€869.00", in the currency's own number of decimals. */
-export function formatMinorAmount(minor: number, currency: string): string {
-  const format = new Intl.NumberFormat("en", { style: "currency", currency });
+/** 86900 + "EUR" → "€869.00" ("869,00 €" in Albanian), in the currency's own number of decimals. */
+export function formatMinorAmount(minor: number, currency: string, locale: Locale = "en"): string {
+  const format = new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency });
   const decimals = format.resolvedOptions().maximumFractionDigits ?? 2;
   return format.format(minor / 10 ** decimals);
 }

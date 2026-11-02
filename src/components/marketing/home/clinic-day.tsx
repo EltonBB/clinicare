@@ -3,20 +3,16 @@
 import { useRef, useState, type CSSProperties } from "react";
 import { m, useMotionValueEvent, useScroll, useTransform } from "framer-motion";
 
+import { useI18n } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import { useMarketingScroll } from "../motion/scroll-context";
 import { SCENES } from "./clinic-day-scenes";
 
 type Moment = { time: string; tag: string; title: string; copy: string };
 
-const MOMENTS: Moment[] = [
-  { time: "08:00", tag: "Reminder", title: "Reminders go out.", copy: "Upcoming patients get a WhatsApp reminder with their name and time, and confirm with one reply. Nothing clinical." },
-  { time: "09:30", tag: "Visit", title: "Maya's visit starts.", copy: "Her history, documents, and balance are already on her record." },
-  { time: "11:00", tag: "Message", title: "A message lands.", copy: "Daniel asks to move his visit. It shows up next to his record, unread." },
-  { time: "13:00", tag: "Calendar", title: "The schedule shifts.", copy: "His visit moves to Friday. The calendar and his record change together." },
-  { time: "15:30", tag: "Payment", title: "A payment is recorded.", copy: "Maya's visit is paid, and the balance on her profile settles." },
-  { time: "18:00", tag: "Report", title: "The day explains itself.", copy: "Reports sum up the day and suggest one next step." },
-];
+// The moments' times; their words are `marketing.home.day.moments`, in the same order.
+const TIMES = ["08:00", "09:30", "11:00", "13:00", "15:30", "18:00"];
 
 const START = 8 * 60;
 const END = 18 * 60;
@@ -27,7 +23,7 @@ const toMinutes = (time: string) => {
   const [h, mm] = time.split(":").map(Number);
   return h * 60 + mm;
 };
-const AT = MOMENTS.map((moment) => toMinutes(moment.time));
+const AT = TIMES.map(toMinutes);
 // Each moment takes over 20 minutes early, so it lights up as the clock arrives.
 const STARTS = AT.map((minute) => minute - 20);
 
@@ -65,6 +61,8 @@ function StageCard({ moment, index, active, still }: { moment: Moment; index: nu
 export function ClinicDay() {
   const track = useRef<HTMLDivElement>(null);
   const { reduced, lenisRef } = useMarketingScroll();
+  const t = useI18n().m.marketing.home.day;
+  const moments: Moment[] = t.moments.map((moment, i) => ({ ...moment, time: TIMES[i] }));
   const { scrollYProgress } = useScroll({ target: track, offset: ["start start", "end end"] });
   const minutes = useTransform(scrollYProgress, [P0, P1], [START, END], { clamp: true });
   const time = useTransform(minutes, clock);
@@ -112,7 +110,7 @@ export function ClinicDay() {
             <div className="mx-auto grid w-full max-w-7xl grid-cols-[1fr_minmax(0,32rem)] items-center gap-20 px-8">
               <div>
                 <h2 className="display-3 max-w-md text-balance text-(--day-fg)">
-                  A day at the clinic. <span className="text-(--day-muted)">Vela handles the in-between.</span>
+                  {t.lead} <span className="text-(--day-muted)">{t.rest}</span>
                 </h2>
                 <m.p className="mt-12 text-[clamp(4.5rem,8vw,8rem)] font-semibold leading-none tracking-[-0.045em] text-(--day-accent) tabular-nums">
                   {time}
@@ -121,12 +119,12 @@ export function ClinicDay() {
                 <div className="relative mt-10 max-w-md">
                   <div className="h-px w-full bg-(--day-line)" />
                   <m.div className="absolute inset-x-0 top-0 h-px origin-left bg-(--day-accent)" style={{ scaleX: fill }} />
-                  {MOMENTS.map((moment, i) => (
+                  {moments.map((moment, i) => (
                     <button
                       key={moment.time}
                       type="button"
                       onClick={() => jumpTo(i)}
-                      aria-label={`Jump to ${moment.time}: ${moment.title}`}
+                      aria-label={fmt(t.jumpTo, { time: moment.time, title: moment.title })}
                       className="group/dot absolute top-0 flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--day-accent)"
                       style={{ left: `${((AT[i] - START) / SPAN) * 100}%` }}
                     >
@@ -151,7 +149,7 @@ export function ClinicDay() {
               </div>
 
               <div className="grid">
-                {MOMENTS.map((moment, i) => (
+                {moments.map((moment, i) => (
                   <div
                     key={moment.time}
                     aria-hidden={i !== active}
@@ -172,10 +170,10 @@ export function ClinicDay() {
       {/* Narrow screens and reduced motion: the whole day as a stack. */}
       <div className={cn("mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8", pinned && "lg:hidden")}>
         <h2 className="display-3 max-w-md text-balance text-[var(--brand-ink)]">
-          A day at the clinic. <span className="text-muted-foreground">Vela handles the in-between.</span>
+          {t.lead} <span className="text-muted-foreground">{t.rest}</span>
         </h2>
         <ol className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {MOMENTS.map((moment, i) => (
+          {moments.map((moment, i) => (
             <li key={moment.time}>
               <StageCard moment={moment} index={i} active still />
             </li>

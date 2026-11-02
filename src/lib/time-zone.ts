@@ -1,3 +1,5 @@
+import { intlLocale, type Locale } from "@/i18n/config";
+
 const DEFAULT_APP_TIME_ZONE = "Europe/Budapest";
 
 type ZonedDateParts = {
@@ -310,8 +312,8 @@ export function formatZonedDateKey(date = new Date(), timeZone = getAppTimeZone(
   return `${parts.year}-${month}-${day}`;
 }
 
-export function formatZonedLongDate(date = new Date(), timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedLongDate(date = new Date(), timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     weekday: "long",
     month: "long",
@@ -320,30 +322,30 @@ export function formatZonedLongDate(date = new Date(), timeZone = getAppTimeZone
   }).format(date);
 }
 
-export function formatZonedDayName(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedDayName(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     weekday: "short",
   }).format(date);
 }
 
-export function formatZonedMonthName(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedMonthName(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     month: "short",
   }).format(date);
 }
 
-export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedShortDate(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     month: "short",
     day: "numeric",
   }).format(date);
 }
 
-export function formatZonedWeekdayShortDate(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedWeekdayShortDate(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     weekday: "short",
     month: "short",
@@ -351,8 +353,8 @@ export function formatZonedWeekdayShortDate(date: Date, timeZone = getAppTimeZon
   }).format(date);
 }
 
-export function formatZonedFullDate(date = new Date(), timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedFullDate(date = new Date(), timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     month: "long",
     day: "numeric",
@@ -375,20 +377,20 @@ export function zonedCalendarDaysBetween(
   return Math.round((laterStart - earlierStart) / 86_400_000);
 }
 
-export function formatZonedMonthYear(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedMonthYear(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     month: "long",
     year: "numeric",
   }).format(date);
 }
 
-export function formatZonedTime(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedTime(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     hour: "numeric",
     minute: "2-digit",
-    hour12: true,
+    hour12: locale === "en",
   }).format(date);
 }
 
@@ -422,14 +424,14 @@ export function getZonedWallClockMinutesBetween(start: Date, end: Date, timeZone
   return days * 1440 + (to.hour * 60 + to.minute) - (from.hour * 60 + from.minute);
 }
 
-export function formatZonedShortDateTime(date: Date, timeZone = getAppTimeZone()) {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatZonedShortDateTime(date: Date, timeZone = getAppTimeZone(), locale: Locale = "en") {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone,
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    hour12: true,
+    hour12: locale === "en",
   }).format(date);
 }
 

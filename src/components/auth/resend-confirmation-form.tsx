@@ -7,6 +7,7 @@ import {
   type AuthActionState,
 } from "@/app/(auth)/actions";
 import { SubmitButton } from "@/components/auth/submit-button";
+import { useI18n, useServerText } from "@/i18n/client";
 
 const initialState: AuthActionState = {};
 
@@ -17,6 +18,8 @@ export function ResendConfirmationForm({
   email: string;
   ticket: string;
 }) {
+  const t = useI18n().m.auth;
+  const serverText = useServerText();
   const [state, formAction] = useActionState(
     resendConfirmationAction,
     initialState
@@ -29,21 +32,21 @@ export function ResendConfirmationForm({
 
       {state.error ? (
         <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {state.error}
+          {serverText(state.error)}
         </div>
       ) : null}
 
       {state.success ? (
         <div className="state-pop rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm text-primary">
-          {state.success}
+          {serverText(state.success)}
         </div>
       ) : null}
 
       <SubmitButton
-        pendingLabel="Sending..."
+        pendingLabel={t.confirmEmail.resendPending}
         className="h-12 w-full rounded-(--radius-field) text-[15px] font-medium"
       >
-        Resend email
+        {t.confirmEmail.resend}
       </SubmitButton>
     </form>
   );

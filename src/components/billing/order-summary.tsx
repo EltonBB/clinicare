@@ -7,6 +7,9 @@ import {
   type PaddleClientConfig,
   useLocalizedPrices,
 } from "@/components/billing/use-paddle";
+import { useI18n } from "@/i18n/client";
+import { intlLocale, type Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
 import type { PaidInterval } from "@/lib/paddle/paddle-config";
 import type { PublicPlan } from "@/lib/public-plans";
 
@@ -38,10 +41,12 @@ export function OrderSummary({
   trialEndsOn?: string;
   checkout?: PaddleCheckoutData | null;
 }) {
+  const { locale, m } = useI18n();
+  const t = m.billing.order;
   const prices = useLocalizedPrices(paddle, previewPriceId ? [previewPriceId] : []);
   const listPrice = (previewPriceId && prices[previewPriceId]) || (interval === "YEAR" ? plan.yearlyPrice : plan.price);
-  const per = interval === "YEAR" ? "year" : "month";
-  const money = moneyFormatter(checkout?.currency_code);
+  const per = interval === "YEAR" ? t.year : t.month;
+  const money = moneyFormatter(checkout?.currency_code, locale);
   const recurring = checkout?.recurring_totals ?? null;
   const dueToday = money && checkout?.totals?.total !== undefined ? money(checkout.totals.total) : null;
   // The price per period: Paddle's live amount (the currency it will charge, tax
@@ -54,18 +59,18 @@ export function OrderSummary({
       <p className="text-sm text-white/55">{heading}</p>
       <div className="mt-2 flex items-baseline justify-between gap-4">
         <p className="text-xl font-semibold">Vela {plan.name}</p>
-        <p className="text-sm text-white/55">{interval === "YEAR" ? "Billed yearly" : "Billed monthly"}</p>
+        <p className="text-sm text-white/55">{interval === "YEAR" ? t.billedYearly : t.billedMonthly}</p>
       </div>
       <p className="mt-5 flex items-baseline gap-2">
         <span className="text-[3.25rem] font-semibold leading-none tracking-[-0.04em] tabular-nums">{price}</span>
-        <span className="text-sm text-white/55">per {per}</span>
+        <span className="text-sm text-white/55">{fmt(t.per, { period: per })}</span>
       </p>
 
       {trial !== null ? (
         <dl className="mt-8 divide-y divide-white/10 border-y border-white/10 text-sm">
-          <Row label="Due today" value={dueToday ?? (trial ? "Nothing" : listPrice)} />
-          {trial && trialEndsOn ? <Row label={`From ${trialEndsOn}`} value={`${price} a ${per}`} /> : null}
-          {tax !== undefined && money ? <Row label="VAT included" value={money(tax)} /> : null}
+          <Row label={t.dueToday} value={dueToday ?? (trial ? t.nothing : listPrice)} />
+          {trial && trialEndsOn ? <Row label={fmt(t.from, { date: trialEndsOn })} value={fmt(t.aPeriod, { price, period: per })} /> : null}
+          {tax !== undefined && money ? <Row label={t.vat} value={money(tax)} /> : null}
         </dl>
       ) : null}
 
@@ -90,10 +95,10 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function moneyFormatter(currency: string | undefined) {
+function moneyFormatter(currency: string | undefined, locale: Locale) {
   if (!currency) return null;
   try {
-    const format = new Intl.NumberFormat("en", { style: "currency", currency });
+    const format = new Intl.NumberFormat(intlLocale(locale), { style: "currency", currency });
     return (amount: number) => format.format(amount);
   } catch {
     return null;

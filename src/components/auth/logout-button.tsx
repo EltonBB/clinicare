@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 
 import { logoutAction } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 type LogoutButtonProps = {
@@ -17,8 +18,9 @@ export function LogoutButton({
   className,
   variant = "ghost",
   fullWidth = false,
-  label = "Log out",
+  label,
 }: LogoutButtonProps) {
+  const { m } = useI18n();
   return (
     <form action={logoutAction}>
       <Button
@@ -31,7 +33,7 @@ export function LogoutButton({
         )}
       >
         <LogOut className="size-4" />
-        {label}
+        {label ?? m.common.logOut}
       </Button>
     </form>
   );

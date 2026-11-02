@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { animate, m, useMotionValue, useMotionValueEvent, useTransform } from "framer-motion";
 
+import { useI18n } from "@/i18n/client";
+import { fmt as fill } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
+
 /*
  * The home hero's "day dial": one clinic day, 08:00 to 18:00, drawn around a
  * clock face. Each ring is a member of staff and each arc an appointment, with
@@ -11,39 +15,40 @@ import { animate, m, useMotionValue, useMotionValueEvent, useTransform } from "f
  * happening now. Point at any arc to read that visit. Sample day, sample names.
  */
 
-type Visit = { from: string; to: string; patient: string; service: string };
-type Track = { staff: string; visits: Visit[] };
+type Dial = Messages["marketing"]["home"]["dial"];
+type Visit = { from: string; to: string; patient: string; service: keyof Dial["services"] };
+type Track = { staff: keyof Dial["staff"]; visits: Visit[] };
 
 const TRACKS: Track[] = [
   {
-    staff: "Dr. Collins",
+    staff: "collins",
     visits: [
-      { from: "08:30", to: "09:15", patient: "Maya Novak", service: "Check-up" },
-      { from: "09:30", to: "10:30", patient: "Daniel Kim", service: "Consultation" },
-      { from: "11:00", to: "11:45", patient: "Hannah Wright", service: "Follow-up" },
-      { from: "13:45", to: "14:45", patient: "Laura Bishop", service: "Treatment" },
-      { from: "15:15", to: "16:00", patient: "Rachel Adams", service: "Check-up" },
-      { from: "16:30", to: "17:30", patient: "James Whitfield", service: "Consultation" },
+      { from: "08:30", to: "09:15", patient: "Maya Novak", service: "checkup" },
+      { from: "09:30", to: "10:30", patient: "Daniel Kim", service: "consultation" },
+      { from: "11:00", to: "11:45", patient: "Hannah Wright", service: "followUp" },
+      { from: "13:45", to: "14:45", patient: "Laura Bishop", service: "treatment" },
+      { from: "15:15", to: "16:00", patient: "Rachel Adams", service: "checkup" },
+      { from: "16:30", to: "17:30", patient: "James Whitfield", service: "consultation" },
     ],
   },
   {
-    staff: "Dr. Shaw",
+    staff: "shaw",
     visits: [
-      { from: "08:00", to: "09:00", patient: "Thomas Hayes", service: "Physio session" },
-      { from: "09:30", to: "10:15", patient: "Grace Lee", service: "Assessment" },
-      { from: "10:30", to: "12:00", patient: "Oliver Grant", service: "Treatment" },
-      { from: "14:00", to: "15:00", patient: "Chloe Evans", service: "Follow-up" },
-      { from: "15:30", to: "17:00", patient: "Henry Ward", service: "Treatment" },
+      { from: "08:00", to: "09:00", patient: "Thomas Hayes", service: "physio" },
+      { from: "09:30", to: "10:15", patient: "Grace Lee", service: "assessment" },
+      { from: "10:30", to: "12:00", patient: "Oliver Grant", service: "treatment" },
+      { from: "14:00", to: "15:00", patient: "Chloe Evans", service: "followUp" },
+      { from: "15:30", to: "17:00", patient: "Henry Ward", service: "treatment" },
     ],
   },
   {
-    staff: "Nurse Carter",
+    staff: "carter",
     visits: [
-      { from: "08:30", to: "09:00", patient: "Ava Brooks", service: "Blood test" },
-      { from: "10:00", to: "10:30", patient: "Noah Price", service: "Vaccination" },
-      { from: "11:00", to: "12:00", patient: "Isla Moore", service: "Check-up" },
-      { from: "14:30", to: "15:00", patient: "Leo Turner", service: "Dressing change" },
-      { from: "16:00", to: "17:00", patient: "Mia Hughes", service: "Check-up" },
+      { from: "08:30", to: "09:00", patient: "Ava Brooks", service: "bloodTest" },
+      { from: "10:00", to: "10:30", patient: "Noah Price", service: "vaccination" },
+      { from: "11:00", to: "12:00", patient: "Isla Moore", service: "checkup" },
+      { from: "14:30", to: "15:00", patient: "Leo Turner", service: "dressing" },
+      { from: "16:00", to: "17:00", patient: "Mia Hughes", service: "checkup" },
     ],
   },
 ];
@@ -77,7 +82,7 @@ function arc(fromMin: number, toMinute: number, r: number) {
   return `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
 }
 
-type Placed = Visit & { staff: string; track: number; start: number; end: number; key: string };
+type Placed = Visit & { staff: Track["staff"]; track: number; start: number; end: number; key: string };
 const PLACED: Placed[] = TRACKS.flatMap((track, ti) =>
   track.visits.map((v) => ({ ...v, staff: track.staff, track: ti, start: toMin(v.from), end: toMin(v.to), key: `${ti}-${v.from}` })),
 );
@@ -88,6 +93,7 @@ export function DayDial({ still }: { still: boolean }) {
   const rotate = useTransform(minutes, (v) => angle(v));
   const [now, setNow] = useState(9 * 60 + 40);
   const [hovered, setHovered] = useState<Placed | null>(null);
+  const t = useI18n().m.marketing.home.dial;
 
   useEffect(() => {
     if (still || hovered) return;
@@ -203,9 +209,9 @@ export function DayDial({ still }: { still: boolean }) {
         ))}
 
         {/* Each ring is named in the dial's open gap, right where the ring would continue. */}
-        {TRACKS.map((t, i) => (
-          <text key={t.staff} x={C} y={C + RADII[i]} textAnchor="middle" dominantBaseline="central" className="fill-[var(--muted-foreground)] text-[12px] font-semibold">
-            {t.staff}
+        {TRACKS.map((track, i) => (
+          <text key={track.staff} x={C} y={C + RADII[i]} textAnchor="middle" dominantBaseline="central" className="fill-[var(--muted-foreground)] text-[12px] font-semibold">
+            {t.staff[track.staff]}
           </text>
         ))}
       </svg>
@@ -213,11 +219,11 @@ export function DayDial({ still }: { still: boolean }) {
       {/* The arcs are drawn art (the SVG is aria-hidden), so every visit is also a
           visually hidden button. Focusing one lights its arc and reads it in the
           centre, exactly like pointing at it. */}
-      <ul aria-label="Appointments on this sample day" className="sr-only">
+      <ul aria-label={t.listLabel} className="sr-only">
         {PLACED.map((p) => (
           <li key={p.key}>
             <button type="button" onFocus={() => setHovered(p)} onBlur={() => setHovered(null)}>
-              {`${p.staff}: ${p.patient}, ${p.service}, ${p.from} to ${p.to}`}
+              {fill(t.visit, { staff: t.staff[p.staff], patient: p.patient, service: t.services[p.service], from: p.from, to: p.to })}
             </button>
           </li>
         ))}
@@ -238,31 +244,31 @@ export function DayDial({ still }: { still: boolean }) {
           <div className="mt-3 min-h-[4.5rem]">
             {focus ? (
               <>
-                <p className="text-xs font-semibold text-primary">{hovered ? focus.staff : `Now · ${focus.staff}`}</p>
+                <p className="text-xs font-semibold text-primary">{hovered ? t.staff[focus.staff] : fill(t.now, { staff: t.staff[focus.staff] })}</p>
                 <p className="mt-1 truncate text-sm font-semibold text-[var(--brand-ink)]">{focus.patient}</p>
                 <p className="text-xs leading-snug text-muted-foreground">
-                  {focus.service}, {focus.from} to {focus.to}
+                  {fill(t.range, { service: t.services[focus.service], from: focus.from, to: focus.to })}
                 </p>
               </>
             ) : lunch ? (
               <>
-                <p className="text-xs font-semibold text-muted-foreground">Lunch</p>
-                <p className="mt-1 text-sm font-semibold text-[var(--brand-ink)]">Blocked for everyone</p>
+                <p className="text-xs font-semibold text-muted-foreground">{t.lunch}</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--brand-ink)]">{t.lunchBlocked}</p>
               </>
             ) : next ? (
               <>
-                <p className="text-xs font-semibold text-muted-foreground">Next · {next.staff}</p>
+                <p className="text-xs font-semibold text-muted-foreground">{fill(t.next, { staff: t.staff[next.staff] })}</p>
                 <p className="mt-1 truncate text-sm font-semibold text-[var(--brand-ink)]">{next.patient}</p>
                 <p className="truncate text-xs text-muted-foreground">{next.from}</p>
               </>
             ) : (
-              <p className="text-sm font-semibold text-[var(--brand-ink)]">Day complete</p>
+              <p className="text-sm font-semibold text-[var(--brand-ink)]">{t.dayComplete}</p>
             )}
           </div>
         </div>
       </div>
 
-      <p className="sr-only">A sample clinic day: three staff members, {PLACED.length} appointments, and a blocked lunch hour.</p>
+      <p className="sr-only">{fill(t.summary, { count: PLACED.length })}</p>
     </div>
   );
 }

@@ -4,47 +4,41 @@ import { useState } from "react";
 import { Check, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { publicPlans } from "@/lib/public-plans";
+import { useI18n } from "@/i18n/client";
+import { localizedPlans } from "@/lib/public-plans";
 import { type PlanPricing, usePlanPrice } from "../shared/plan-strip-interactive";
 
-type Cell = true | false | string;
-const GROUPS: { title: string; rows: [string, Cell, Cell][] }[] = [
-  {
-    title: "Daily work",
-    rows: [
-      ["Appointments and calendar", true, true],
-      ["Patient record timeline", true, true],
-      ["Documents, scans, and images", true, true],
-      ["WhatsApp-ready inbox", true, true],
-      ["Payment and thank-you message drafts", true, true],
-      ["Waiting list with slot-offer drafts", false, true],
-      ["Rebooking nudge drafts", false, true],
-    ],
-  },
-  {
-    title: "Insight",
-    rows: [
-      ["Daily dashboard", true, true],
-      ["Reports and analytics", false, true],
-      ["AI-assisted insights", false, true],
-      ["Staff activity and utilization", false, true],
-      ["No-show tracking and risk alerts", false, true],
-    ],
-  },
-  {
-    title: "Support",
-    rows: [["Setup support", "Standard", "Priority"]],
-  },
+type Cell = true | false | "standard" | "priority";
+// What each plan gets, row by row; the labels are `marketing.pricing.compare.groups`, in this order.
+const GROUPS: [Cell, Cell][][] = [
+  [
+    [true, true],
+    [true, true],
+    [true, true],
+    [true, true],
+    [true, true],
+    [false, true],
+    [false, true],
+  ],
+  [
+    [true, true],
+    [false, true],
+    [false, true],
+    [false, true],
+    [false, true],
+  ],
+  [["standard", "priority"]],
 ];
 
 const COLS = "grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.75fr)_minmax(0,0.75fr)]";
 
 function Value({ value, pro }: { value: Cell; pro: boolean }) {
+  const t = useI18n().m.marketing.pricing.compare;
   if (value === true) {
     return (
       <span className={cn("mx-auto flex size-6 items-center justify-center rounded-full", pro ? "bg-primary text-white" : "bg-[var(--brand-wash)] text-primary")}>
         <Check className="size-3.5" strokeWidth={2.5} />
-        <span className="sr-only">Included</span>
+        <span className="sr-only">{t.included}</span>
       </span>
     );
   }
@@ -52,11 +46,11 @@ function Value({ value, pro }: { value: Cell; pro: boolean }) {
     return (
       <span className="mx-auto flex size-6 items-center justify-center text-muted-foreground/50">
         <Minus className="size-4" />
-        <span className="sr-only">Not included</span>
+        <span className="sr-only">{t.notIncluded}</span>
       </span>
     );
   }
-  return <span className={cn("text-sm", pro ? "font-semibold text-primary" : "text-muted-foreground")}>{value}</span>;
+  return <span className={cn("text-sm", pro ? "font-semibold text-primary" : "text-muted-foreground")}>{t[value]}</span>;
 }
 
 /**
@@ -67,7 +61,13 @@ function Value({ value, pro }: { value: Cell; pro: boolean }) {
 export function CompareTable({ pricing }: { pricing: PlanPricing }) {
   const [col, setCol] = useState<0 | 1 | null>(null);
   const priceOf = usePlanPrice(pricing);
-  const [basic, pro] = publicPlans;
+  const { m } = useI18n();
+  const t = m.marketing.pricing.compare;
+  const [basic, pro] = localizedPlans(m.common.plans);
+  const groups = t.groups.map((group, g) => ({
+    title: group.title,
+    rows: group.rows.map((feature, r) => [feature, ...GROUPS[g][r]] as const),
+  }));
 
   const colTint = (c: 0 | 1) => (col === c ? "bg-[var(--brand-wash)]/70" : "");
 
@@ -75,7 +75,7 @@ export function CompareTable({ pricing }: { pricing: PlanPricing }) {
     <div className="overflow-hidden rounded-(--radius-mkt-card) border border-border/70 bg-white [&>div:last-child>div:last-child]:border-b-0" onPointerLeave={() => setCol(null)}>
       <div className={cn(COLS, "border-b border-border/70")}>
         <div className="px-4 py-6 sm:px-8">
-          <p className="text-sm font-medium text-muted-foreground">Compare plans</p>
+          <p className="text-sm font-medium text-muted-foreground">{t.title}</p>
         </div>
         {[basic, pro].map((plan, c) => (
           <div
@@ -91,7 +91,7 @@ export function CompareTable({ pricing }: { pricing: PlanPricing }) {
         ))}
       </div>
 
-      {GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.title}>
           <div className={cn(COLS, "border-b border-border/60 bg-[var(--brand-wash)]/35")}>
             <p className="px-4 py-2.5 text-xs font-semibold text-muted-foreground sm:px-8">{group.title}</p>

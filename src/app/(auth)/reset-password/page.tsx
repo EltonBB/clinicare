@@ -3,10 +3,14 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { createClient } from "@/utils/supabase/server";
 
-export const metadata: Metadata = { title: "Choose a new password | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.auth.reset.meta };
+}
 
 export default async function ResetPasswordPage() {
   const supabase = await createClient();
@@ -22,16 +26,17 @@ export default async function ResetPasswordPage() {
   if (!user || cookieStore.get("vela_pw_recovery")?.value !== user.id) {
     redirect("/forgot-password?expired=1");
   }
+  const t = (await getI18n()).m.auth.reset;
 
   return (
     <>
 
       <div className="space-y-2">
         <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-          Choose a new password
+          {t.title}
         </h1>
         <p className="text-[15px] leading-7 text-muted-foreground">
-          Set a fresh password for {user.email}. Once saved, you&apos;ll be asked to log in again.
+          {fmt(t.lede, { email: user.email ?? "" })}
         </p>
       </div>
 
@@ -40,9 +45,9 @@ export default async function ResetPasswordPage() {
       </div>
 
       <p className="mt-8 text-center text-sm text-muted-foreground">
-        Need a new recovery link?{" "}
+        {t.needLink}{" "}
         <Link href="/forgot-password" className="font-semibold text-primary hover:underline">
-          Request again
+          {t.requestAgain}
         </Link>
       </p>
     </>

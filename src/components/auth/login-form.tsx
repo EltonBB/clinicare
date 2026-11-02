@@ -8,20 +8,24 @@ import { SubmitButton } from "@/components/auth/submit-button";
 import { authFieldClassName } from "@/components/auth/field-styles";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Input } from "@/components/ui/input";
+import { useI18n, useServerText } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 const initialState: AuthActionState = {};
 
 function FieldError({ message }: { message?: string }) {
+  const serverText = useServerText();
   if (!message) {
     return null;
   }
 
-  return <p className="state-pop text-xs text-destructive">{message}</p>;
+  return <p className="state-pop text-xs text-destructive">{serverText(message)}</p>;
 }
 
 export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
   const [state, formAction] = useActionState(loginAction, initialState);
+  const t = useI18n().m.auth;
+  const serverText = useServerText();
   const next = state.values?.next ?? nextPath;
 
   return (
@@ -30,20 +34,20 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
 
       {state.error ? (
         <div className="state-pop rounded-(--radius-field) border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {state.error}
+          {serverText(state.error)}
         </div>
       ) : null}
 
       <div className="space-y-2">
         <label htmlFor="email" className="text-sm font-semibold text-foreground">
-          Email
+          {t.fields.email}
         </label>
         <Input
           id="email"
           name="email"
           type="email"
           autoComplete="email"
-          placeholder="name@clinic.com"
+          placeholder={t.fields.emailPlaceholder}
           defaultValue={state.values?.email}
           aria-invalid={Boolean(state.fieldErrors?.email)}
           className={cn(authFieldClassName, state.fieldErrors?.email && "border-destructive")}
@@ -54,17 +58,17 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label htmlFor="password" className="text-sm font-semibold text-foreground">
-            Password
+            {t.fields.password}
           </label>
           <Link href="/forgot-password" className="text-xs font-semibold text-primary hover:underline">
-            Forgot?
+            {t.fields.forgot}
           </Link>
         </div>
         <PasswordInput
           id="password"
           name="password"
           autoComplete="current-password"
-          placeholder="Enter your password"
+          placeholder={t.fields.passwordPlaceholder}
           aria-invalid={Boolean(state.fieldErrors?.password)}
           className={cn(authFieldClassName, state.fieldErrors?.password && "border-destructive")}
         />
@@ -72,10 +76,10 @@ export function LoginForm({ nextPath = "/dashboard" }: { nextPath?: string }) {
       </div>
 
       <SubmitButton
-        pendingLabel="Logging in..."
+        pendingLabel={t.login.pending}
         className="h-12 w-full rounded-(--radius-field) text-[15px] font-semibold"
       >
-        Log in
+        {t.login.submit}
       </SubmitButton>
     </form>
   );

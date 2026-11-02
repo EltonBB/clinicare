@@ -4,30 +4,46 @@ import { useRef, useState } from "react";
 import { m, useMotionValueEvent, useScroll, useTransform, type MotionValue } from "framer-motion";
 import { Check } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
+import { fmt, money } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import { useMarketingScroll } from "../motion/scroll-context";
 import { SectionHeader } from "../shared/section-header";
 
 // Where each fact about Maya lives before Vela (the scrap) and the row it
-// becomes on her one record. Start positions are px from the stage centre;
-// small rotations make the pile feel handled, not designed.
-const FRAGMENTS = [
-  { source: "Paper diary", text: "Thu 09:30 · Maya", row: ["Next visit", "Thu 09:30"], x: -170, y: -215, r: -6 },
-  { source: "Spreadsheet", text: "Maya N. owes €40", row: ["Balance", "€40.00"], x: 190, y: -190, r: 5 },
-  { source: "Phone", text: "3 unread from Maya", row: ["Messages", "3 unread"], x: -215, y: -20, r: 4 },
-  { source: "Sticky note", text: "Maya prefers mornings", row: ["Preference", "Mornings"], x: 205, y: 20, r: -4 },
-  { source: "Email", text: "consent-form-final.pdf", row: ["Documents", "Consent form"], x: -160, y: 210, r: -3 },
-  { source: "Notebook", text: "Follow up in 6 wks", row: ["Follow-up", "In 6 weeks"], x: 175, y: 225, r: 7 },
+// becomes on her one record (`marketing.about.tools.fragments`, in this order).
+// Start positions are px from the stage centre; small rotations make the pile
+// feel handled, not designed.
+const PLACES = [
+  { x: -170, y: -215, r: -6 },
+  { x: 190, y: -190, r: 5 },
+  { x: -215, y: -20, r: 4 },
+  { x: 205, y: 20, r: -4 },
+  { x: -160, y: 210, r: -3 },
+  { x: 175, y: 225, r: 7 },
 ];
+
+type Fragment = { source: string; text: string; row: [string, string]; x: number; y: number; r: number };
+
+function useFragments(): Fragment[] {
+  const { locale, m } = useI18n();
+  const amount = money(locale, 40);
+  return m.marketing.about.tools.fragments.map((f, i) => ({
+    source: f.source,
+    text: fmt(f.text, { amount }),
+    row: [f.label, fmt(f.value, { amount })],
+    ...PLACES[i],
+  }));
+}
 
 const ROW_H = 48;
 const HEADER_H = 76;
 const CARD_W = 340;
-const CARD_H = HEADER_H + FRAGMENTS.length * ROW_H;
+const CARD_H = HEADER_H + PLACES.length * ROW_H;
 // Each fragment flies in on its own slice of the scroll, slightly staggered.
 const window_ = (i: number): [number, number] => [0.06 + i * 0.07, 0.06 + i * 0.07 + 0.38];
 
-function Fragment({ f, i, progress, still }: { f: (typeof FRAGMENTS)[number]; i: number; progress: MotionValue<number>; still: boolean }) {
+function FragmentCard({ f, i, progress, still }: { f: Fragment; i: number; progress: MotionValue<number>; still: boolean }) {
   const t = useTransform(progress, window_(i), [0, 1], { clamp: true });
   const targetY = -CARD_H / 2 + HEADER_H + i * ROW_H;
   const x = useTransform(t, [0, 1], [f.x - CARD_W / 2, -CARD_W / 2]);
@@ -65,27 +81,29 @@ function Fragment({ f, i, progress, still }: { f: (typeof FRAGMENTS)[number]; i:
  * screens and reduced motion see the record already assembled.
  */
 export function ToolsConverge() {
+  const fragments = useFragments();
+  const t = useI18n().m.marketing.about.tools;
   const ref = useRef<HTMLDivElement>(null);
   const { reduced } = useMarketingScroll();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start 0.85", "end 0.6"] });
   const card = useTransform(scrollYProgress, [0.35, 0.7], [0, 1], { clamp: true });
   const cardScale = useTransform(card, [0, 1], [0.94, 1]);
   const [landed, setLanded] = useState(0);
-  const done = reduced ? FRAGMENTS.length : landed;
+  const done = reduced ? PLACES.length : landed;
 
   useMotionValueEvent(scrollYProgress, "change", (v) => {
-    setLanded(FRAGMENTS.filter((_, i) => v >= window_(i)[1] - 0.04).length);
+    setLanded(PLACES.filter((_, i) => v >= window_(i)[1] - 0.04).length);
   });
 
   return (
     <div ref={ref} className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
       <div>
-        <SectionHeader lead="Six places." rest="One record." />
+        <SectionHeader lead={t.lead} rest={t.rest} />
         <p className="mt-5 max-w-sm text-base leading-7 text-muted-foreground">
-          Everything a clinic knows about Maya, before and after Vela. Scroll and watch it come together.
+          {t.copy}
         </p>
         <ul className="mt-8 max-w-sm divide-y divide-border/60 border-y border-border/60">
-          {FRAGMENTS.map((f, i) => {
+          {fragments.map((f, i) => {
             const on = i < done;
             return (
               <li key={f.source} className="flex items-center gap-3 py-3 text-sm">
@@ -99,7 +117,7 @@ export function ToolsConverge() {
                 </span>
                 <span className={cn("font-medium transition-colors duration-300", on ? "text-[var(--brand-ink)]" : "text-muted-foreground")}>{f.source}</span>
                 <span className={cn("ml-auto text-xs transition-colors duration-300", on ? "font-semibold text-primary" : "text-muted-foreground/70")}>
-                  {on ? "On the record" : "Scattered"}
+                  {on ? t.onRecord : t.scattered}
                 </span>
               </li>
             );
@@ -117,15 +135,15 @@ export function ToolsConverge() {
             <span className="flex size-10 items-center justify-center rounded-(--radius-mkt-tile) border border-border/70 text-xs font-bold text-primary">MN</span>
             <span className="flex-1">
               <span className="block text-sm font-semibold text-[var(--brand-ink)]">Maya Novak</span>
-              <span className="block text-xs text-muted-foreground">One record in Vela</span>
+              <span className="block text-xs text-muted-foreground">{t.oneRecord}</span>
             </span>
             <span className="rounded-full bg-[var(--brand-wash)] px-2.5 py-1 text-xs font-semibold text-primary tabular-nums">
-              {done}/{FRAGMENTS.length}
+              {done}/{fragments.length}
             </span>
           </div>
         </m.div>
-        {FRAGMENTS.map((f, i) => (
-          <Fragment key={f.source} f={f} i={i} progress={scrollYProgress} still={reduced} />
+        {fragments.map((f, i) => (
+          <FragmentCard key={f.source} f={f} i={i} progress={scrollYProgress} still={reduced} />
         ))}
       </div>
 
@@ -135,10 +153,10 @@ export function ToolsConverge() {
           <span className="flex size-9 items-center justify-center rounded-(--radius-mkt-tile) border border-border/70 text-[11px] font-bold text-primary">MN</span>
           <span>
             <span className="block text-sm font-semibold text-[var(--brand-ink)]">Maya Novak</span>
-            <span className="block text-xs text-muted-foreground">One record in Vela</span>
+            <span className="block text-xs text-muted-foreground">{t.oneRecord}</span>
           </span>
         </div>
-        {FRAGMENTS.map((f) => (
+        {fragments.map((f) => (
           <div key={f.source} className="flex items-center justify-between border-t border-border/60 px-5 py-3 text-sm">
             <span className="text-muted-foreground">{f.row[0]}</span>
             <span className="font-medium text-[var(--brand-ink)]">{f.row[1]}</span>

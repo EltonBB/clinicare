@@ -5,6 +5,7 @@ import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 
+import { useI18n } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 import { EASE } from "../motion/ease";
 
@@ -18,6 +19,7 @@ export type Faq = { q: string; a: ReactNode };
  */
 export function FaqExplorer({ items }: { items: Faq[] }) {
   const [active, setActive] = useState(0);
+  const t = useI18n().m.marketing.pricing;
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -59,7 +61,7 @@ export function FaqExplorer({ items }: { items: Faq[] }) {
       </div>
 
       {/* Wide screens: questions as tabs beside one answer panel. */}
-      <div role="tablist" aria-orientation="vertical" aria-label="Pricing questions" onKeyDown={onKeyDown} className="hidden divide-y divide-border/60 lg:block lg:border-r lg:border-border/60">
+      <div role="tablist" aria-orientation="vertical" aria-label={t.faqNav} onKeyDown={onKeyDown} className="hidden divide-y divide-border/60 lg:block lg:border-r lg:border-border/60">
         {items.map((item, i) => {
           const on = i === active;
           return (
@@ -102,9 +104,9 @@ export function FaqExplorer({ items }: { items: Faq[] }) {
           </m.div>
         </AnimatePresence>
         <div className="flex items-center justify-between border-t border-border/60 pt-6 text-sm">
-          <span className="text-muted-foreground">Still unsure?</span>
+          <span className="text-muted-foreground">{t.stillUnsure}</span>
           <Link href="/contact" className="group/c inline-flex items-center gap-1.5 font-semibold text-primary">
-            Talk to us
+            {t.talkToUs}
             <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/c:translate-x-1" />
           </Link>
         </div>

@@ -9,7 +9,8 @@ import { Reveal } from "../motion/reveal";
 import { PauseToggle } from "../shared/pause-toggle";
 import { SectionHeader } from "../shared/section-header";
 import { MODULE_VISUALS } from "./module-visuals";
-import { MODULES, onSelectModule } from "../shared/modules";
+import { MODULE_COUNT, onSelectModule, useModules } from "../shared/modules";
+import { useI18n } from "@/i18n/client";
 
 /**
  * Vertical module tabs beside a detail card. Auto-advances while in view and
@@ -22,6 +23,10 @@ export function ModuleShowcase() {
   const ref = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const inView = useInView(ref, { margin: "0px 0px -25% 0px" });
+  const modules = useModules();
+  const { m: messages } = useI18n();
+  const pauseLabel = messages.marketing.pause.tour;
+  const t = messages.marketing.product.showcase;
   const [active, setActive] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -33,7 +38,7 @@ export function ModuleShowcase() {
     setActive(i);
     setHeld(true);
   }, []);
-  const mod = MODULES[active];
+  const mod = modules[active];
   const Visual = MODULE_VISUALS[active];
 
   useEffect(() => onSelectModule(choose), [choose]);
@@ -42,7 +47,7 @@ export function ModuleShowcase() {
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("module");
     const requested = Number(raw);
-    if (raw === null || !Number.isInteger(requested) || requested < 0 || requested >= MODULES.length) return;
+    if (raw === null || !Number.isInteger(requested) || requested < 0 || requested >= MODULE_COUNT) return;
     const frame = requestAnimationFrame(() => choose(requested));
     return () => cancelAnimationFrame(frame);
   }, [choose]);
@@ -51,7 +56,7 @@ export function ModuleShowcase() {
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    const next = (active + step + MODULES.length) % MODULES.length;
+    const next = (active + step + MODULE_COUNT) % MODULE_COUNT;
     choose(next);
     tabRefs.current[next]?.focus();
   }
@@ -61,9 +66,9 @@ export function ModuleShowcase() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeader
           className="mb-12"
-          lead="Every surface, all day."
-          rest="Six modules, one record underneath."
-          aside={<PauseToggle paused={held} onToggle={() => setHeld((h) => !h)} label="module tour" />}
+          lead={t.lead}
+          rest={t.rest}
+          aside={<PauseToggle paused={held} onToggle={() => setHeld((h) => !h)} label={pauseLabel} />}
         />
 
         <Reveal>
@@ -77,8 +82,8 @@ export function ModuleShowcase() {
               if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
             }}
           >
-            <div role="tablist" aria-orientation="vertical" aria-label="Product modules" className="border-b border-border/60" onKeyDown={onKeyDown}>
-              {MODULES.map((item, i) => {
+            <div role="tablist" aria-orientation="vertical" aria-label={t.tabsLabel} className="border-b border-border/60" onKeyDown={onKeyDown}>
+              {modules.map((item, i) => {
                 const selected = i === active;
                 return (
                   <button
@@ -105,7 +110,7 @@ export function ModuleShowcase() {
                         aria-hidden
                         className="animate-progress absolute inset-x-0 -bottom-px h-0.5 bg-primary"
                         style={{ animationPlayState: paused ? "paused" : "running" }}
-                        onAnimationEnd={() => setActive((a) => (a + 1) % MODULES.length)}
+                        onAnimationEnd={() => setActive((a) => (a + 1) % MODULE_COUNT)}
                       />
                     ) : null}
                   </button>
