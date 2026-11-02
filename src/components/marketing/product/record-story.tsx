@@ -81,12 +81,13 @@ export function RecordStory() {
   }, []);
 
   useEffect(() => {
-    const els = stepRefs.current.filter(Boolean) as HTMLLIElement[];
     let frame = 0;
     // Counted from every step on each scroll, so a fast jump past several
-    // steps still lands on the right one.
+    // steps still lands on the right one. The refs are read on each pass, so
+    // steps re-rendered by a language switch are still the ones measured.
     const measure = () => {
       frame = 0;
+      const els = stepRefs.current.filter(Boolean) as HTMLLIElement[];
       const tops = els.map((el) => el.getBoundingClientRect().top);
       const h = window.innerHeight;
       setSeen(tops.filter((top) => top < h * 0.82).length - 1);
@@ -114,7 +115,7 @@ export function RecordStory() {
           <ol ref={list} onPointerLeave={() => setHovered(null)}>
             {steps.map((step, i) => (
               <StepItem
-                key={step.title}
+                key={i}
                 ref={(el) => {
                   stepRefs.current[i] = el;
                 }}
