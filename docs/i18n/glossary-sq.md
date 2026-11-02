@@ -136,6 +136,17 @@ The terminology and tone every Albanian string in Vela follows: the website, the
 | Revoke access | Hiq qasjen |
 | Mark as attended | Shëno si të paraqitur |
 
+## Vela Staff app
+| English | Albanian | Notes |
+|---|---|---|
+| Alerts (tab) | Njoftimet | same as Notifications |
+| clinic admin | administrata e klinikës | "Message clinic admin": *Shkruaji administratës* |
+| Next up | Në vijim | as on the dashboard |
+| Workspace locked / Unlock | Aplikacioni është i kyçur / Shkyç aplikacionin | the app, not the clinic's workspace |
+| Checked in / Not checked in | Në punë / Pa regjistruar hyrjen | |
+| Connected device | Pajisja e lidhur | |
+| Language | Gjuha | the options name themselves: English, Shqip |
+
 ## Time words
 
 Sot, dje, nesër; *në 3 ditë*, *para 2 orësh*, *këtë javë*, *muajin e kaluar*. Day names: e hënë, e martë, e mërkurë, e enjte, e premte, e shtunë, e diel. Short: hën, mar, mër, enj, pre, sht, die. Periods: *ditore*, *javore*, *mujore*, *periudhë e zgjedhur*.
