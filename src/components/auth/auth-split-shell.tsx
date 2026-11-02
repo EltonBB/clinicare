@@ -22,7 +22,7 @@ export async function AuthSplitShell({ children }: { children: ReactNode }) {
     <div className="grid min-h-dvh bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
       <main className="flex min-h-dvh flex-col px-5 py-6 sm:px-10 sm:py-8">
         <div className="flex items-center justify-between">
-          <BrandMark href="/" includeSubtitle={false} />
+          <BrandMark href="/" />
           <Link
             href="/"
             className="group/back inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-[var(--brand-ink)]"

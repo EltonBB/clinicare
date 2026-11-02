@@ -262,6 +262,16 @@ export const serverText: Record<string, string> = {
   "Cancelled the {time} appointment with {name} — please reschedule.":
     "Anuloi terminin e orës {time} me {name}. Ju lutemi riplanifikojeni.",
 
+  // Owner page
+  "Not found.": "Nuk u gjet.",
+  "That choice isn't valid.": "Kjo zgjedhje nuk është e vlefshme.",
+  "That clinic no longer exists.": "Kjo klinikë nuk ekziston më.",
+  "This clinic is paying through its subscription. Cancel that first, then make it free.":
+    "Kjo klinikë paguan përmes abonimit të saj. Anulojeni atë së pari, pastaj bëjeni falas.",
+  "That clinic isn't valid.": "Kjo klinikë nuk është e vlefshme.",
+  "Only a clinic paying for Basic, never offered before, can get a Pro trial.":
+    "Provën e Pro mund ta marrë vetëm një klinikë që paguan për Basic dhe që nuk e ka marrë më parë këtë ofertë.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

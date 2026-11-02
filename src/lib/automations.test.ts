@@ -9,6 +9,7 @@ import {
   visitDateTokens,
   isAutomationAvailable,
   renderAutomationMessage,
+  type AutomationKind,
 } from "@/lib/automations";
 
 const SAMPLE = {
@@ -140,8 +141,8 @@ describe("insertTokenAt", () => {
 
 describe("Albanian default wording", () => {
   const tokens = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
-  const variants = AUTOMATIONS.flatMap(({ kind }) =>
-    kind === "VISIT_CHANGED" ? [[kind, "moved"] as const, [kind, "cancelled"] as const] : [[kind, "moved"] as const]
+  const variants: Array<[AutomationKind, "moved" | "cancelled"]> = AUTOMATIONS.flatMap(({ kind }): Array<[AutomationKind, "moved" | "cancelled"]> =>
+    kind === "VISIT_CHANGED" ? [[kind, "moved"], [kind, "cancelled"]] : [[kind, "moved"]]
   );
 
   it.each(variants)("%s (%s) carries the same details and reads as Albanian", (kind, variant) => {

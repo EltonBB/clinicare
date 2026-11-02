@@ -84,7 +84,7 @@ export function SiteHeader() {
       )}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <BrandMark href="/" includeSubtitle={false} tone={dark ? "light" : "default"} />
+        <BrandMark href="/" tone={dark ? "light" : "default"} />
 
         <nav className={cn("hidden items-center gap-9 text-sm font-medium transition-colors duration-300 lg:flex", dark ? "text-white/60" : "text-muted-foreground")}>
           {navItems.map((item) => {

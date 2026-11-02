@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { offerProTrialAction, setClinicBillingAction } from "@/app/owner/actions";
 import { Button } from "@/components/ui/button";
 import { fieldSelectClass } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
 import { cn } from "@/lib/utils";
 
 type Choice = "FREE_BASIC" | "FREE_PRO" | "PAYING";
@@ -22,6 +23,8 @@ export function OwnerBillingControl({
   canMakeFree: boolean;
   proTrial: "offerable" | "offered" | "active" | null;
 }) {
+  const t = useI18n().m.owner.control;
+  const serverText = useServerText();
   const current: Choice = isFree ? (plan === "Pro" ? "FREE_PRO" : "FREE_BASIC") : "PAYING";
   const [choice, setChoice] = useState<Choice>(current);
   const [error, setError] = useState("");
@@ -47,22 +50,22 @@ export function OwnerBillingControl({
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
         <select
-          aria-label="Billing"
+          aria-label={t.label}
           value={choice}
           onChange={(event) => setChoice(event.target.value as Choice)}
           className={cn(fieldSelectClass, "h-8 min-w-0 flex-1 text-sm")}
           disabled={pending}
         >
           <option value="FREE_BASIC" disabled={!canMakeFree}>
-            Free · Basic
+            {t.freeBasic}
           </option>
           <option value="FREE_PRO" disabled={!canMakeFree}>
-            Free · Pro
+            {t.freePro}
           </option>
-          <option value="PAYING">Must pay</option>
+          <option value="PAYING">{t.paying}</option>
         </select>
         <Button size="sm" variant="outline" onClick={save} disabled={pending || choice === current}>
-          Save
+          {t.save}
         </Button>
       </div>
       {proTrial === "offerable" ? (
@@ -72,12 +75,12 @@ export function OwnerBillingControl({
           disabled={pending}
           className="w-fit text-xs font-semibold text-primary underline-offset-4 hover:underline disabled:opacity-50"
         >
-          Offer Pro trial
+          {t.offerTrial}
         </button>
       ) : proTrial ? (
-        <p className="text-xs text-muted-foreground">{proTrial === "offered" ? "Pro trial offered" : "On a Pro trial"}</p>
+        <p className="text-xs text-muted-foreground">{proTrial === "offered" ? t.trialOffered : t.onTrial}</p>
       ) : null}
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{serverText(error)}</p> : null}
     </div>
   );
 }

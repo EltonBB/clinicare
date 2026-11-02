@@ -16,7 +16,7 @@ export default async function CheckoutSuccessPage() {
   return (
     <main className="flex min-h-dvh flex-col bg-white px-5 py-6 sm:px-10 sm:py-8">
       <header>
-        <BrandMark href="/" includeSubtitle={false} />
+        <BrandMark href="/" />
       </header>
       <div className="flex flex-1 items-center justify-center">
         <WithMessages namespaces={["billing"]}>
