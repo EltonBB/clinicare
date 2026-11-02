@@ -2,6 +2,7 @@ import type { shell as en } from "../en/shell";
 import type { Translation } from "../types";
 
 export const shell: Translation<typeof en> = {
+  unreadWord: "të palexuara",
   nav: {
     dashboard: "Paneli",
     calendar: "Kalendari",

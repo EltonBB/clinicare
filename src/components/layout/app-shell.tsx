@@ -54,6 +54,7 @@ function NavCountBadge({
   isActive: boolean;
   className?: string;
 }) {
+  const { m } = useI18n();
   if (count <= 0) {
     return null;
   }
@@ -67,7 +68,7 @@ function NavCountBadge({
       )}
     >
       {count > 9 ? "9+" : count}
-      <span className="sr-only"> unread</span>
+      <span className="sr-only"> {m.shell.unreadWord}</span>
     </span>
   );
 }
