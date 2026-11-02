@@ -777,7 +777,7 @@ export function SettingsWorkspace({
     <LazyMotionProvider>
       {errorMessage ? (
         <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          {errorMessage}
+          {serverText(errorMessage)}
         </div>
       ) : null}
       {!errorMessage && message ? (

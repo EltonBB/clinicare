@@ -225,6 +225,17 @@ export const serverText: Record<string, string> = {
   "Your Pro trial has already ended.": "Prova juaj e Pro ka përfunduar tashmë.",
   "We couldn't switch you to Pro. Please try again.": "Nuk mundëm t'ju kalonim në Pro. Ju lutemi provoni përsëri.",
 
+  // Shared: read-only workspaces and sending (lib/billing-access, lib/messaging)
+  "This workspace is read-only because its plan has ended. Renew it in Settings › Billing to keep working.":
+    "Kjo hapësirë pune është vetëm për lexim sepse plani i saj ka përfunduar. Rinovojeni te Cilësimet › Faturimi për të vazhduar punën.",
+  "This messaging channel isn't connected yet.": "Ky kanal mesazhesh ende nuk është i lidhur.",
+  "The recipient address looks invalid.": "Adresa e marrësit duket e pavlefshme.",
+  "The reminder message is empty.": "Mesazhi i kujtesës është bosh.",
+  "The message is empty.": "Mesazhi është bosh.",
+  "We couldn't confirm the message was delivered. It may have reached the recipient.":
+    "Nuk mundëm ta konfirmonim që mesazhi u dorëzua. Mund t'i ketë arritur marrësit.",
+  "We couldn't send the message. Please try again.": "Nuk mundëm ta dërgonim mesazhin. Ju lutemi provoni përsëri.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

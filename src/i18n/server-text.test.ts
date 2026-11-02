@@ -31,6 +31,8 @@ const COVERED = [
   "src/lib/follow-up-dispatch.ts",
   "src/app/(workspace)/settings/actions.ts",
   "src/app/(workspace)/settings/billing-actions.ts",
+  "src/lib/billing-access.ts",
+  "src/lib/messaging/index.ts",
 ];
 
 // Literals in covered files that no screen shows: log lines, and the staff
@@ -63,6 +65,9 @@ const NOT_SHOWN = new Set([
   "Couldn't resume the plan.",
   "Couldn't start a card update.",
   "Couldn't move the subscription to Pro.",
+  "Outbound message idempotency key is malformed; sending without it.",
+  "Outbound message held back: the workspace is read-only.",
+  "Outbound message held back: the clinic reached its sending ceiling.",
   "Switching an automation failed.",
   "Couldn't book a slot offer.",
   "Couldn't skip a follow-up draft.",

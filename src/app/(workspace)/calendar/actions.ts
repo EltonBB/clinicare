@@ -119,7 +119,8 @@ function parseDateTime(date: string, time: string) {
   return parseZonedWallClock(date, time);
 }
 
-async function hydrateAppointment(appointmentId: string) {
+// `ownerName` stands in for an unassigned booking, as on the calendar page (lib/calendar).
+async function hydrateAppointment(appointmentId: string, ownerName: string) {
   const appointment = await prisma.appointment.findUniqueOrThrow({
     where: {
       id: appointmentId,
@@ -148,7 +149,7 @@ async function hydrateAppointment(appointmentId: string) {
     clientName: appointment.client.name,
     service: appointment.title,
     staffMemberId: appointment.staffMemberId ?? undefined,
-    staffName: appointment.staffMember?.name ?? "Workspace staff",
+    staffName: appointment.staffMember?.name ?? ownerName,
     date: formatZonedDateKey(appointment.startAt),
     startTime: formatZonedTime24(appointment.startAt),
     endTime: formatZonedTime24(appointment.endAt),
@@ -787,7 +788,7 @@ export async function saveAppointmentAction(
 
     return {
       ok: true,
-      appointment: await hydrateAppointment(appointmentId!),
+      appointment: await hydrateAppointment(appointmentId!, toBusinessIdentity(business, context.user).ownerName),
     };
   } catch (error) {
     // The client/staff ownership checks above run before the transaction, so
