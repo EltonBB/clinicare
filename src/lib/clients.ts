@@ -15,7 +15,7 @@ import type {
 import { format } from "date-fns";
 
 import type { Locale } from "@/i18n/config";
-import { dateText, fmt, storedLabel } from "@/i18n/format";
+import { dateText, fmt, numberFormatter, storedLabel } from "@/i18n/format";
 import { messages } from "@/i18n/messages";
 import { appointmentStatusKey } from "@/lib/appointment-status";
 import { resolveMediaDisplayUrls } from "@/lib/media-storage-server";
@@ -320,7 +320,7 @@ function formatLastVisit(lastVisitAt: Date | null, copy: Copy) {
   return lastVisitAt ? day(lastVisitAt, copy) : copy.t.view.noVisitsYet;
 }
 
-function formatFileSize(bytes: number | null) {
+function formatFileSize(bytes: number | null, { locale }: Copy) {
   if (!bytes || bytes <= 0) {
     return "";
   }
@@ -329,7 +329,7 @@ function formatFileSize(bytes: number | null) {
     return `${Math.max(Math.round(bytes / 1024), 1)} KB`;
   }
 
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${numberFormatter(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes / (1024 * 1024))} MB`;
 }
 
 function toAppointmentEntry(
@@ -377,7 +377,7 @@ async function buildDocuments(client: ClientWithRelations, copy: Copy): Promise<
       fileType: document.fileType,
       category: document.category ?? document.fileType,
       mimeType: document.mimeType ?? "",
-      fileSize: formatFileSize(document.fileSize ?? null),
+      fileSize: formatFileSize(document.fileSize ?? null, copy),
       fileUrl: (source && urlMap.get(source)) || "",
       storageUrl: document.storageUrl ?? document.fileUrl ?? "",
       // The action stores "Workspace staff" when nobody is named; the page shows

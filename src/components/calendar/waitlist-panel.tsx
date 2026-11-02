@@ -325,7 +325,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     className={fieldInputClass}
                   />
                 </FormField>
-                <FormField label="Notes" className="sm:col-span-2">
+                <FormField label={t.notes} className="sm:col-span-2">
                   <Textarea
                     value={form.notes}
                     onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}

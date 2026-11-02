@@ -59,7 +59,7 @@ export function numberFormatter(locale: Locale, options: Intl.NumberFormatOption
       // Albanian groups thousands with a (non-breaking) space and leaves four-digit numbers whole ("1234", "12 345").
       const grouped = digits.length >= 5 ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") : digits;
       const number = `${sign}${grouped}${fraction ? `,${fraction}` : ""}${percent}`;
-      return currency ? `${number} ${currency}` : number;
+      return currency ? `${number}\u00a0${currency}` : number;
     },
     resolvedOptions: () => english.resolvedOptions(),
   } as NumberFormatterLike;

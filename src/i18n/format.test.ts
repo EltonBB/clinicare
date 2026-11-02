@@ -20,7 +20,7 @@ describe("plural", () => {
 
   it("formats the count for the language", () => {
     expect(plural({ one: "{count} visit", other: "{count} visits" }, 12000, "en")).toBe("12,000 visits");
-    expect(plural({ one: "{count} vizitë", other: "{count} vizita" }, 12000, "sq")).toBe("12 000 vizita");
+    expect(plural({ one: "{count} vizitë", other: "{count} vizita" }, 12000, "sq")).toBe("12\u00a0000 vizita");
   });
 });
 
@@ -75,7 +75,7 @@ describe("Albanian numbers", () => {
       new Intl.NumberFormat("sq-XK", options).format(value).replace(/\u00a0|\u202f/g, " ");
     for (const value of [0, 7, 40, 1234.5, 12345.67, 1234567]) {
       expect(money("sq", value).replace(/\u00a0/g, " ")).toBe(icuNumber(value, { style: "currency", currency: "EUR" }));
-      expect(numberFormatter("sq").format(value).replace(/ /g, " ")).toBe(icuNumber(value));
+      expect(numberFormatter("sq").format(value).replace(/\u00a0/g, " ")).toBe(icuNumber(value));
     }
     expect(money("sq", -40).replace(/\u00a0/g, " ")).toBe(icuNumber(-40, { style: "currency", currency: "EUR" }));
   });

@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 
+import type { Locale } from "@/i18n/config";
+import { useI18n } from "@/i18n/client";
+import { numberFormatter } from "@/i18n/format";
+
 /**
  * Eases `target` from wherever it last settled — not always from 0 — so a
  * value that changes without the component remounting (e.g. a score that
@@ -102,6 +106,36 @@ export function useCountUp(target: number, options?: { animateOnMount?: boolean 
   return display;
 }
 
+// The decimal part (if any) is captured with the digits, not left in the
+// suffix — otherwise a value like "66.7%" would count the whole part up while
+// ".7%" sat there unchanged the whole time. A leading "-" is captured with the
+// digits too, not the prefix — a `[^\d]*` prefix would swallow it, leaving the
+// target a positive magnitude and the sign as static, un-animated text. That's
+// dormant on first mount, but breaks a live retarget: -12 → 12 would parse as
+// target 12 → 12, so useCountUp sees no change and never animates while the
+// prefix flips instantly (Codex).
+const EN_NUMBER =/^([^\d-]*)(-?[\d,]+(?:\.\d+)?)(.*)$/;
+const SQ_NUMBER = /^([^\d-]*)(-?\d+(?:[\u00a0 ]\d{3})*(?:,\d+)?)(.*)$/;
+
+/**
+ * Splits a shown number ("€1,234.50", "12 345 €", "86,4%") into the text around
+ * it and its value, reading it the way the page's language writes it: "1,234.5"
+ * in English, "12 345,5" (space-grouped, decimal comma) in Albanian.
+ */
+export function readKpiNumber(value: string, locale: Locale) {
+  const match = (locale === "sq" ? SQ_NUMBER : EN_NUMBER).exec(value);
+  if (!match) return null;
+  const raw = locale === "sq" ? match[2].replace(/[\u00a0 ]/g, "").replace(",", ".") : match[2].replace(/,/g, "");
+  const target = Number(raw);
+  if (!Number.isFinite(target)) return null;
+  return {
+    prefix: match[1],
+    target,
+    decimals: raw.includes(".") ? raw.split(".")[1].length : 0,
+    suffix: match[3],
+  };
+}
+
 export function KpiValue({
   value,
   truncate = false,
@@ -127,31 +161,18 @@ export function KpiValue({
   // once, for this instance's very first appearance.
   animateOnMount?: boolean;
 }) {
-  // Decimal part (if any) is captured with the digits, not left in the
-  // suffix — otherwise a value like "66.7%" would count the whole part up
-  // while ".7%" sat there unchanged the whole time. A leading "-" is
-  // captured with the digits too, not the prefix — a `[^\d]*` prefix would
-  // swallow it, leaving `parsedTarget` a positive magnitude and the sign as
-  // static, un-animated text. That's dormant on first mount (a static "-"
-  // in front of a 0→N count-up still reads fine), but breaks a live
-  // retarget: -12 → 12 would parse as target 12 → 12, so useCountUp sees no
-  // change and never animates while the prefix flips instantly, and
-  // -20 → 5 would animate a magnitude delta of 15 instead of the true
-  // swing of 25 (Codex).
-  const match = /^([^\d-]*)(-?[\d,]+(?:\.\d+)?)(.*)$/.exec(value);
-  const raw = match ? match[2].replace(/,/g, "") : "";
-  const parsedTarget = match ? Number(raw) : NaN;
-  const decimals = raw.includes(".") ? raw.split(".")[1].length : 0;
-  const display = useCountUp(Number.isFinite(parsedTarget) ? parsedTarget : 0, { animateOnMount });
+  const { locale } = useI18n();
+  const parsed = readKpiNumber(value, locale);
+  const display = useCountUp(parsed?.target ?? 0, { animateOnMount });
 
-  const formatted = match
-    ? `${match[1]}${display.toLocaleString("en-US", {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      })}${match[3]}`
+  const formatted = parsed
+    ? `${parsed.prefix}${numberFormatter(locale, {
+        minimumFractionDigits: parsed.decimals,
+        maximumFractionDigits: parsed.decimals,
+      }).format(display)}${parsed.suffix}`
     : value;
 
-  if (truncate || !match || !Number.isFinite(parsedTarget)) {
+  if (truncate || !parsed) {
     return <span className="tabular-nums">{formatted}</span>;
   }
 

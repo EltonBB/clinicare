@@ -88,6 +88,7 @@ export const calendar = {
     preferredDays: "Preferred days",
     from: "From",
     to: "To",
+    notes: "Notes",
     any: "any",
     fromDate: "from {date}",
     cancel: "Cancel",

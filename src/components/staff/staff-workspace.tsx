@@ -11,7 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KpiValue } from "@/components/workspace/kpi-value";
 import { useI18n, useServerText } from "@/i18n/client";
-import { fmt, plural, storedLabel } from "@/i18n/format";
+import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
 import {
   FilterChip,
   WorkspaceEmptyState,
@@ -302,7 +302,7 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                   {member.completionRate > 0 ? (
                     <>
                       <p className="text-sm font-semibold text-foreground">
-                        <KpiValue value={`${member.completionRate}%`} animateOnMount />
+                        <KpiValue value={`${numberFormatter(locale).format(member.completionRate)}%`} animateOnMount />
                       </p>
                       {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
                           Reports' staff-load bar, this directory has no period selector,

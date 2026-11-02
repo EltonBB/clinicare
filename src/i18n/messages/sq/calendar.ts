@@ -90,6 +90,7 @@ export const calendar: Translation<typeof en> = {
     preferredDays: "Ditët e preferuara",
     from: "Nga",
     to: "Deri",
+    notes: "Shënime",
     any: "çdo orë",
     fromDate: "nga {date}",
     cancel: "Anulo",

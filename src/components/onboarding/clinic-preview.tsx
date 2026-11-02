@@ -12,7 +12,7 @@ import { Check } from "lucide-react";
 
 import { useI18n } from "@/i18n/client";
 import type { Locale } from "@/i18n/config";
-import { fmt, plural, storedLabel } from "@/i18n/format";
+import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
 import { renderReminder } from "@/lib/messaging/render";
 import { addZonedDays, formatZonedFullDate, getZonedDateParts } from "@/lib/time-zone";
 import { hoursBetweenTimes, weekdayOrder, type WeekdayKey, type WorkingHoursState } from "@/lib/onboarding";
@@ -88,8 +88,9 @@ function clinicNow() {
   };
 }
 
-function formatHours(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+/** "37.5" / "37,5": whole hours stay whole, half hours get one decimal. */
+function formatHours(value: number, locale: Locale) {
+  return numberFormatter(locale, { maximumFractionDigits: 1 }).format(value);
 }
 
 /** A number that counts to its new value instead of jumping (jumps under reduced motion). */
@@ -385,13 +386,13 @@ export function ClinicPreview(props: ClinicPreviewProps) {
             <p className="text-xs text-white/65" aria-live="polite">
               {hovered && hoveredDay ? (
                 hovered.enabled ? (
-                  fmt(t.dayRange, { day: m.common.weekdays[hoveredDay].name, start: hovered.start, end: hovered.end, hours: formatHours(dayHours(hoveredDay)) })
+                  fmt(t.dayRange, { day: m.common.weekdays[hoveredDay].name, start: hovered.start, end: hovered.end, hours: formatHours(dayHours(hoveredDay), locale) })
                 ) : (
                   fmt(t.dayClosed, { day: m.common.weekdays[hoveredDay].name })
                 )
               ) : openDays.length ? (
                 <>
-                  <CountUp value={weeklyHours} format={(v) => formatHours(Math.round(v * 2) / 2)} />
+                  <CountUp value={weeklyHours} format={(v) => formatHours(Math.round(v * 2) / 2, locale)} />
                   {t.hoursOpen} {plural(t.day, openDays.length, locale)}
                 </>
               ) : (

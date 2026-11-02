@@ -9,6 +9,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction, type ReminderWarning } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import {
   GlobalSearchPalette,
   GlobalSearchTrigger,
@@ -386,6 +387,7 @@ export function AppShell({
             <div className="flex w-full items-center gap-4 lg:h-[56px] lg:gap-5">
               <BrandMark compact href="/dashboard" className="lg:hidden" />
               <div className="ml-auto flex items-center gap-1.5">
+                <LanguageSwitcher />
                 <NotificationsMenu
                   unreadCount={liveUnreadCount}
                   items={liveNotifications}
