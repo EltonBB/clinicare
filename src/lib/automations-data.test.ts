@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+const prisma = vi.hoisted(() => ({}) as Record<string, unknown>);
+vi.mock("@/lib/prisma", () => ({ prisma }));
 
-import { effectiveAutomationRow, resolveAutomationSettings } from "@/lib/automations-data";
+import { defaultAutomationText } from "@/lib/automations";
+import { effectiveAutomationRow, resolveAutomationSettings, writeAlbanianDefaultWording } from "@/lib/automations-data";
 
 const LEGACY_REMINDERS = {
   send24HourReminder: true,
@@ -120,5 +122,54 @@ describe("effectiveAutomationRow", () => {
       timing: 14,
       template: "Hi {client_name}!",
     });
+  });
+});
+
+describe("writeAlbanianDefaultWording", () => {
+  function run(automationSettings: unknown[]) {
+    const updateMany = vi.fn((args: unknown) => ({ op: "update", args }));
+    const createMany = vi.fn((args: unknown) => ({ op: "create", args }));
+    Object.assign(prisma, {
+      business: { findUnique: async () => ({ plan: "PRO", automationSettings, reminderSettings: null, workflowSettings: null }) },
+      automationSetting: { updateMany, createMany },
+      $transaction: async (writes: unknown[]) => writes,
+    });
+    return { updateMany, createMany, done: writeAlbanianDefaultWording("biz") };
+  }
+  const saved = (kind: string, template: string | null, template2: string | null = null) => ({
+    kind,
+    enabled: true,
+    mode: "AUTOMATIC",
+    timing: null,
+    template,
+    template2,
+  });
+
+  it("changes a saved row's wording only while it still holds what was read", async () => {
+    const { updateMany, done } = run([saved("FIRST_REMINDER", null)]);
+    await done;
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { businessId: "biz", kind: "FIRST_REMINDER", template: null },
+      data: { template: defaultAutomationText("FIRST_REMINDER", "moved", "sq") },
+    });
+  });
+
+  it("writes only the visit-changed message that still uses the English default", async () => {
+    const { updateMany, done } = run([saved("VISIT_CHANGED", "Our own words, {client_name}.", null)]);
+    await done;
+    const calls = updateMany.mock.calls.map(([args]) => args as { where: { kind: string } });
+    expect(calls.filter((args) => args.where.kind === "VISIT_CHANGED")).toEqual([
+      {
+        where: { businessId: "biz", kind: "VISIT_CHANGED", template2: null },
+        data: { template2: defaultAutomationText("VISIT_CHANGED", "cancelled", "sq") },
+      },
+    ]);
+  });
+
+  it("creates a missing row only if none was saved in the meantime", async () => {
+    const { createMany, done } = run([]);
+    await done;
+    expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
+    expect(prisma.automationSetting).not.toHaveProperty("upsert");
   });
 });

@@ -216,17 +216,23 @@ export async function writeAlbanianDefaultWording(businessId: string): Promise<v
       ? defaultAutomationText(kind, variant, "sq")
       : stored;
 
+  // Each write is conditional on what was read, so wording saved from the
+  // editor in the meantime is never replaced.
   const writes = AUTOMATIONS.flatMap(({ kind }) => {
     const row = effectiveAutomationRow(kind, business);
     const template = albanian(kind, row.template, "moved");
     const template2 = kind === "VISIT_CHANGED" ? albanian(kind, row.template2, "cancelled") : row.template2;
     if (template === row.template && template2 === row.template2) return [];
+    if (!business.automationSettings.some((stored) => stored.kind === kind)) {
+      return [prisma.automationSetting.createMany({ data: [{ ...row, businessId, template, template2 }], skipDuplicates: true })];
+    }
     return [
-      prisma.automationSetting.upsert({
-        where: { businessId_kind: { businessId, kind } },
-        create: { ...row, businessId, template, template2 },
-        update: { template, template2 },
-      }),
+      ...(template === row.template
+        ? []
+        : [prisma.automationSetting.updateMany({ where: { businessId, kind, template: row.template }, data: { template } })]),
+      ...(template2 === row.template2
+        ? []
+        : [prisma.automationSetting.updateMany({ where: { businessId, kind, template2: row.template2 }, data: { template2 } })]),
     ];
   });
   await prisma.$transaction(writes);
