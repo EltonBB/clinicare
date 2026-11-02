@@ -249,7 +249,7 @@ export const serverText: Record<string, string> = {
   "Conversation not found.": "Biseda nuk u gjet.",
   "Your account isn't active. Contact your clinic admin.": "Llogaria juaj nuk është aktive. Kontaktoni administratën e klinikës.",
   "You can only check in during a scheduled shift. Check with your clinic admin if your schedule looks wrong.":
-    "Hyrjen mund ta regjistroni vetëm gjatë një turni të planifikuar. Pyetni administratën e klinikës nëse orari juaj duket i gabuar.",
+    "Hyrjen mund ta regjistroni vetëm gjatë një ndërrimi të planifikuar. Pyetni administratën e klinikës nëse orari juaj duket i gabuar.",
   "New appointment": "Termin i ri",
   "Schedule updated": "Orari u përditësua",
   "Your clinic booked a new appointment for you.": "Klinika juaj ju caktoi një termin të ri.",

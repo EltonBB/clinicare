@@ -1,7 +1,7 @@
 import type { Appointment } from "@prisma/client";
 
 import type { Locale } from "@/i18n/config";
-import { fmt } from "@/i18n/format";
+import { fmt, storedLabel } from "@/i18n/format";
 import { messages } from "@/i18n/messages";
 import { appointmentDurationMinutes } from "@/lib/calendar";
 import type { StaffDirectoryItem } from "@/lib/staff";
@@ -83,7 +83,8 @@ export function serializeMe(args: {
   return {
     id: item.id,
     name: item.name,
-    role: item.role,
+    // A built-in role reads in the app's language; a clinic's own stays as typed.
+    role: item.role ? storedLabel(messages[locale].staff.roles, item.role) : messages[locale].staff.noRole,
     clinicName,
     email: item.email,
     phone: item.phone,
