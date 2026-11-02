@@ -1,5 +1,6 @@
 import type { Locale } from "../config";
 import { auth as enAuth } from "./en/auth";
+import { automations as enAutomations } from "./en/automations";
 import { billing as enBilling } from "./en/billing";
 import { calendar as enCalendar } from "./en/calendar";
 import { clients as enClients } from "./en/clients";
@@ -13,6 +14,7 @@ import { onboarding as enOnboarding } from "./en/onboarding";
 import { shell as enShell } from "./en/shell";
 import { staff as enStaff } from "./en/staff";
 import { auth as sqAuth } from "./sq/auth";
+import { automations as sqAutomations } from "./sq/automations";
 import { billing as sqBilling } from "./sq/billing";
 import { calendar as sqCalendar } from "./sq/calendar";
 import { clients as sqClients } from "./sq/clients";
@@ -41,6 +43,7 @@ const en = {
   clients: enClients,
   staff: enStaff,
   inbox: enInbox,
+  automations: enAutomations,
 };
 
 export type Messages = Translation<typeof en>;
@@ -61,6 +64,7 @@ const sq: Messages = {
   clients: sqClients,
   staff: sqStaff,
   inbox: sqInbox,
+  automations: sqAutomations,
 };
 
 export const messages: Record<Locale, Messages> = { en, sq };

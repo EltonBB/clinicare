@@ -12,17 +12,17 @@ import {
   passSlotOfferAction,
   sendFollowUpDraftAction,
 } from "@/app/(workspace)/automations/review/actions";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import { cn, getInitials } from "@/lib/utils";
 import {
   countFollowUpsByKind,
-  followUpKindGroupLabels,
   followUpKindOrder,
   followUpRowKey,
   orderFollowUps,
   visibleFollowUps,
   type FollowUpDraftItem,
 } from "@/lib/follow-ups";
-import { WAITLIST_PLAN_ERROR } from "@/lib/waitlist";
 
 const textButtonClass =
   "h-8 px-2 text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60";
@@ -31,6 +31,9 @@ type FollowUpBusyState = "send" | "skip" | "book" | "pass" | null;
 
 export function ReviewList({ items }: { items: FollowUpDraftItem[] }) {
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.automations.review;
+  const serverText = useServerText();
   // Rows handled here disappear at once; the list itself stays driven by the
   // server so a refresh brings in anything new — skipping or declining a slot
   // offer drafts a fresh one for the next person on the waiting list, and a
@@ -57,8 +60,8 @@ export function ReviewList({ items }: { items: FollowUpDraftItem[] }) {
         {/* Drafts come and go, so an empty list is usually "caught up", not a
             first run: the quiet empty state, with what lands here. */}
         <WorkspaceEmptyState
-          title="Nothing to review"
-          description="Messages from automations set to wait for your review land here. None of them sends until you do."
+          title={t.emptyTitle}
+          description={t.emptyCopy}
         />
       </>
     );
@@ -69,13 +72,13 @@ export function ReviewList({ items }: { items: FollowUpDraftItem[] }) {
       {noticeLine}
       <div className="mb-3 flex flex-wrap items-center gap-1">
         <FilterChip active={activeFilter === "ALL"} count={drafts.length} onClick={() => setFilter("ALL")}>
-          All
+          {t.all}
         </FilterChip>
         {followUpKindOrder
           .filter((kind) => counts[kind] > 0)
           .map((kind) => (
             <FilterChip key={kind} active={activeFilter === kind} count={counts[kind]} onClick={() => setFilter(kind)}>
-              {followUpKindGroupLabels[kind]}
+              {t.groups[kind]}
             </FilterChip>
           ))}
       </div>
@@ -88,7 +91,7 @@ export function ReviewList({ items }: { items: FollowUpDraftItem[] }) {
             draft={draft}
             hidden={activeFilter !== "ALL" && draft.kind !== activeFilter}
             onHandled={(handledNotice) => {
-              setNotice(handledNotice ?? "");
+              setNotice(handledNotice ? (serverText(handledNotice) ?? handledNotice) : "");
               setHandledKeys((current) => [...current, followUpRowKey(draft)]);
               router.refresh();
             }}
@@ -109,6 +112,9 @@ function FollowUpDraftRow({
   onHandled: (notice?: string) => void;
 }) {
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.automations.review;
+  const serverText = useServerText();
   const [body, setBody] = useState(draft.body);
   const [busy, setBusy] = useState<FollowUpBusyState>(null);
   const [error, setError] = useState("");
@@ -138,13 +144,13 @@ function FollowUpDraftRow({
     } catch {
       // A rejected server action (network drop, 5xx, deploy skew) — a plain
       // message, and the buttons come back instead of staying stuck disabled.
-      setError("Something went wrong. Try again.");
+      setError(t.somethingWrong);
       setBusy(null);
       return null;
     }
 
     if (!result.ok) {
-      setError(result.error ?? fallbackError);
+      setError(serverText(result.error) ?? fallbackError);
       setBusy(null);
       return null;
     }
@@ -156,14 +162,14 @@ function FollowUpDraftRow({
     const trimmed = body.trim();
 
     if (!trimmed) {
-      setError("Write a message before sending.");
+      setError(t.writeFirst);
       return;
     }
 
     const result = await run(
       "send",
       () => sendFollowUpDraftAction(draft.id, trimmed !== draft.body ? trimmed : undefined),
-      "Couldn't send this message. Try again."
+      t.sendFailed
     );
 
     if (result) {
@@ -172,7 +178,7 @@ function FollowUpDraftRow({
   }
 
   async function handleSkip() {
-    if (await run("skip", () => dismissFollowUpDraftAction(draft.id), "We couldn't skip this follow-up.")) {
+    if (await run("skip", () => dismissFollowUpDraftAction(draft.id), t.skipFailed)) {
       onHandled();
     }
   }
@@ -181,7 +187,7 @@ function FollowUpDraftRow({
     const result = await run(
       "book",
       () => bookFollowUpSlotAction(draft.id),
-      "This slot offer is no longer available."
+      t.offerGone
     );
 
     if (result?.ok) {
@@ -190,7 +196,7 @@ function FollowUpDraftRow({
   }
 
   async function handlePass() {
-    if (await run("pass", () => passSlotOfferAction(draft.id), "This slot offer is no longer available.")) {
+    if (await run("pass", () => passSlotOfferAction(draft.id), t.offerGone)) {
       onHandled();
     }
   }
@@ -213,7 +219,7 @@ function FollowUpDraftRow({
               <span className="truncate font-semibold text-foreground">{draft.clientName}</span>
               <span className="text-xs text-muted-foreground">
                 {/* A bookable offer has already gone out and waits on the patient's reply. */}
-                {draft.canBook ? "Slot offer sent" : showReason ? draft.reasonLabel : draft.kindLabel}
+                {draft.canBook ? t.slotOfferSent : showReason ? draft.reasonLabel : draft.kindLabel}
               </span>
             </p>
             {editing ? null : (
@@ -229,10 +235,10 @@ function FollowUpDraftRow({
                   type="button"
                   onClick={() => void handlePass()}
                   disabled={isBusy}
-                  aria-label={`${draft.clientName} declined the slot`}
+                  aria-label={fmt(t.declinedLabel, { name: draft.clientName })}
                   className={textButtonClass}
                 >
-                  {busy === "pass" ? "Updating..." : "Declined"}
+                  {busy === "pass" ? t.updating : t.declined}
                 </button>
                 <Button
                   type="button"
@@ -240,9 +246,9 @@ function FollowUpDraftRow({
                   className="h-8 rounded-(--radius-card)"
                   onClick={() => void handleBook()}
                   disabled={isBusy}
-                  aria-label={`Book the slot for ${draft.clientName}`}
+                  aria-label={fmt(t.bookLabel, { name: draft.clientName })}
                 >
-                  {busy === "book" ? "Booking..." : "Book"}
+                  {busy === "book" ? t.booking : t.book}
                 </Button>
               </>
             ) : (
@@ -253,20 +259,20 @@ function FollowUpDraftRow({
                     onClick={() => setEditing((current) => !current)}
                     disabled={isBusy}
                     aria-expanded={editing}
-                    aria-label={`${editing ? "Done editing" : "Edit"} the message to ${draft.clientName}`}
+                    aria-label={fmt(editing ? t.doneLabel : t.editLabel, { name: draft.clientName })}
                     className={textButtonClass}
                   >
-                    {editing ? "Done" : "Edit"}
+                    {editing ? t.done : t.edit}
                   </button>
                 ) : null}
                 <button
                   type="button"
                   onClick={() => void handleSkip()}
                   disabled={isBusy}
-                  aria-label={`Skip the message to ${draft.clientName}`}
+                  aria-label={fmt(t.skipLabel, { name: draft.clientName })}
                   className={textButtonClass}
                 >
-                  {busy === "skip" ? "Skipping..." : "Skip"}
+                  {busy === "skip" ? t.skipping : t.skip}
                 </button>
                 {draft.canSend ? (
                   <Button
@@ -275,9 +281,9 @@ function FollowUpDraftRow({
                     className="h-8 rounded-(--radius-card)"
                     onClick={() => void handleSend()}
                     disabled={isBusy}
-                    aria-label={`Send the message to ${draft.clientName}`}
+                    aria-label={fmt(t.sendLabel, { name: draft.clientName })}
                   >
-                    {busy === "send" ? "Sending..." : "Send"}
+                    {busy === "send" ? t.sending : t.send}
                   </Button>
                 ) : null}
               </>
@@ -292,13 +298,13 @@ function FollowUpDraftRow({
             disabled={isBusy}
             rows={3}
             autoFocus
-            aria-label={`Message to ${draft.clientName}`}
+            aria-label={fmt(t.messageLabel, { name: draft.clientName })}
             className={cn(fieldTextareaClass, "mt-2")}
           />
         ) : null}
 
         {!draft.canBook && !draft.canSend ? (
-          <p className="mt-1.5 text-xs text-muted-foreground">{WAITLIST_PLAN_ERROR}</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t.proOnly}</p>
         ) : null}
 
         {error ? (

@@ -9,22 +9,18 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { fieldSelectClass, fieldTextareaClass } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt, plural } from "@/i18n/format";
 import {
   insertTokenAt,
   MAX_AUTOMATION_MESSAGE_LENGTH,
   renderAutomationMessage,
-  timingOptionLabel,
-  TOKEN_LABELS,
   type AutomationMode,
   type AutomationToken,
 } from "@/lib/automations";
 import type { AutomationEditorData } from "@/lib/automations-view";
 import { formatZonedFullDate, formatZonedTime, getZonedDateParts, zonedDateTimeToUtc } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
-
-function sentenceCase(text: string) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 /** Tomorrow at 10:30 in the clinic's zone: the visit the preview describes. */
 function sampleVisit(): Date {
@@ -52,6 +48,10 @@ export function AutomationEditor({
   onClose: () => void;
   onSaved: (saved: { kind: AutomationEditorData["kind"]; enabled: boolean }) => void;
 }) {
+  const { locale, m } = useI18n();
+  const t = m.automations.editor;
+  const kindCopy = m.automations.kinds[data.kind];
+  const serverText = useServerText();
   const [enabled, setEnabled] = useState(data.enabled);
   const [mode, setMode] = useState<AutomationMode>(data.mode);
   const [timing, setTiming] = useState<number | null>(data.timing);
@@ -96,7 +96,7 @@ export function AutomationEditor({
         template2: hasSecondText ? texts.template2 : null,
       });
       if (!result.ok) {
-        setError(result.error);
+        setError(serverText(result.error) ?? result.error);
         return;
       }
       onSaved({ kind: data.kind, enabled });
@@ -127,7 +127,7 @@ export function AutomationEditor({
           onClick={() => setTexts((current) => ({ ...current, [box]: defaultText }))}
           className="self-end text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          Reset to default
+          {t.reset}
         </button>
       ) : null}
     </label>
@@ -141,12 +141,12 @@ export function AutomationEditor({
         <div className="flex min-w-0 flex-col gap-5 p-6">
           <div className="flex items-center justify-between gap-4 pr-8 sm:pr-0">
             <DialogTitle className="text-base font-semibold">{data.label}</DialogTitle>
-            <Toggle checked={enabled} onPressedChange={setEnabled} ariaLabel={`${data.label} on`} />
+            <Toggle checked={enabled} onPressedChange={setEnabled} ariaLabel={fmt(t.on, { label: data.label })} />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">When it sends</span>
+              <span className="text-xs text-muted-foreground">{t.when}</span>
               {data.timingUnit && timing !== null ? (
                 <select
                   value={timing}
@@ -155,42 +155,42 @@ export function AutomationEditor({
                 >
                   {timingOptions.map((value) => (
                     <option key={value} value={value}>
-                      {timingOptionLabel(data.timingUnit!, value)} {data.timingSuffix}
+                      {"option" in kindCopy ? plural(kindCopy.option, value, locale) : value}
                     </option>
                   ))}
                 </select>
               ) : (
-                <span className={FIXED_FIELD_CLASS}>{sentenceCase(data.fixedTiming)}</span>
+                <span className={FIXED_FIELD_CLASS}>{data.fixedTiming}</span>
               )}
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">How it sends</span>
+              <span className="text-xs text-muted-foreground">{t.how}</span>
               {data.canChooseMode ? (
                 <select
                   value={mode}
                   onChange={(event) => setMode(event.target.value as AutomationMode)}
                   className={fieldSelectClass}
                 >
-                  <option value="AUTOMATIC">Automatically</option>
-                  <option value="REVIEW">After I review it</option>
+                  <option value="AUTOMATIC">{t.automatically}</option>
+                  <option value="REVIEW">{t.afterReview}</option>
                 </select>
               ) : (
-                <span className={FIXED_FIELD_CLASS}>Automatically</span>
+                <span className={FIXED_FIELD_CLASS}>{t.automatically}</span>
               )}
             </label>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-3">
-            {messageBox("template", hasSecondText ? "When a visit is moved" : "Message", data.defaultTemplate)}
-            {hasSecondText ? messageBox("template2", "When a visit is cancelled", data.defaultTemplate2 ?? "") : null}
+            {messageBox("template", hasSecondText ? t.moved : t.message, data.defaultTemplate)}
+            {hasSecondText ? messageBox("template2", t.cancelled, data.defaultTemplate2 ?? "") : null}
             <DropdownMenu>
               <DropdownMenuTrigger className="self-start text-xs font-medium text-primary transition-colors hover:text-foreground">
-                + Insert detail
+                {t.insertDetail}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-40">
                 {data.tokens.map((token) => (
                   <DropdownMenuItem key={token} onClick={() => insert(token)}>
-                    {TOKEN_LABELS[token]}
+                    {t.tokens[token]}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -205,16 +205,16 @@ export function AutomationEditor({
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
-              Cancel
+              {m.common.cancel}
             </Button>
             <Button type="button" onClick={save} disabled={pending}>
-              {pending ? "Saving…" : "Save"}
+              {pending ? m.common.saving : m.common.save}
             </Button>
           </div>
         </div>
 
         <div className="flex flex-col gap-3 bg-[#eaf4ff] p-5">
-          <span className="text-xs font-medium text-[#3b5b86]">Maya&apos;s phone</span>
+          <span className="text-xs font-medium text-[#3b5b86]">{t.phone}</span>
           <div className="flex flex-1 flex-col justify-center gap-2">
             <PreviewBubble text={renderAutomationMessage(data.kind, texts.template, sample, "moved")} />
             {hasSecondText ? (

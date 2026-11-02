@@ -83,7 +83,20 @@ describe("buildAutomationsView", () => {
     });
     expect(editors.FIRST_REMINDER?.canChooseMode).toBe(true);
     expect(editors.VISIT_CHANGED?.template2).toContain("has been cancelled");
-    expect(editors.BOOKING_CONFIRMATION?.fixedTiming).toBe("right after booking");
-    expect(editors.FIRST_REMINDER?.timingSuffix).toBe("the visit");
+    expect(editors.BOOKING_CONFIRMATION?.fixedTiming).toBe("Right after booking");
+  });
+
+  it("writes names and timing in the reader's language", () => {
+    const settings = resolveAutomationSettings({
+      plan: "PRO",
+      rows: [],
+      reminders: { send24HourReminder: true, send2HourReminder: true, firstReminderHours: 14, secondReminderHours: 2, template: null },
+      workflows: null,
+    });
+    const { cards, editors } = buildAutomationsView({ settings, plan: "PRO", reviewCount: 0, locale: "sq" });
+
+    expect(cards[0]).toMatchObject({ label: "Konfirmimi i terminit", timingPhrase: "Menjëherë pas caktimit" });
+    expect(cards[2]).toMatchObject({ label: "Kujtesa e parë", timingPhrase: "14 orë përpara" });
+    expect(editors.WAITLIST_OFFER?.fixedTiming).toBe("Kur lirohet një orar");
   });
 });

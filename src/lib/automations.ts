@@ -22,6 +22,7 @@ export type TimingUnit = "hours_before" | "hours_after" | "days_after" | "months
 export type AutomationDefinition = {
   kind: AutomationKind;
   group: AutomationGroup;
+  /** English name for logs; the page shows `automations.kinds` from the dictionary. */
   label: string;
   timingUnit: TimingUnit | null;
   timingOptions: readonly number[];
@@ -40,38 +41,11 @@ export type AutomationDefinition = {
   defaultTemplate: string;
   /** VISIT_CHANGED only: the "cancelled" text. */
   defaultTemplate2?: string;
-  /** The card's "when" line, e.g. "14 hours before". */
-  timingPhrase: (timing: number | null) => string;
-};
-
-export const TOKEN_LABELS: Record<AutomationToken, string> = {
-  client_name: "name",
-  date: "date",
-  time: "time",
-  staff_name: "staff name",
-  clinic_name: "clinic name",
 };
 
 const VISIT_TOKENS: readonly AutomationToken[] = ["client_name", "date", "time", "staff_name", "clinic_name"];
 const NAME_TOKENS: readonly AutomationToken[] = ["client_name", "clinic_name"];
 const HOURS_1_TO_24 = Array.from({ length: 24 }, (_, index) => index + 1);
-
-function count(value: number, unit: string) {
-  return `${value} ${unit}${value === 1 ? "" : "s"}`;
-}
-
-export function timingOptionLabel(unit: TimingUnit, value: number): string {
-  switch (unit) {
-    case "hours_before":
-      return `${count(value, "hour")} before`;
-    case "hours_after":
-      return `${count(value, "hour")} after`;
-    case "days_after":
-      return `${count(value, "day")} after`;
-    case "months_after":
-      return `${count(value, "month")} after`;
-  }
-}
 
 export const AUTOMATIONS: readonly AutomationDefinition[] = [
   {
@@ -88,7 +62,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     tokens: VISIT_TOKENS,
     defaultTemplate:
       "Hi {client_name}, your visit at {clinic_name} is booked for {date} at {time}. Reply here if you need to change it.",
-    timingPhrase: () => "Right after booking",
   },
   {
     kind: "NEW_PATIENT_WELCOME",
@@ -104,7 +77,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     tokens: VISIT_TOKENS,
     defaultTemplate:
       "Welcome to {clinic_name}, {client_name}! Your first visit is on {date} at {time}. Reply here if you have any questions.",
-    timingPhrase: () => "After a first booking",
   },
   {
     kind: "FIRST_REMINDER",
@@ -119,7 +91,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: VISIT_TOKENS,
     defaultTemplate: DEFAULT_REMINDER_TEMPLATE,
-    timingPhrase: (timing) => `${count(timing ?? 24, "hour")} before`,
   },
   {
     kind: "SECOND_REMINDER",
@@ -134,7 +105,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: VISIT_TOKENS,
     defaultTemplate: "Hi {client_name}, see you at {time} on {date}. Reply 2 if you can't make it.",
-    timingPhrase: (timing) => `${count(timing ?? 2, "hour")} before`,
   },
   {
     kind: "HIGH_RISK_REMINDER",
@@ -150,7 +120,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     tokens: VISIT_TOKENS,
     defaultTemplate:
       "Hi {client_name}, can you still make your visit at {time} on {date}? Reply 1 to confirm or 2 to cancel so we can offer the time to someone else.",
-    timingPhrase: (timing) => `${count(timing ?? 5, "hour")} before, high risk only`,
   },
   {
     kind: "VISIT_CHANGED",
@@ -166,7 +135,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     tokens: VISIT_TOKENS,
     defaultTemplate: "Hi {client_name}, your visit has moved to {date} at {time}. Reply here if the new time doesn't suit you.",
     defaultTemplate2: "Hi {client_name}, your visit on {date} at {time} has been cancelled. Reply here to book a new time.",
-    timingPhrase: () => "When the clinic changes a visit",
   },
   {
     kind: "THANK_YOU",
@@ -181,7 +149,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: NAME_TOKENS,
     defaultTemplate: "Thank you for visiting us, {client_name}! We hope to see you again soon.",
-    timingPhrase: (timing) => `${count(timing ?? 2, "hour")} after the visit`,
   },
   {
     kind: "MISSED_VISIT",
@@ -196,7 +163,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: NAME_TOKENS,
     defaultTemplate: "Hi {client_name}, we missed you today. Would you like to book a new time?",
-    timingPhrase: (timing) => `${count(timing ?? 1, "hour")} after a no-show`,
   },
   {
     kind: "PAYMENT_REMINDER",
@@ -212,7 +178,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     tokens: NAME_TOKENS,
     defaultTemplate:
       "Hi {client_name}, a friendly reminder that you have an unpaid payment with us. Please get in touch if you have any questions.",
-    timingPhrase: (timing) => `${count(timing ?? 3, "day")} after an unpaid visit`,
   },
   {
     kind: "CHECKUP_DUE",
@@ -227,7 +192,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: NAME_TOKENS,
     defaultTemplate: "Hi {client_name}, it's time for your check-up at {clinic_name}. Would you like to book a visit?",
-    timingPhrase: () => "On the follow-up date",
   },
   {
     kind: "REBOOK",
@@ -242,7 +206,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: NAME_TOKENS,
     defaultTemplate: "Hi {client_name}, it's been a while since your last visit. Want to book your next appointment?",
-    timingPhrase: (timing) => `${count(timing ?? 6, "month")} since the last visit`,
   },
   {
     kind: "WAITLIST_OFFER",
@@ -257,7 +220,6 @@ export const AUTOMATIONS: readonly AutomationDefinition[] = [
     reviewable: true,
     tokens: ["client_name", "date", "time", "clinic_name"],
     defaultTemplate: "Hi {client_name}, a slot has opened up on {date} at {time}. Reply here if you'd like it.",
-    timingPhrase: () => "When a booking is cancelled",
   },
 ];
 

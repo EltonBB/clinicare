@@ -3,6 +3,8 @@ import Link from "next/link";
 
 import { ActivityFilters } from "@/components/automations/activity-filters";
 import { AutomationsHeader } from "@/components/automations/automations-header";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { WorkspaceEmptyState, WorkspacePage } from "@/components/workspace/workspace-layout";
 import {
   listAutomationActivity,
@@ -16,7 +18,9 @@ import { requireCurrentWorkspace } from "@/lib/business";
 import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Automations activity | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.automations.meta.activity };
+}
 
 const STATUS_TONE: Record<ActivityStatus, string> = {
   Sent: "text-muted-foreground",
@@ -39,8 +43,10 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
   const page = parseActivityPage(first(params.page));
 
   const isPro = isProBusinessPlan(business.plan);
+  const { locale, m } = await getI18n();
+  const t = m.automations;
   const [activity, reviewCount] = await Promise.all([
-    listAutomationActivity({ businessId: business.id, kind, page }),
+    listAutomationActivity({ businessId: business.id, kind, page, locale }),
     // Every plan: a downgraded workspace may still have drafts to resolve.
     getPendingFollowUpDraftCount(business.id),
   ]);
@@ -48,7 +54,7 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
   // Chips only for automations that sent something, in the page's own order.
   const chips = AUTOMATIONS.filter((automation) => activity.counts[automation.kind]).map((automation) => ({
     kind: automation.kind,
-    label: automation.label,
+    label: t.kinds[automation.kind].label,
     count: activity.counts[automation.kind] ?? 0,
   }));
   const pageHref = (next: number) => {
@@ -64,18 +70,20 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
       <AutomationsHeader active="activity" showReviewTab={isPro || reviewCount > 0} reviewCount={reviewCount} />
 
       {chips.length > 0 ? (
-        <ActivityFilters
-          chips={chips}
-          active={kind ?? null}
-          total={Object.values(activity.counts).reduce((sum, value) => sum + (value ?? 0), 0)}
-        />
+        <WithMessages namespaces={["automations"]}>
+          <ActivityFilters
+            chips={chips}
+            active={kind ?? null}
+            total={Object.values(activity.counts).reduce((sum, value) => sum + (value ?? 0), 0)}
+          />
+        </WithMessages>
       ) : null}
 
       <div className="surface-card mt-3 overflow-hidden p-0">
         {activity.rows.length === 0 ? (
           <WorkspaceEmptyState
-            title="Nothing sent yet"
-            description="Messages your automations send in the last 30 days show here."
+            title={t.activity.emptyTitle}
+            description={t.activity.emptyCopy}
             compact
           />
         ) : (
@@ -96,7 +104,9 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
                 </span>
                 <span className="order-3 truncate text-xs text-muted-foreground sm:order-none sm:text-sm">{row.label}</span>
                 <span className="order-4 text-xs tabular-nums text-muted-foreground sm:order-none">{row.sentLabel}</span>
-                <span className={cn("text-right text-xs font-medium", STATUS_TONE[row.status])}>{row.status}</span>
+                <span className={cn("text-right text-xs font-medium", STATUS_TONE[row.status])}>
+                  {t.activity.statuses[row.status]}
+                </span>
               </li>
             ))}
           </ul>
@@ -107,12 +117,12 @@ export default async function AutomationsActivityPage({ searchParams }: Activity
         <div className="mt-3 flex items-center justify-end gap-2 text-sm">
           {activity.page > 1 ? (
             <Link href={pageHref(activity.page - 1)} className="rounded-(--radius-field) px-3 py-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground">
-              Newer
+              {t.activity.newer}
             </Link>
           ) : null}
           {activity.hasMore ? (
             <Link href={pageHref(activity.page + 1)} className="rounded-(--radius-field) px-3 py-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground">
-              Older
+              {t.activity.older}
             </Link>
           ) : null}
         </div>

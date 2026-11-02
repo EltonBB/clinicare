@@ -1,6 +1,8 @@
 import type { AutomationKind, MessageDeliveryStatus, Prisma } from "@prisma/client";
 
-import { AUTOMATIONS, automationDefinition } from "@/lib/automations";
+import type { Locale } from "@/i18n/config";
+import { messages as dictionaries } from "@/i18n/messages";
+import { AUTOMATIONS } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
 import { formatZonedShortDate, formatZonedTime } from "@/lib/time-zone";
 
@@ -62,8 +64,9 @@ export async function listAutomationActivity(args: {
   kind?: AutomationKind;
   page?: number;
   now?: Date;
+  locale?: Locale;
 }): Promise<AutomationActivity> {
-  const { businessId, kind, now = new Date() } = args;
+  const { businessId, kind, now = new Date(), locale = "en" } = args;
   const page = parseActivityPage(String(args.page ?? 1));
 
   const base: Prisma.MessageWhereInput = {
@@ -103,10 +106,10 @@ export async function listAutomationActivity(args: {
     return {
       id: message.id,
       kind: automationKind,
-      label: automationDefinition(automationKind).label,
+      label: dictionaries[locale].automations.kinds[automationKind].label,
       clientId: message.clientId,
       clientName: message.client?.name ?? message.conversation?.contactName ?? "",
-      sentLabel: `${formatZonedShortDate(message.sentAt)}, ${formatZonedTime(message.sentAt)}`,
+      sentLabel: `${formatZonedShortDate(message.sentAt, undefined, locale)}, ${formatZonedTime(message.sentAt, undefined, locale)}`,
       status: STATUS_LABEL[message.deliveryStatus ?? "SENT"],
     };
   });

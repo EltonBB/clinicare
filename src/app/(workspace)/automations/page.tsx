@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import { AutomationsBoard } from "@/components/automations/automations-board";
 import { AutomationsHeader } from "@/components/automations/automations-header";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { WorkspacePage } from "@/components/workspace/workspace-layout";
 import { getAutomationSettings } from "@/lib/automations-data";
 import { buildAutomationsView } from "@/lib/automations-view";
@@ -10,7 +12,9 @@ import { getPendingFollowUpDraftCount } from "@/lib/follow-ups-data";
 import { prisma } from "@/lib/prisma";
 import { AVAILABLE_STAFF_WHERE } from "@/lib/staff-eligibility";
 
-export const metadata: Metadata = { title: "Automations | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.automations.meta.automations };
+}
 
 export default async function AutomationsPage() {
   const { business } = await requireCurrentWorkspace("/automations", {
@@ -27,17 +31,19 @@ export default async function AutomationsPage() {
       orderBy: { createdAt: "asc" },
     }),
   ]);
-  const view = buildAutomationsView({ settings, plan: business.plan, reviewCount });
+  const view = buildAutomationsView({ settings, plan: business.plan, reviewCount, locale: (await getI18n()).locale });
 
   return (
     <WorkspacePage size="wide">
       <AutomationsHeader active="automations" showReviewTab={view.showReviewTab} reviewCount={view.reviewCount} />
-      <AutomationsBoard
-        cards={view.cards}
-        editors={view.editors}
-        clinicName={business.name}
-        staffName={staff?.name ?? business.name}
-      />
+      <WithMessages namespaces={["automations"]}>
+        <AutomationsBoard
+          cards={view.cards}
+          editors={view.editors}
+          clinicName={business.name}
+          staffName={staff?.name ?? business.name}
+        />
+      </WithMessages>
     </WorkspacePage>
   );
 }

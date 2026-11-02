@@ -163,6 +163,24 @@ export const serverText: Record<string, string> = {
   "You've sent a lot of messages in a short time. Wait about {minutes} minutes, then send again.":
     "Keni dërguar shumë mesazhe brenda një kohe të shkurtër. Prisni rreth {minutes} minuta, pastaj dërgoni përsëri.",
 
+  // Automations and To review
+  "Automations beyond the first reminder and thank-you are part of Pro.":
+    "Automatizimet përtej kujtesës së parë dhe falënderimit janë pjesë e planit Pro.",
+  "Something went wrong. Try again.": "Diçka shkoi keq. Provoni përsëri.",
+  "Write a message before saving.": "Shkruani një mesazh para se ta ruani.",
+  "Choose one of the listed times.": "Zgjidhni një nga oraret e listuara.",
+  "Your session expired. Log in again to change automations.": "Sesioni juaj skadoi. Hyni përsëri për të ndryshuar automatizimet.",
+  "Your session expired. Log in again to manage follow-ups.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar mesazhet për t'u shqyrtuar.",
+  "This follow-up was already handled.": "Ky mesazh është trajtuar tashmë.",
+  "This slot offer is no longer available.": "Kjo ofertë orari nuk është më e disponueshme.",
+  "The staff member for this slot is no longer available. Book it manually from Calendar instead.":
+    "Anëtari i stafit për këtë orar nuk është më i disponueshëm. Caktojeni manualisht nga Kalendari.",
+  "This slot is outside your working hours now. Update your working hours in Settings, or skip or decline the offer.":
+    "Ky orar tani është jashtë orarit tuaj të punës. Përditësoni orarin e punës te Cilësimet, ose kapërceni ose refuzoni ofertën.",
+  "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.":
+    "Nuk mundëm ta konfirmonim që mesazhi u dorëzua, prandaj u shënua si i dërguar. Kontrolloni bisedën e pacientit në WhatsApp para se ta kontaktoni përsëri.",
+  "Couldn't send this message. Try again.": "Mesazhi nuk u dërgua. Provoni përsëri.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

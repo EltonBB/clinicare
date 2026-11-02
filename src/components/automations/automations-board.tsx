@@ -7,6 +7,8 @@ import { useState, useTransition } from "react";
 import { toggleAutomationAction } from "@/app/(workspace)/automations/actions";
 import { AutomationEditor } from "@/components/automations/automation-editor";
 import { Toggle } from "@/components/settings/settings-toggle";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import type { AutomationKind } from "@/lib/automations";
 import type { AutomationCard, AutomationEditorData } from "@/lib/automations-view";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,9 @@ export function AutomationsBoard({
   staffName: string;
 }) {
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.automations;
+  const serverText = useServerText();
   const [enabled, setEnabled] = useState<Partial<Record<AutomationKind, boolean>>>({});
   // A switch waits for its own save before it can be flipped again.
   const [saving, setSaving] = useState<Partial<Record<AutomationKind, boolean>>>({});
@@ -54,7 +59,7 @@ export function AutomationsBoard({
       setSaving((current) => ({ ...current, [card.kind]: false }));
       if (!result.ok) {
         setEnabled((current) => ({ ...current, [card.kind]: !next }));
-        setError(result.error);
+        setError(serverText(result.error) ?? result.error);
         return;
       }
       router.refresh();
@@ -84,7 +89,7 @@ export function AutomationsBoard({
               >
                 <span className="flex items-center justify-between gap-3">
                   <span className="text-sm font-semibold text-muted-foreground">{card.label}</span>
-                  <span className="text-xs font-semibold text-primary">Pro</span>
+                  <span className="text-xs font-semibold text-primary">{t.pro}</span>
                 </span>
                 <span className="text-xs text-muted-foreground">{card.timingPhrase}</span>
               </Link>
@@ -96,7 +101,7 @@ export function AutomationsBoard({
               key={card.kind}
               role="button"
               tabIndex={0}
-              aria-label={`Edit ${card.label}`}
+              aria-label={fmt(t.edit, { label: card.label })}
               onClick={() => setOpenKind(card.kind)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
@@ -115,7 +120,7 @@ export function AutomationsBoard({
               </span>
               <span className="flex items-end justify-between gap-3 text-xs">
                 <span className="truncate text-muted-foreground">{card.timingPhrase}</span>
-                <span className={cn("shrink-0 font-medium", MODE_TONE[modeLabel])}>{modeLabel}</span>
+                <span className={cn("shrink-0 font-medium", MODE_TONE[modeLabel])}>{t.modes[modeLabel]}</span>
               </span>
             </div>
           );

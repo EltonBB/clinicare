@@ -25,6 +25,10 @@ const COVERED = [
   "src/app/(workspace)/inbox/actions.ts",
   "src/lib/inbox-server.ts",
   "src/lib/messaging/limits.ts",
+  "src/app/(workspace)/automations/actions.ts",
+  "src/app/(workspace)/automations/review/actions.ts",
+  "src/lib/follow-ups-data.ts",
+  "src/lib/follow-up-dispatch.ts",
 ];
 
 // Literals in covered files that no screen shows: log lines, and the staff
@@ -45,6 +49,19 @@ const NOT_SHOWN = new Set([
   "WhatsApp outbound send failed.",
   "Inbox unread-conversation merge returned an unusually large result.",
   "Failed to normalize inbox conversations for business.",
+  "Saving an automation failed.",
+  "Switching an automation failed.",
+  "Couldn't book a slot offer.",
+  "Couldn't skip a follow-up draft.",
+  "Couldn't record a declined slot offer.",
+  "Withdrawing stale high-risk reminders failed.",
+  "Sent a reminder from review but couldn't record it as sent.",
+  "Couldn't record due reminders as covered by a sent visit message.",
+  "A follow-up send failed after the draft was marked sent.",
+  "A follow-up's delivery is uncertain and it couldn't be recorded as sent.",
+  "Sent a follow-up but couldn't record it as delivered.",
+  "Couldn't stop an unsendable draft from sending on its own.",
+  "An automatic follow-up send failed.",
 ]);
 
 // Literal sentences an action shows a person: `error:`, `success:`, `message:`
