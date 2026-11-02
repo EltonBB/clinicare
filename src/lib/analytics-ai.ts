@@ -28,7 +28,7 @@ const analyticsModelAttemptTimeoutMs = 22 * 1000;
 const AI_PERIOD_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["score", "tone", "headline", "summary", "diagnosis", "focus", "rootCauses", "actions"],
+  required: ["score", "tone", "headline", "summary", "diagnosis", "focus", "rootCauses", "actions", "sq"],
   properties: {
     score: {
       type: "number",
@@ -99,6 +99,47 @@ const AI_PERIOD_SCHEMA = {
           priority: {
             type: "string",
             enum: ["high", "medium", "low"],
+          },
+        },
+      },
+    },
+    // The same text in Albanian, for readers using Vela in Albanian
+    // (lib/reports.ts picks it by the reader's language).
+    sq: {
+      type: "object",
+      additionalProperties: false,
+      required: ["headline", "summary", "diagnosis", "focus", "rootCauses", "actions"],
+      properties: {
+        headline: { type: "string", maxLength: 160 },
+        summary: { type: "string", maxLength: 420 },
+        diagnosis: { type: "string", maxLength: 420 },
+        focus: { type: "string", maxLength: 420 },
+        rootCauses: {
+          type: "array",
+          minItems: 1,
+          maxItems: 1,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["title", "evidence"],
+            properties: {
+              title: { type: "string", maxLength: 96 },
+              evidence: { type: "string", maxLength: 240 },
+            },
+          },
+        },
+        actions: {
+          type: "array",
+          minItems: 1,
+          maxItems: 1,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["title", "detail"],
+            properties: {
+              title: { type: "string", maxLength: 96 },
+              detail: { type: "string", maxLength: 280 },
+            },
           },
         },
       },
@@ -297,7 +338,7 @@ async function requestOpenAIInsight(
             {
               role: "system",
               content:
-                "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. The score and tone are already calculated from clinic metrics, so copy currentRuleSnapshot.score and currentRuleSnapshot.tone exactly. Do not invent metrics, diagnose medical issues, or mention individual patients.",
+                "You are an operations analyst for small clinics. Interpret only the provided aggregate metrics and diagnostics. Diagnose operational causes, not medical conditions. Return practical, evidence-based recommendations in the requested JSON schema. The score and tone are already calculated from clinic metrics, so copy currentRuleSnapshot.score and currentRuleSnapshot.tone exactly. Do not invent metrics, diagnose medical issues, or mention individual patients. Also write the same headline, summary, diagnosis, focus, root cause and action in the `sq` object, in standard Albanian as written in Kosovo: formal ju, the same numbers, a decimal comma (12,5%), and these words: appointment = termin, visit = vizitë, patient = pacient, staff = staf, completion rate = shkalla e përfundimit, utilization = shfrytëzimi, no-show = mosparaqitje.",
             },
             {
               role: "user",
@@ -518,7 +559,8 @@ export async function generateAnalyticsSnapshotsForBusiness(
         const aiResult = await requestOpenAIInsight(periodPromptPayloads[period], {
           schema: AI_PERIOD_SCHEMA,
           schemaName: `clinic_${period}_analytics_snapshot`,
-          maxOutputTokens: 1400,
+          // Room for the Albanian copy too.
+          maxOutputTokens: 2600,
         });
 
         if (!aiResult.ok) {

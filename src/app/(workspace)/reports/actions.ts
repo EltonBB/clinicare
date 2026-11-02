@@ -14,6 +14,10 @@ import { canUseWorkspace, WORKSPACE_LOCKED_ERROR } from "@/lib/billing-access";
 import { ACTION_RATE_LIMIT_ERROR, isWithinActionBudget, requireCurrentWorkspace } from "@/lib/business";
 import { invalidateCacheVersioned } from "@/lib/cache";
 import { logger } from "@/lib/logger";
+import { plural, fmt } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { translateServerText } from "@/i18n/server-text";
+import { formatZonedTime } from "@/lib/time-zone";
 
 export type RefreshAnalyticsInsightsResult = {
   ok: boolean;
@@ -56,22 +60,23 @@ export async function refreshAnalyticsInsightsAction(): Promise<RefreshAnalytics
   revalidatePath("/reports");
   revalidatePath("/dashboard");
 
+  const { locale, m } = await getI18n();
+  const t = m.reports.refreshResult;
   const generated = results.filter((result) => result.usedAi).length;
   const rateLimitedCount = results.filter((result) => result.rateLimited).length;
   const allRateLimited = rateLimitedCount === results.length && results.length > 0;
   const firstRateLimited = results.find((result) => result.rateLimited);
+  const generatedText = plural(t.generated, generated, locale);
   const message =
     generated > 0 && !allRateLimited
-      ? `Generated fresh analysis for ${generated} timeframe${generated === 1 ? "" : "s"}${
-          rateLimitedCount > 0
-            ? ` and kept ${rateLimitedCount} recent timeframe${rateLimitedCount === 1 ? "" : "s"}`
-            : ""
-        }.`
-      : firstRateLimited
-      ? firstRateLimited.message
+      ? `${generatedText}${rateLimitedCount > 0 ? plural(t.kept, rateLimitedCount, locale) : ""}.`
+      : firstRateLimited?.nextRefreshAt
+      ? fmt(t.tooSoon, { time: formatZonedTime(new Date(firstRateLimited.nextRefreshAt), undefined, locale) })
       : generated > 0
-      ? `Generated fresh analysis for ${generated} timeframe${generated === 1 ? "" : "s"}.`
-      : results[0]?.message ?? "AI insights were not generated.";
+      ? `${generatedText}.`
+      : results[0]?.message
+      ? translateServerText(results[0].message, locale)
+      : t.none;
 
   return {
     ok: generated > 0,

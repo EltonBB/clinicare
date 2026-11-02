@@ -35,7 +35,7 @@ import { messages } from "@/i18n/messages";
 /** The reader's language and the reports view-model text. */
 type Copy = { locale: Locale; t: (typeof messages)["en"]["reports"]["view"] };
 
-function copyFor(locale: Locale): Copy {
+export function copyFor(locale: Locale): Copy {
   return { locale, t: messages[locale].reports.view };
 }
 
@@ -1709,15 +1709,13 @@ function buildSnapshot(
   };
 }
 
-function applyAiSnapshot(
+export function applyAiSnapshot(
   fallback: ReportSnapshot,
   snapshot: ReportAiSnapshotInput | undefined,
   isFresh: boolean,
   copy: Copy
 ): ReportSnapshot {
-  // The AI writes in English; a reader in another language gets the rule-based
-  // insight in their own language instead of an English one.
-  if (!snapshot || copy.locale !== "en") {
+  if (!snapshot) {
     return fallback;
   }
 
@@ -1754,15 +1752,28 @@ function applyAiSnapshot(
   // schema — the AI can never send them again, so they fall through to the
   // rule-based fallback unconditionally instead of being parsed from payload.
   const payload = snapshot.aiPayload as Record<string, unknown>;
-  const rawActions = Array.isArray(payload.actions) ? payload.actions : [];
-  const rawRootCauses = Array.isArray(payload.rootCauses)
-    ? payload.rootCauses
+  // The AI writes each insight in English and, under `sq`, in Albanian; the
+  // reader gets their language. A snapshot from before the Albanian copy gives
+  // an Albanian reader the rule-based insight, already in Albanian.
+  const localized = copy.locale === "en" ? payload : payload.sq;
+  if (typeof localized !== "object" || localized === null) {
+    return fallback;
+  }
+  const text = localized as Record<string, unknown>;
+  // Severity and priority are only in the English part; the items line up.
+  const englishItem = (list: unknown, index: number): Record<string, unknown> => {
+    const item = Array.isArray(list) ? list[index] : undefined;
+    return typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+  };
+  const rawActions = Array.isArray(text.actions) ? text.actions : [];
+  const rawRootCauses = Array.isArray(text.rootCauses)
+    ? text.rootCauses
     : [];
   const rootCauses = rawRootCauses
     .filter((item): item is Record<string, unknown> => {
       return typeof item === "object" && item !== null;
     })
-    .map((item) => {
+    .map((item, index) => {
       const title = optionalCleanText(item.title, 96);
       const evidence = optionalCleanText(item.evidence, 240);
 
@@ -1770,7 +1781,7 @@ function applyAiSnapshot(
         ? {
             title,
             evidence,
-            severity: cleanInsightImpact(item.severity),
+            severity: cleanInsightImpact(englishItem(payload.rootCauses, index).severity),
           }
         : null;
     })
@@ -1780,7 +1791,7 @@ function applyAiSnapshot(
     .filter((action): action is Record<string, unknown> => {
       return typeof action === "object" && action !== null;
     })
-    .map((action) => {
+    .map((action, index) => {
       const title = optionalCleanText(action.title, 96);
       const detail = optionalCleanText(action.detail ?? action.why, 280);
 
@@ -1788,7 +1799,7 @@ function applyAiSnapshot(
         ? {
             title,
             detail,
-            priority: cleanActionPriority(action.priority),
+            priority: cleanActionPriority(englishItem(payload.actions, index).priority),
             metric: fallback.actions?.[0]?.metric,
             expectedImpact: undefined,
           }
@@ -1800,14 +1811,14 @@ function applyAiSnapshot(
   return {
     score: fallback.score,
     tone: fallback.tone,
-    headline: cleanText(payload.headline, fallback.headline, 160),
-    summary: cleanText(payload.summary, fallback.summary, 420),
-    diagnosis: cleanText(payload.diagnosis, fallback.diagnosis ?? fallback.watch, 420),
+    headline: cleanText(text.headline, fallback.headline, 160),
+    summary: cleanText(text.summary, fallback.summary, 420),
+    diagnosis: cleanText(text.diagnosis, fallback.diagnosis ?? fallback.watch, 420),
     severity: fallback.severity,
     confidence: fallback.confidence,
     strength: fallback.strength,
     watch: fallback.watch,
-    focus: cleanText(payload.focus, fallback.focus, 420),
+    focus: cleanText(text.focus, fallback.focus, 420),
     deepDive: fallback.deepDive ?? fallback.summary,
     rootCauses: rootCauses.length > 0 ? rootCauses : fallback.rootCauses,
     statHighlights: fallback.statHighlights,

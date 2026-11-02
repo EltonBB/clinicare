@@ -20,7 +20,7 @@ import { LazyMotionProvider } from "@/components/layout/motion-provider";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
-import { useI18n } from "@/i18n/client";
+import { useI18n, useServerText } from "@/i18n/client";
 import { dateText, fmt } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
@@ -144,7 +144,8 @@ export function ReportsSections({ period }: { period: ReportsViewModel["periods"
 }
 
 export function ReportsOverview({ view }: { view: ReportsViewModel }) {
-  const { locale, m } = useI18n();
+  const { m } = useI18n();
+  const serverText = useServerText();
   const t = m.reports;
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -175,7 +176,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
     startTransition(async () => {
       try {
         const result = await refreshAnalyticsInsightsAction();
-        setRefreshMessage(result.message);
+        setRefreshMessage(serverText(result.message) ?? result.message);
         router.refresh();
       } catch {
         setRefreshMessage(t.refreshFailed);
@@ -291,8 +292,6 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                     </div>
                   ) : null}
                 </div>
-                {/* The AI writes in English, so another language shows the rule-based insight and has nothing to refresh. */}
-                {locale === "en" ? (
                 <button
                   type="button"
                   onClick={refreshInsights}
@@ -302,7 +301,6 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
                   {t.refreshAi}
                 </button>
-                ) : null}
               </>
             }
           />

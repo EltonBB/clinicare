@@ -262,6 +262,12 @@ export const serverText: Record<string, string> = {
   "Cancelled the {time} appointment with {name} — please reschedule.":
     "Anuloi terminin e orës {time} me {name}. Ju lutemi riplanifikojeni.",
 
+  // Reports refresh (lib/analytics-ai.ts)
+  "AI is unavailable right now, so reports are using rule-based insights.":
+    "AI nuk është i disponueshëm tani, prandaj raportet po përdorin vlerësime sipas rregullave.",
+  "AI insight generated.": "Vlerësimi me AI u krijua.",
+  "AI refresh did not return a result for this timeframe.": "Rifreskimi me AI nuk dha rezultat për këtë periudhë.",
+
   // Owner page
   "Not found.": "Nuk u gjet.",
   "That choice isn't valid.": "Kjo zgjedhje nuk është e vlefshme.",

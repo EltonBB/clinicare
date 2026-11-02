@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { AppointmentStatus, MessageDirection, MessageSource } from "@prisma/client";
 
 import {
+  applyAiSnapshot,
   buildKeyMetrics,
   buildReportsViewFromWorkspace,
+  copyFor,
   countRepliedInbound,
+  type ReportSnapshot,
 } from "@/lib/reports";
 
 // Characterization harness: pins the entire reports view model for a fixed
@@ -595,5 +598,55 @@ describe("countRepliedInbound", () => {
   it("finds a reply that landed after the reporting window", () => {
     const inWindow = [msg(30, "INBOUND")];
     expect(countRepliedInbound(inWindow, [...inWindow, msg(1, "OUTBOUND")])).toBe(1);
+  });
+});
+
+describe("applyAiSnapshot", () => {
+  const fallback = { score: 70, tone: "healthy", headline: "Rules", summary: "Rules summary", focus: "Rules focus" } as ReportSnapshot;
+  const english = {
+    headline: "Completion is steady",
+    summary: "Most visits were completed.",
+    diagnosis: "Few late cancellations.",
+    focus: "Keep reminders on.",
+    rootCauses: [{ title: "Late cancellations", evidence: "Two this week.", severity: "low" }],
+    actions: [{ title: "Remind earlier", detail: "Send the first reminder a day before.", priority: "high" }],
+  };
+  const snapshot = (aiPayload: unknown) => ({
+    periodType: "WEEKLY" as const,
+    periodStart: new Date("2026-10-26T00:00:00Z"),
+    periodEnd: new Date("2026-11-01T23:59:59Z"),
+    kpiPayload: {},
+    aiPayload,
+    provider: "openai",
+    model: "test-model",
+    status: "GENERATED" as const,
+    generatedAt: new Date("2026-11-02T08:00:00Z"),
+  });
+
+  it("gives an Albanian reader the AI's Albanian copy, with the English severity and priority", () => {
+    const view = applyAiSnapshot(
+      fallback,
+      snapshot({
+        ...english,
+        sq: {
+          headline: "Përfundimi është i qëndrueshëm",
+          summary: "Shumica e vizitave u përfunduan.",
+          diagnosis: "Pak anulime në minutën e fundit.",
+          focus: "Mbani kujtesat aktive.",
+          rootCauses: [{ title: "Anulime të vonuara", evidence: "Dy këtë javë." }],
+          actions: [{ title: "Kujtoni më herët", detail: "Dërgoni kujtesën e parë një ditë më parë." }],
+        },
+      }),
+      true,
+      copyFor("sq")
+    );
+    expect(view).toMatchObject({ source: "ai", headline: "Përfundimi është i qëndrueshëm", focus: "Mbani kujtesat aktive." });
+    expect(view.rootCauses?.[0]).toMatchObject({ title: "Anulime të vonuara", severity: "low" });
+    expect(view.actions?.[0]).toMatchObject({ title: "Kujtoni më herët", priority: "high" });
+  });
+
+  it("falls back to the rule-based insight for an Albanian reader of an older, English-only snapshot", () => {
+    expect(applyAiSnapshot(fallback, snapshot(english), true, copyFor("sq"))).toBe(fallback);
+    expect(applyAiSnapshot(fallback, snapshot(english), true, copyFor("en"))).toMatchObject({ headline: "Completion is steady" });
   });
 });

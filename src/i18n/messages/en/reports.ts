@@ -122,6 +122,16 @@ export const reports = {
   pickEnd: "{from}, pick an end date",
   analyseRange: "Analyse range",
   refreshAi: "Refresh AI",
+  // What a manual refresh reports back (reports/actions.ts).
+  refreshResult: {
+    generated: {
+      one: "Generated fresh analysis for {count} timeframe",
+      other: "Generated fresh analysis for {count} timeframes",
+    },
+    kept: { one: " and kept {count} recent timeframe", other: " and kept {count} recent timeframes" },
+    tooSoon: "Full AI analysis was refreshed recently. Try again after {time}.",
+    none: "AI insights were not generated.",
+  },
   refreshFailed: "Analysis could not refresh right now. Current reports are still using saved metrics.",
   pickBoth: "Pick both a start and an end date.",
   endAfterStart: "End date must be after the start date.",
