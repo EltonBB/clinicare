@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { m, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -12,6 +12,10 @@ import {
 
 import { KpiValue } from "@/components/workspace/kpi-value";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { useI18n } from "@/i18n/client";
+import type { Locale } from "@/i18n/config";
+import type { Messages } from "@/i18n/messages";
+import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import { easeOutQuart, fadeIn, staggerChildren, staggerItem } from "@/lib/motion";
 import { APPOINTMENT_STATUS_COLORS, APPOINTMENT_STATUS_FALLBACK_COLOR } from "@/lib/status-tone";
@@ -40,13 +44,6 @@ const snapshotToneColor: Record<ReportSnapshotTone, string> = {
   healthy: "var(--primary)",
   watch: "#f59e0b",
   attention: "#ef4444",
-};
-
-const snapshotToneLabel: Record<ReportSnapshotTone, string> = {
-  strong: "Strong",
-  healthy: "Healthy",
-  watch: "Needs watching",
-  attention: "Needs attention",
 };
 
 const priorityStyles = {
@@ -118,8 +115,15 @@ function buildSmoothPath(values: number[], width: number, height: number, maxOve
   return path;
 }
 
-function capitalize(value: string) {
-  return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
+/** An appointment status from the diagnostics ("No-show") in the reader's language. */
+function statusText(label: string, m: Messages) {
+  return storedLabel(m.common.appointmentStatus, label.toLowerCase());
+}
+
+/** A share the view model writes in English ("73.0%") as the reader writes it. */
+export function shareText(share: string, locale: Locale) {
+  const trimmed = share.replace(/\.0%$/, "%");
+  return locale === "en" ? trimmed : trimmed.replace(".", ",");
 }
 
 // Colors come from the shared APPOINTMENT_STATUS_COLORS map, not
@@ -153,6 +157,10 @@ function useResetOnPeriodChange(period: ReportPeriodView, onReset: () => void) {
 }
 
 export function OverviewTab({ period }: { period: ReportPeriodView }) {
+  const { locale, m } = useI18n();
+  const t = m.reports;
+  const count = (value: number) => numberFormatter(locale).format(value);
+  const dayName = (label: string) => storedLabel(t.patterns.days, label);
   const [chartHover, setChartHover] = useState<number | null>(null);
   const [activeKpi, setActiveKpi] = useState<string | null>(null);
   const [chartWidth, setChartWidth] = useState(820);
@@ -208,30 +216,27 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   const busiestDay = period.diagnostics.demandWindows.busiestDays[0];
   const quietestDay = period.diagnostics.demandWindows.quietestDays[0];
 
+  const d = t.kpiDetail;
   const completionDetailParts = [
-    lostSlotRow?.value ? `Lost-slot rate: ${lostSlotRow.value} of finalized visits were cancelled.` : null,
-    noShowRow?.value ? `No-show rate: ${noShowRow.value} of finalized visits were no-shows.` : null,
-    followUpRow?.value ? `Follow-up coverage: ${followUpRow.value} of inbound messages got an outbound reply.` : null,
-    avgVisitKpi?.value ? `Average visit length: ${avgVisitKpi.value}.` : null,
-    repeatVisitRow?.value ? `${repeatVisitRow.value} of clients return for another visit.` : null,
+    lostSlotRow?.value ? fmt(d.lostSlot, { value: lostSlotRow.value }) : null,
+    noShowRow?.value ? fmt(d.noShow, { value: noShowRow.value }) : null,
+    followUpRow?.value ? fmt(d.followUp, { value: followUpRow.value }) : null,
+    avgVisitKpi?.value ? fmt(d.avgVisit, { value: avgVisitKpi.value }) : null,
+    repeatVisitRow?.value ? fmt(d.repeat, { value: repeatVisitRow.value }) : null,
   ].filter((part): part is string => Boolean(part));
 
   const kpiDetails: Record<string, string> = {
     appointments:
       busiestDay && busiestDay.count > 0
-        ? `Busiest day this period: ${busiestDay.label} (${busiestDay.count} visit${busiestDay.count === 1 ? "" : "s"}).${
+        ? `${plural(d.busiest, busiestDay.count, locale, { day: dayName(busiestDay.label) })}${
             quietestDay && quietestDay.label !== busiestDay.label
-              ? ` Quietest: ${quietestDay.label} (${quietestDay.count}).`
+              ? fmt(d.quietest, { day: dayName(quietestDay.label), count: count(quietestDay.count) })
               : ""
           }`
-        : "No appointments booked yet this period to break down by day.",
-    completionRate:
-      completionDetailParts.length > 0
-        ? completionDetailParts.join(" ")
-        : "Not enough finalized visits or inbound messages yet to break this down further.",
-    newClients: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} total client records are currently active.`,
-    utilization:
-      "Booked minutes vs. open hours × active staff, estimated — not a measured clock-in/clock-out figure. 70-92% is the healthy operating range; below that means open capacity isn't converting into visits, above it risks overload.",
+        : d.noAppointments,
+    completionRate: completionDetailParts.length > 0 ? completionDetailParts.join(" ") : d.notEnough,
+    newClients: fmt(d.newClients, { active: count(period.activeClients), total: count(period.clientMixTotal) }),
+    utilization: d.utilization,
   };
 
   useEffect(() => {
@@ -247,8 +252,8 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   }, []);
 
   return (
-    <m.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="space-y-3">
-      <m.div variants={staggerChildren} initial="initial" animate="animate" className="grid gap-3 md:grid-cols-4">
+    <motion.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="space-y-3">
+      <motion.div variants={staggerChildren} initial="initial" animate="animate" className="grid gap-3 md:grid-cols-4">
         {(
           [
             { key: "appointments", kpi: appointmentsKpi },
@@ -267,7 +272,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
             />
           ) : null
         )}
-      </m.div>
+      </motion.div>
 
       {activeKpi ? (
         <div className="state-pop hidden rounded-(--radius-card) border border-dashed border-primary/25 bg-primary/5 px-4 py-3 text-sm text-foreground md:block">
@@ -279,21 +284,21 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
         <section className="surface-card flex flex-col p-3.5">
           <div className="flex items-start justify-between gap-3 px-1">
             <div>
-              <h2 className="text-[15px] font-semibold text-foreground">Performance</h2>
+              <h2 className="text-[15px] font-semibold text-foreground">{t.performance}</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">{period.chart.periodLabel}</p>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-primary" />
-                Appointments
+                {t.legend.appointments}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-0.5 w-3.5 rounded-full border-t-2 border-dashed border-primary/70" />
-                Completed
+                {t.legend.completed}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-0.5 w-3.5 rounded-full border-t-2 border-dotted border-muted-foreground/70" />
-                Previous period
+                {t.legend.previous}
               </span>
             </div>
           </div>
@@ -313,12 +318,12 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                       <g key={tick}>
                         <line x1={PLOT_LEFT} x2={chartWidth} y1={y} y2={y} stroke="rgba(20,21,47,0.06)" strokeWidth="1" />
                         <text x={PLOT_LEFT - 8} y={y + 3} textAnchor="end" className="fill-muted-foreground text-[10px]">
-                          {Number.isInteger(tick) ? tick : tick.toFixed(1)}
+                          {numberFormatter(locale, { maximumFractionDigits: 1 }).format(tick)}
                         </text>
                       </g>
                     );
                   })}
-                  <m.path
+                  <motion.path
                     d={`${linePath} L ${plotWidth} ${PLOT_HEIGHT} L 0 ${PLOT_HEIGHT} Z`}
                     fill="var(--primary)"
                     fillOpacity="0.07"
@@ -337,7 +342,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
                   />
-                  <m.path
+                  <motion.path
                     d={linePath}
                     fill="none"
                     stroke="var(--primary)"
@@ -354,7 +359,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                       property, which would overwrite the fixed "6 6" pattern
                       that keeps this series visually distinct once settled
                       (Codex P2). */}
-                  <m.path
+                  <motion.path
                     d={completedLinePath}
                     fill="none"
                     stroke="var(--primary)"
@@ -437,8 +442,8 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
               <WorkspaceEmptyState
                 compact
                 icon={CalendarDays}
-                title="No appointment trend yet"
-                description="The trend appears once appointments are booked in this period."
+                title={t.noTrendTitle}
+                description={t.noTrendCopy}
               />
             )}
           </div>
@@ -446,7 +451,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
 
         <section className="surface-card flex flex-col p-3.5">
           <div className="flex items-center justify-between gap-3 px-1">
-            <h2 className="text-[15px] font-semibold text-foreground">AI insight</h2>
+            <h2 className="text-[15px] font-semibold text-foreground">{t.aiInsight}</h2>
             <span
               className={cn(
                 "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -460,23 +465,23 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           <div className="mt-2.5 flex items-center gap-3 rounded-(--radius-tile) bg-secondary/25 px-3 py-2.5">
             <ScoreGauge score={period.snapshot.score} tone={period.snapshot.tone} />
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">{snapshotToneLabel[period.snapshot.tone]}</p>
-              <p className="text-xs text-muted-foreground">Operational health score: {period.snapshot.score}/100</p>
+              <p className="text-sm font-semibold text-foreground">{t.tones[period.snapshot.tone]}</p>
+              <p className="text-xs text-muted-foreground">{fmt(t.healthScore, { score: period.snapshot.score })}</p>
             </div>
           </div>
 
           <div className="mt-2 flex-1 space-y-1">
-            <InsightRow label="Summary" title={period.snapshot.headline} text={period.snapshot.summary} />
+            <InsightRow label={t.summary} title={period.snapshot.headline} text={period.snapshot.summary} />
             <InsightRow
-              label="Diagnosis"
-              badge={topCause ? capitalize(topCause.severity) : undefined}
+              label={t.diagnosis}
+              badge={topCause ? t.levels[topCause.severity] : undefined}
               badgeTone={topCause?.severity}
-              title={topCause?.title ?? period.snapshot.diagnosis ?? "No diagnosis recorded yet"}
+              title={topCause?.title ?? period.snapshot.diagnosis ?? t.noDiagnosis}
               text={topCause?.evidence}
             />
             <InsightRow
-              label="Next move"
-              badge={primaryAction ? capitalize(primaryAction.priority) : undefined}
+              label={t.nextMove}
+              badge={primaryAction ? t.levels[primaryAction.priority] : undefined}
               badgeTone={primaryAction?.priority}
               title={primaryAction?.title ?? period.snapshot.focus}
               text={primaryAction?.detail}
@@ -484,11 +489,13 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
           </div>
         </section>
       </div>
-    </m.div>
+    </motion.div>
   );
 }
 
 export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) {
+  const { locale, m } = useI18n();
+  const t = m.reports.status;
   const [statusHover, setStatusHover] = useState<string | null>(null);
   const [statusMetric, setStatusMetric] = useState<"count" | "percent">("count");
   useResetOnPeriodChange(period, () => setStatusHover(null));
@@ -497,7 +504,7 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
   const hoveredStatus = statusMix.find((item) => item.label === statusHover);
 
   return (
-    <m.section
+    <motion.section
       key={period.key}
       variants={fadeIn}
       initial="initial"
@@ -505,12 +512,13 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
       className="surface-card flex h-full flex-col p-3.5"
     >
       <div className="flex items-center justify-between gap-2 px-1">
-        <h2 className="text-[15px] font-semibold text-foreground">Appointment status</h2>
+        <h2 className="text-[15px] font-semibold text-foreground">{t.title}</h2>
         {period.statusTotal > 0 ? (
           <div className="flex items-center gap-1">
             <button
               type="button"
               aria-pressed={statusMetric === "count"}
+              aria-label={t.count}
               onClick={() => setStatusMetric("count")}
               className={cn(
                 "h-6 rounded-(--radius-tile) px-2 text-[11px] font-semibold transition-colors duration-(--duration-base)",
@@ -524,6 +532,7 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
             <button
               type="button"
               aria-pressed={statusMetric === "percent"}
+              aria-label={t.percent}
               onClick={() => setStatusMetric("percent")}
               className={cn(
                 "h-6 rounded-(--radius-tile) px-2 text-[11px] font-semibold transition-colors duration-(--duration-base)",
@@ -554,11 +563,11 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
                   {hoveredStatus
                     ? statusMetric === "count"
                       ? hoveredStatus.count
-                      : hoveredStatus.share.replace(/\.0%$/, "%")
+                      : shareText(hoveredStatus.share, locale)
                     : period.statusTotal}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {hoveredStatus ? hoveredStatus.label.toLowerCase() : "visits"}
+                  {hoveredStatus ? statusText(hoveredStatus.label, m).toLowerCase() : t.visits}
                 </p>
               </div>
             </div>
@@ -576,11 +585,11 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
               <LegendRow
                 key={item.label}
                 color={statusColor(item.label)}
-                label={item.label}
+                label={statusText(item.label, m)}
                 detail={
                   statusMetric === "count"
-                    ? item.count.toLocaleString("en-US")
-                    : item.share.replace(/\.0%$/, "%")
+                    ? numberFormatter(locale).format(item.count)
+                    : shareText(item.share, locale)
                 }
                 muted={item.count === 0}
                 dimmed={statusHover !== null && statusHover !== item.label}
@@ -591,14 +600,17 @@ export function AppointmentStatusCard({ period }: { period: ReportPeriodView }) 
         </div>
       ) : (
         <div className="mt-3 flex-1">
-          <WorkspaceEmptyState compact icon={CheckCircle2} title="No status mix yet" description="Statuses appear after visits are booked." />
+          <WorkspaceEmptyState compact icon={CheckCircle2} title={t.emptyTitle} description={t.emptyCopy} />
         </div>
       )}
-    </m.section>
+    </motion.section>
   );
 }
 
 export function HighlightsCard({ period }: { period: ReportPeriodView }) {
+  const { locale, m } = useI18n();
+  const t = m.reports.highlights;
+  const count = (value: number) => numberFormatter(locale).format(value);
   const avgVisitKpi = period.kpis.find((kpi) => kpi.key === "avgVisitLength");
   const repeatVisitRow = period.operationalDetail.find((row) => row.key === "repeatVisit");
   const lostSlotRow = period.operationalDetail.find((row) => row.key === "lostSlot");
@@ -607,24 +619,24 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
 
   const highlights = [
     avgVisitKpi && avgVisitKpi.value
-      ? { title: "Average visit length", detail: `Completed visits average ${avgVisitKpi.value} this period.` }
+      ? { title: t.avgVisit, detail: fmt(t.avgVisitDetail, { value: avgVisitKpi.value }) }
       : null,
     repeatVisitRow && repeatVisitRow.value
-      ? { title: "Repeat-visit rate", detail: `${repeatVisitRow.value} of clients return for another visit.` }
+      ? { title: t.repeat, detail: fmt(t.repeatDetail, { value: repeatVisitRow.value }) }
       : null,
     lostSlotRow && lostSlotRow.value
-      ? { title: "Lost-slot rate", detail: `${lostSlotRow.value} of finalized visits were cancelled.` }
+      ? { title: t.lostSlot, detail: fmt(t.lostSlotDetail, { value: lostSlotRow.value }) }
       : null,
     noShowRow && noShowRow.value
-      ? { title: "No-show rate", detail: `${noShowRow.value} of finalized visits were no-shows.` }
+      ? { title: t.noShow, detail: fmt(t.noShowDetail, { value: noShowRow.value }) }
       : null,
     followUpRow && followUpRow.value
-      ? { title: "Follow-up coverage", detail: `${followUpRow.value} of inbound messages got an outbound reply.` }
+      ? { title: t.followUp, detail: fmt(t.followUpDetail, { value: followUpRow.value }) }
       : null,
     period.clientMixTotal > 0
       ? {
-          title: "Active clients",
-          detail: `${period.activeClients.toLocaleString("en-US")} of ${period.clientMixTotal.toLocaleString("en-US")} client records are currently active.`,
+          title: t.activeClients,
+          detail: fmt(t.activeClientsDetail, { active: count(period.activeClients), total: count(period.clientMixTotal) }),
         }
       : null,
   ]
@@ -633,14 +645,14 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
     .slice(0, 5);
 
   return (
-    <m.section
+    <motion.section
       key={period.key}
       variants={fadeIn}
       initial="initial"
       animate="animate"
       className="surface-card flex h-full flex-col p-3.5"
     >
-      <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Highlights</h2>
+      <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">{t.title}</h2>
       {highlights.length > 0 ? (
         <div className="flex flex-1 flex-col justify-center gap-2">
           {highlights.map((highlight) => (
@@ -652,10 +664,10 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
         </div>
       ) : (
         <div className="flex-1">
-          <WorkspaceEmptyState compact icon={CalendarDays} title="No activity pattern yet" description="Highlights appear once visits are completed." />
+          <WorkspaceEmptyState compact icon={CalendarDays} title={t.emptyTitle} description={t.emptyCopy} />
         </div>
       )}
-    </m.section>
+    </motion.section>
   );
 }
 
@@ -720,7 +732,7 @@ function DonutChart({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
       {arcs.map(({ item, dasharray, dashoffset }, index) => (
-        <m.circle
+        <motion.circle
           key={item.label}
           cx={center}
           cy={center}
@@ -787,7 +799,7 @@ function KpiCard({
   detail?: string;
 }) {
   return (
-    <m.section
+    <motion.section
       variants={staggerItem}
       className={cn(
         "card-hover flex flex-col rounded-(--radius-card) border bg-white shadow-(--shadow-card)",
@@ -854,7 +866,7 @@ function KpiCard({
           {detail}
         </div>
       ) : null}
-    </m.section>
+    </motion.section>
   );
 }
 

@@ -1,5 +1,6 @@
 import type { AppointmentStatus } from "@prisma/client";
 
+import type { Locale } from "@/i18n/config";
 import { buildReportsViewFromWorkspace, type ReportsViewModel } from "@/lib/reports";
 import { getAppTimeZone, getZonedDateParts, getZonedDayWindowByOffset } from "@/lib/time-zone";
 
@@ -45,7 +46,11 @@ function seeded(seed: number) {
   };
 }
 
-export function buildSampleReportsView(now = new Date(), timeZone = getAppTimeZone()): ReportsViewModel {
+export function buildSampleReportsView(
+  now = new Date(),
+  timeZone = getAppTimeZone(),
+  locale: Locale = "en"
+): ReportsViewModel {
   const random = seeded(20261014);
   const appointments: Array<{
     status: AppointmentStatus;
@@ -128,6 +133,7 @@ export function buildSampleReportsView(now = new Date(), timeZone = getAppTimeZo
     aiSnapshots: [],
     now,
     timeZone,
+    locale,
   });
 }
 
@@ -136,9 +142,13 @@ export function buildSampleReportsView(now = new Date(), timeZone = getAppTimeZo
 let cached: { key: string; view: ReportsViewModel } | null = null;
 
 /** The sample view for the current hour, built once and reused. */
-export function getSampleReportsView(now = new Date(), timeZone = getAppTimeZone()): ReportsViewModel {
+export function getSampleReportsView(
+  now = new Date(),
+  timeZone = getAppTimeZone(),
+  locale: Locale = "en"
+): ReportsViewModel {
   const parts = getZonedDateParts(now, timeZone);
-  const key = `${timeZone}:${parts.year}-${parts.month}-${parts.day}T${parts.hour}`;
-  if (cached?.key !== key) cached = { key, view: buildSampleReportsView(now, timeZone) };
+  const key = `${locale}:${timeZone}:${parts.year}-${parts.month}-${parts.day}T${parts.hour}`;
+  if (cached?.key !== key) cached = { key, view: buildSampleReportsView(now, timeZone, locale) };
   return cached.view;
 }

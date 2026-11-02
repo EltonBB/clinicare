@@ -1,10 +1,13 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { m } from "framer-motion";
+import { m as motion } from "framer-motion";
 import { Clock3 } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { useI18n } from "@/i18n/client";
+import { fmt, plural, storedLabel } from "@/i18n/format";
+import type { Messages } from "@/i18n/messages";
 import { fadeIn } from "@/lib/motion";
 import {
   DEMAND_HEATMAP_BANDS,
@@ -12,11 +15,14 @@ import {
   type ReportPeriodView,
 } from "@/lib/reports";
 
-const bandShortLabels: Record<string, string> = {
-  Morning: "Morn",
-  Midday: "Mid",
-  Afternoon: "Aft",
-  Evening: "Eve",
+const FULL_DAY: Record<string, keyof Messages["common"]["weekdays"]> = {
+  Mon: "monday",
+  Tue: "tuesday",
+  Wed: "wednesday",
+  Thu: "thursday",
+  Fri: "friday",
+  Sat: "saturday",
+  Sun: "sunday",
 };
 
 function intensity(count: number, max: number) {
@@ -25,6 +31,16 @@ function intensity(count: number, max: number) {
 }
 
 export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
+  const { locale, m } = useI18n();
+  const t = m.reports.patterns;
+  const dayName = (day: string) => storedLabel(t.days, day);
+  const bandName = (band: string) => storedLabel(t.bands, band);
+  const fullDayName = (day: string) => {
+    const key = FULL_DAY[day];
+    // Albanian writes day names in lower case mid-sentence; English keeps the capital.
+    const name = key ? m.common.weekdays[key].name : day;
+    return locale === "en" ? name : name.toLowerCase();
+  };
   const [hoverCell, setHoverCell] = useState<string | null>(null);
   const { heatmap } = period.diagnostics.demandWindows;
   const { bookingBehavior } = period.diagnostics;
@@ -37,20 +53,21 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
   );
 
   return (
-    <m.section
+    <motion.section
       key={period.key}
       variants={fadeIn}
       initial="initial"
       animate="animate"
       className="surface-card flex h-full flex-col p-3.5"
     >
-      <h2 className="px-1 text-[15px] font-semibold text-foreground">Booking patterns</h2>
+      <h2 className="px-1 text-[15px] font-semibold text-foreground">{t.title}</h2>
 
       {peakCell && peakCell.count > 0 ? (
         <div className="mx-1 mt-2.5 rounded-(--radius-tile) bg-primary/6 px-3 py-2">
           <p className="text-sm text-foreground">
-            Peak: <span className="font-semibold">{peakCell.day} {peakCell.band.toLowerCase()}</span> —{" "}
-            {peakCell.count} appointment{peakCell.count === 1 ? "" : "s"}, the clearest place to add coverage.
+            {plural(t.peak, peakCell.count, locale, {
+              window: fmt(t.peakWindow, { day: fullDayName(peakCell.day), band: bandName(peakCell.band).toLowerCase() }),
+            })}
           </p>
         </div>
       ) : null}
@@ -64,13 +81,13 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
             <div />
             {DEMAND_HEATMAP_DAYS.map((day) => (
               <div key={day} className="pb-1 text-center text-[10px] font-medium text-muted-foreground">
-                {day}
+                {dayName(day)}
               </div>
             ))}
             {DEMAND_HEATMAP_BANDS.map((band) => (
               <Fragment key={band.key}>
                 <div className="flex items-center text-[10px] leading-tight text-muted-foreground">
-                  {bandShortLabels[band.label] ?? band.label}
+                  {storedLabel(t.bandsShort, band.label)}
                 </div>
                 {DEMAND_HEATMAP_DAYS.map((day) => {
                   const cell = cellByKey.get(`${day}__${band.label}`);
@@ -83,7 +100,7 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
                       key={cellKey}
                       role="button"
                       tabIndex={0}
-                      aria-label={`${day} ${band.label}: ${count} appointment${count === 1 ? "" : "s"}`}
+                      aria-label={plural(t.cell, count, locale, { day: dayName(day), band: bandName(band.label) })}
                       className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                       onMouseEnter={() => setHoverCell(cellKey)}
                       onMouseLeave={() => setHoverCell((current) => (current === cellKey ? null : current))}
@@ -101,7 +118,7 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
                       />
                       {hoverCell === cellKey ? (
                         <div className="pointer-events-none absolute -top-8 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-(--radius-tile) border border-border/80 bg-white px-2 py-1 text-[11px] font-medium text-foreground shadow-[0_6px_16px_rgba(20,21,47,0.12)]">
-                          {day} {band.label}: {count}
+                          {dayName(day)}, {bandName(band.label)}: {count}
                         </div>
                       ) : null}
                     </div>
@@ -125,8 +142,8 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
           <WorkspaceEmptyState
             compact
             icon={Clock3}
-            title="No booking pattern yet"
-            description="The heat-grid fills in once appointments are booked this period."
+            title={t.emptyTitle}
+            description={t.emptyCopy}
           />
         </div>
       )}
@@ -135,9 +152,9 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
         <div className="mt-3.5 flex flex-1 flex-wrap items-end gap-2">
           {(
             [
-              { value: `${bookingBehavior.averageLeadTimeHours}h`, label: "Avg lead time" },
-              { value: bookingBehavior.sameDayBookings, label: "Same-day" },
-              { value: bookingBehavior.unassignedAppointments, label: "Unassigned" },
+              { value: fmt(t.leadHours, { count: bookingBehavior.averageLeadTimeHours }), label: t.leadTime },
+              { value: bookingBehavior.sameDayBookings, label: t.sameDay },
+              { value: bookingBehavior.unassignedAppointments, label: t.unassigned },
             ] as const
           ).map((stat) => (
             <div key={stat.label} className="flex-1 rounded-(--radius-tile) bg-secondary/40 px-3 py-2">
@@ -147,6 +164,6 @@ export function BookingPatternsCard({ period }: { period: ReportPeriodView }) {
           ))}
         </div>
       ) : null}
-    </m.section>
+    </motion.section>
   );
 }

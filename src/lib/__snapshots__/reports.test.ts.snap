@@ -1071,7 +1071,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
       "snapshot": {
         "actions": [
           {
-            "detail": "1 completed visit give the clinic a measurable baseline today.",
+            "detail": "1 completed visit gives the clinic a measurable baseline today.",
             "expectedImpact": "Protects the current 40/100 performance score by preserving the strongest metric signal.",
             "metric": "Completion and utilization",
             "priority": "medium",
@@ -1098,7 +1098,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
             "title": "Convert leakage into booked care",
           },
           {
-            "detail": "1 completed visit give the clinic a measurable baseline today.",
+            "detail": "1 completed visit gives the clinic a measurable baseline today.",
             "impact": "medium",
             "title": "Keep the strongest operating habit visible",
           },
@@ -1146,7 +1146,7 @@ exports[`buildReportsViewFromWorkspace (characterization) > produces a stable vi
         ],
         "status": "rules",
         "statusLabel": "Rule-based insight",
-        "strength": "1 completed visit give the clinic a measurable baseline today.",
+        "strength": "1 completed visit gives the clinic a measurable baseline today.",
         "summary": "3 appointments are on the schedule, covering 1 booked hour; 50.0% completion across 2 finalized visits, and booked activity is up +1.",
         "tone": "attention",
         "watch": "Lost-slot pressure is high at 50.0% across 1 cancelled visit. Missed or cancelled visits are the clearest source of preventable leakage.",

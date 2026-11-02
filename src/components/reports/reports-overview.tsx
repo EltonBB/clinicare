@@ -20,6 +20,8 @@ import { LazyMotionProvider } from "@/components/layout/motion-provider";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
+import { useI18n } from "@/i18n/client";
+import { dateText, fmt } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 import type { ReportPeriodKey, ReportsViewModel } from "@/lib/reports";
 import { AppointmentStatusCard, HighlightsCard, OverviewTab } from "./overview-tab";
@@ -36,6 +38,8 @@ function RangeCalendar({
   to: string;
   onChange: (from: string, to: string) => void;
 }) {
+  const { locale, m } = useI18n();
+  const t = m.reports;
   const fromDate = from ? parseISO(from) : null;
   const toDate = to ? parseISO(to) : null;
   const [monthCursor, setMonthCursor] = useState<Date>(() => startOfMonth(fromDate ?? new Date()));
@@ -55,11 +59,12 @@ function RangeCalendar({
     }
   }
 
+  const day = (date: Date) => dateText(locale, date, { month: "short", day: "numeric", year: "numeric" });
   const rangeCaption = fromDate
     ? toDate
-      ? `${format(fromDate, "MMM d, yyyy")} — ${format(toDate, "MMM d, yyyy")}`
-      : `${format(fromDate, "MMM d, yyyy")} — pick an end date`
-    : "Pick a start date";
+      ? `${day(fromDate)} – ${day(toDate)}`
+      : fmt(t.pickEnd, { from: day(fromDate) })
+    : t.pickStart;
 
   // Typing a date (or using the native picker) jumps straight there instead
   // of paging the grid month by month — the grid stays in sync either way,
@@ -73,7 +78,7 @@ function RangeCalendar({
     <div>
       <div className="mb-3 grid grid-cols-2 gap-2">
         <label className="space-y-1 text-left">
-          <span className="text-xs font-medium text-muted-foreground">From</span>
+          <span className="text-xs font-medium text-muted-foreground">{t.from}</span>
           <Input
             type="date"
             value={from}
@@ -83,7 +88,7 @@ function RangeCalendar({
           />
         </label>
         <label className="space-y-1 text-left">
-          <span className="text-xs font-medium text-muted-foreground">To</span>
+          <span className="text-xs font-medium text-muted-foreground">{t.to}</span>
           <Input
             type="date"
             value={to}
@@ -139,6 +144,8 @@ export function ReportsSections({ period }: { period: ReportsViewModel["periods"
 }
 
 export function ReportsOverview({ view }: { view: ReportsViewModel }) {
+  const { locale, m } = useI18n();
+  const t = m.reports;
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriodKey>(view.defaultPeriod);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
@@ -171,7 +178,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
         setRefreshMessage(result.message);
         router.refresh();
       } catch {
-        setRefreshMessage("Analysis could not refresh right now. Current reports are still using saved metrics.");
+        setRefreshMessage(t.refreshFailed);
       } finally {
         setIsRefreshing(false);
       }
@@ -188,11 +195,11 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
 
   function applyRange() {
     if (!fromInput || !toInput) {
-      setRangeError("Pick both a start and an end date.");
+      setRangeError(t.pickBoth);
       return;
     }
     if (toInput < fromInput) {
-      setRangeError("End date must be after the start date.");
+      setRangeError(t.endAfterStart);
       return;
     }
 
@@ -206,7 +213,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
       <div className="-mx-4 -mt-3 px-3 pt-3 pb-28 sm:-mx-5 sm:px-3 lg:-mx-6 lg:-mt-4 lg:-mb-4 lg:px-3 lg:pt-3 lg:pb-3">
         <WorkspacePage>
           <WorkspaceHeader
-            title="Reports"
+            title={t.title}
             actions={
               <>
                 <div className="inline-flex h-10 items-center gap-1">
@@ -233,7 +240,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                 <div ref={rangeContainerRef} className="relative">
                   <button
                     type="button"
-                    aria-label="Choose a custom date range"
+                    aria-label={t.customRange}
                     aria-haspopup="dialog"
                     aria-expanded={rangeOpen}
                     onClick={() => setRangeOpen((current) => !current)}
@@ -249,7 +256,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   {rangeOpen ? (
                     <div
                       role="dialog"
-                      aria-label="Custom range"
+                      aria-label={t.customRangeDialog}
                       className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[320px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-4 shadow-(--shadow-pop)"
                     >
                       <RangeCalendar
@@ -270,7 +277,7 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                           onClick={() => setRangeOpen(false)}
                           className="inline-flex h-9 items-center justify-center rounded-(--radius-card) border border-border/75 bg-white px-3.5 text-sm font-semibold text-foreground transition-[background-color,border-color] duration-(--duration-base) hover:border-border hover:bg-[#f7f9fc] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
                         >
-                          Cancel
+                          {m.common.cancel}
                         </button>
                         <button
                           type="button"
@@ -278,12 +285,14 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                           disabled={!fromInput || !toInput}
                           className={cn(buttonVariants({ variant: "solid" }), "rounded-(--radius-card) px-3.5")}
                         >
-                          Analyse range
+                          {t.analyseRange}
                         </button>
                       </div>
                     </div>
                   ) : null}
                 </div>
+                {/* The AI writes in English, so another language shows the rule-based insight and has nothing to refresh. */}
+                {locale === "en" ? (
                 <button
                   type="button"
                   onClick={refreshInsights}
@@ -291,8 +300,9 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   className="inline-flex h-10 items-center gap-2 rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm font-medium text-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) ease-(--ease-out-quint) hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
                 >
                   <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
-                  Refresh AI
+                  {t.refreshAi}
                 </button>
+                ) : null}
               </>
             }
           />
