@@ -28,7 +28,7 @@ export function OnboardingShell({
           {/* No Business row exists until onboarding completes, so prefetching
               /dashboard here could cache a redirect-to-onboarding response
               that outlives the moment bootstrap actually creates it. */}
-          <BrandMark href="/dashboard" includeSubtitle={false} prefetch={false} />
+          <BrandMark href="/dashboard" prefetch={false} />
           <div className="flex items-center gap-1">
             <LanguageSwitcher />
             <LogoutButton className="h-9 px-2.5 text-muted-foreground hover:bg-transparent hover:text-[var(--brand-ink)] [&_svg]:size-3.5" />

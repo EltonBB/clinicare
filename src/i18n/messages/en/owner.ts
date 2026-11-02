@@ -1,0 +1,35 @@
+/** The owner page (/owner): every clinic's billing, for Vela's own team. */
+export const owner = {
+  meta: "Clinics | Vela",
+  title: "Clinics",
+  due: { one: "{count} due for deletion", other: "{count} due for deletion" },
+  columns: { clinic: "Clinic", plan: "Plan", billing: "Billing", access: "Access", change: "Change" },
+  since: "Since {date}",
+  dueSuffix: " · due for deletion",
+  // Keyed by the subscription status.
+  statuses: {
+    NONE: "No plan yet",
+    TRIALING: "Trial",
+    ACTIVE: "Paying",
+    PAST_DUE: "Payment failing",
+    PAUSED: "Paused",
+    CANCELED: "Cancelled",
+  },
+  intervals: { YEAR: "yearly", MONTH: "monthly" },
+  free: "Free account",
+  ends: "Ends {date}",
+  trialUntil: "Trial until {date}",
+  renews: "Renews {date}",
+  keptUntil: ", kept until {date}",
+  access: { full: "Usable", choosing: "Choosing a plan{kept}", readOnly: "Read-only{kept}" },
+  control: {
+    label: "Billing",
+    freeBasic: "Free · Basic",
+    freePro: "Free · Pro",
+    paying: "Must pay",
+    save: "Save",
+    offerTrial: "Offer Pro trial",
+    trialOffered: "Pro trial offered",
+    onTrial: "On a Pro trial",
+  },
+};

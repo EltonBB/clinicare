@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { requestLocale } from "@/i18n/config";
 import { logger } from "@/lib/logger";
+import { mobileError } from "@/lib/mobile/guard";
 import { loadMobileMe } from "@/lib/mobile/me";
 import { readMobileJson } from "@/lib/mobile/json-body";
 import { isExpoPushToken } from "@/lib/mobile/push-token";
@@ -38,13 +40,11 @@ const GENERIC_INVALID =
   "That code is invalid or has expired. Ask your clinic admin for a new one.";
 
 export async function POST(request: Request) {
+  const locale = requestLocale(request);
   const ip = clientIpFromHeaders(request.headers);
   const rate = await checkRateLimit(`mobile-redeem:${ip}`, REDEEM_RATE_LIMIT);
   if (!rate.allowed) {
-    return NextResponse.json(
-      { error: "Too many attempts. Please wait a moment and try again." },
-      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
-    );
+    return mobileError(locale, "Too many attempts. Please wait a moment and try again.", 429, { "Retry-After": String(rate.retryAfterSeconds) });
   }
 
   const body = await readMobileJson(request);
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
   const parsed = bodySchema.safeParse(body.data);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return mobileError(locale, "Invalid request.", 400);
   }
 
   const codeHash = hashAccessCode(parsed.data.code);
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       REDEEM_BUSINESS_RATE_LIMIT
     );
     if (!businessRate.allowed) {
-      return NextResponse.json({ error: GENERIC_INVALID }, { status: 401 });
+      return mobileError(locale, GENERIC_INVALID, 401);
     }
   }
 
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     });
 
     if (result.kind === "invalid") {
-      return NextResponse.json({ error: GENERIC_INVALID }, { status: 401 });
+      return mobileError(locale, GENERIC_INVALID, 401);
     }
 
     // The code is now consumed and the device created, so the session is valid.
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
     // token always; the app can fetch /me separately if `me` is null.
     let me = null;
     try {
-      me = await loadMobileMe(result.device);
+      me = await loadMobileMe(result.device, locale);
     } catch (error) {
       logger.error("Loading mobile profile after redeem failed.", error, {
         deviceId: result.device.id,
@@ -166,9 +166,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ token: rawToken, me }, { status: 200 });
   } catch (error) {
     logger.error("Mobile access code redemption failed.", error);
-    return NextResponse.json(
-      { error: "We couldn't sign you in right now. Please try again." },
-      { status: 500 }
-    );
+    return mobileError(locale, "We couldn't sign you in right now. Please try again.", 500);
   }
 }

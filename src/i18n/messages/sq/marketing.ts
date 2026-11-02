@@ -107,10 +107,10 @@ export const marketing: Translation<typeof en> = {
       jumpTo: "Shko te {time}: {title}",
       moments: [
         { tag: "Kujtesë", title: "Kujtesat dërgohen.", copy: "Pacientët e radhës marrin një kujtesë në WhatsApp me emrin dhe orën, dhe e konfirmojnë me një përgjigje. Asgjë klinike." },
-        { tag: "Vizitë", title: "Fillon vizita e Mayas.", copy: "Historiku, dokumentet dhe bilanci i saj janë tashmë në kartelë." },
+        { tag: "Vizitë", title: "Fillon vizita e Mayës.", copy: "Historiku, dokumentet dhe bilanci i saj janë tashmë në kartelë." },
         { tag: "Mesazh", title: "Vjen një mesazh.", copy: "Danieli kërkon ta zhvendosë vizitën. Mesazhi shfaqet pranë kartelës së tij, i palexuar." },
         { tag: "Kalendar", title: "Orari ndryshon.", copy: "Vizita e tij kalon të premten. Kalendari dhe kartela e tij ndryshojnë bashkë." },
-        { tag: "Pagesë", title: "Regjistrohet një pagesë.", copy: "Vizita e Mayas paguhet dhe bilanci në profilin e saj mbyllet." },
+        { tag: "Pagesë", title: "Regjistrohet një pagesë.", copy: "Vizita e Mayës paguhet dhe bilanci në profilin e saj mbyllet." },
         { tag: "Raport", title: "Dita shpjegohet vetë.", copy: "Raportet përmbledhin ditën dhe sugjerojnë një hap të ardhshëm." },
       ],
       scenes: {
@@ -396,7 +396,7 @@ export const marketing: Translation<typeof en> = {
     tools: {
       lead: "Gjashtë vende.",
       rest: "Një kartelë.",
-      copy: "Gjithçka që një klinikë di për Mayan, para dhe pas Vela. Lëvizni poshtë dhe shihni si bashkohet.",
+      copy: "Gjithçka që një klinikë di për Mayën, para dhe pas Vela. Lëvizni poshtë dhe shihni si bashkohet.",
       onRecord: "Në kartelë",
       scattered: "E shpërndarë",
       oneRecord: "Një kartelë në Vela",

@@ -16,6 +16,13 @@ describe("buildStaffPushPayload", () => {
     expect(buildStaffPushPayload({ kind: "system" }).title).toBe("Vela Staff");
   });
 
+  it("speaks the clinic's language", () => {
+    expect(buildStaffPushPayload({ kind: "message" }, "sq")).toMatchObject({
+      title: "Mesazh i ri",
+      body: "Keni një mesazh të ri nga klinika juaj.",
+    });
+  });
+
   it("only carries a deep link in data — never free text", () => {
     const withLink = buildStaffPushPayload({
       kind: "message",

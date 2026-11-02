@@ -10,7 +10,6 @@ type BrandMarkProps = {
   compact?: boolean;
   href?: string;
   className?: string;
-  includeSubtitle?: boolean;
   size?: "default" | "lg";
   tone?: "default" | "light";
   /** Passed through to next/link — leave unset for Next's default behavior.
@@ -24,7 +23,6 @@ export function BrandMark({
   compact = false,
   href = "/dashboard",
   className,
-  includeSubtitle = true,
   size = "default",
   tone = "default",
   prefetch,
@@ -60,26 +58,14 @@ export function BrandMark({
         />
       </span>
       {!compact ? (
-        <span className="flex flex-col">
-          <span
-            className={cn(
-              "font-semibold leading-none tracking-tight",
-              isLight ? "text-white" : "text-[var(--brand-ink)]",
-              isLg ? "text-2xl" : "text-xl"
-            )}
-          >
-            Vela
-          </span>
-          {includeSubtitle ? (
-            <span
-              className={cn(
-                "mt-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
-                isLight ? "text-white/60" : "text-muted-foreground"
-              )}
-            >
-              Clinic OS
-            </span>
-          ) : null}
+        <span
+          className={cn(
+            "font-semibold leading-none tracking-tight",
+            isLight ? "text-white" : "text-[var(--brand-ink)]",
+            isLg ? "text-2xl" : "text-xl"
+          )}
+        >
+          Vela
         </span>
       ) : null}
     </Link>

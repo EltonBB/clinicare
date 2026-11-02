@@ -54,6 +54,7 @@ function NavCountBadge({
   isActive: boolean;
   className?: string;
 }) {
+  const { m } = useI18n();
   if (count <= 0) {
     return null;
   }
@@ -67,7 +68,7 @@ function NavCountBadge({
       )}
     >
       {count > 9 ? "9+" : count}
-      <span className="sr-only"> unread</span>
+      <span className="sr-only"> {m.shell.unreadWord}</span>
     </span>
   );
 }
@@ -296,7 +297,7 @@ export function AppShell({
         <aside className="hidden w-64 shrink-0 border-r border-sidebar-border/80 bg-white backdrop-blur-xl lg:flex">
           <div className="sticky top-0 flex h-screen w-full flex-col bg-white p-3">
             <div className="mb-4 px-2 py-2">
-              <BrandMark href="/dashboard" includeSubtitle={false} size="lg" />
+              <BrandMark href="/dashboard" size="lg" />
             </div>
 
             <div className="mb-3 px-0.5">

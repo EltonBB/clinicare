@@ -236,6 +236,48 @@ export const serverText: Record<string, string> = {
     "Nuk mundëm ta konfirmonim që mesazhi u dorëzua. Mund t'i ketë arritur marrësit.",
   "We couldn't send the message. Please try again.": "Nuk mundëm ta dërgonim mesazhin. Ju lutemi provoni përsëri.",
 
+  // Vela Staff app (mobile API errors, and notices stored in English)
+  "Invalid date offset.": "Data e zgjedhur nuk është e vlefshme.",
+  "That code is invalid or has expired. Ask your clinic admin for a new one.":
+    "Ky kod është i pavlefshëm ose ka skaduar. Kërkojini administratës së klinikës një kod të ri.",
+  "Too many attempts. Please wait a moment and try again.": "Shumë përpjekje. Prisni pak dhe provoni përsëri.",
+  "Invalid request.": "Kërkesë e pavlefshme.",
+  "Request is too large.": "Kërkesa është shumë e madhe.",
+  "We couldn't sign you in right now. Please try again.": "Hyrja nuk funksionoi tani. Ju lutemi provoni përsëri.",
+  "Account unavailable.": "Llogaria nuk është e disponueshme.",
+  "Unauthorized.": "Nuk keni qasje.",
+  "Too many requests. Please slow down for a moment.": "Shumë kërkesa. Ju lutemi prisni pak.",
+  "Conversation not found.": "Biseda nuk u gjet.",
+  "Your account isn't active. Contact your clinic admin.": "Llogaria juaj nuk është aktive. Kontaktoni administratën e klinikës.",
+  "You can only check in during a scheduled shift. Check with your clinic admin if your schedule looks wrong.":
+    "Hyrjen mund ta regjistroni vetëm gjatë një ndërrimi të planifikuar. Pyetni administratën e klinikës nëse orari juaj duket i gabuar.",
+  "New appointment": "Termin i ri",
+  "Schedule updated": "Orari u përditësua",
+  "Your clinic booked a new appointment for you.": "Klinika juaj ju caktoi një termin të ri.",
+  "Your clinic changed one of your appointments.": "Klinika juaj ndryshoi një nga terminet tuaja.",
+  "New message": "Mesazh i ri",
+  "You have a new message from your clinic.": "Keni një mesazh të ri nga klinika juaj.",
+  "Cancellation sent": "Anulimi u dërgua",
+  "Your clinic admin has been notified so they can reschedule.": "Administrata e klinikës u njoftua që ta riplanifikojë.",
+  "Cancelled the {time} appointment with {name} — please reschedule.":
+    "Anuloi terminin e orës {time} me {name}. Ju lutemi riplanifikojeni.",
+
+  // Reports refresh (lib/analytics-ai.ts)
+  "AI is unavailable right now, so reports are using rule-based insights.":
+    "AI nuk është i disponueshëm tani, prandaj raportet po përdorin vlerësime sipas rregullave.",
+  "AI insight generated.": "Vlerësimi me AI u krijua.",
+  "AI refresh did not return a result for this timeframe.": "Rifreskimi me AI nuk dha rezultat për këtë periudhë.",
+
+  // Owner page
+  "Not found.": "Nuk u gjet.",
+  "That choice isn't valid.": "Kjo zgjedhje nuk është e vlefshme.",
+  "That clinic no longer exists.": "Kjo klinikë nuk ekziston më.",
+  "This clinic is paying through its subscription. Cancel that first, then make it free.":
+    "Kjo klinikë paguan përmes abonimit të saj. Anulojeni atë së pari, pastaj bëjeni falas.",
+  "That clinic isn't valid.": "Kjo klinikë nuk është e vlefshme.",
+  "Only a clinic paying for Basic, never offered before, can get a Pro trial.":
+    "Provën e Pro mund ta marrë vetëm një klinikë që paguan për Basic dhe që nuk e ka marrë më parë këtë ofertë.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

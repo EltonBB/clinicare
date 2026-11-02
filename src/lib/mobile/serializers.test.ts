@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  dateLabelFor,
   serializeAppointment,
   serializeMe,
   type AppointmentForMobile,
@@ -112,5 +113,12 @@ describe("serializeAppointment", () => {
     expect(serializeAppointment(appt({ status: "CONFIRMED" }), "today", NOW).hasEnded).toBe(true);
     const BEFORE = new Date("2026-06-25T09:15:00.000Z"); // mid-appointment
     expect(serializeAppointment(appt(), "today", BEFORE).hasEnded).toBe(false);
+  });
+});
+
+describe("dateLabelFor in Albanian", () => {
+  it("names today and tomorrow in the app's language", () => {
+    expect(dateLabelFor(new Date("2026-06-25T10:00:00Z"), "today", "sq")).toMatch(/^Sot, /);
+    expect(dateLabelFor(new Date("2026-06-25T10:00:00Z"), "tomorrow", "sq")).toMatch(/^Nesër, /);
   });
 });

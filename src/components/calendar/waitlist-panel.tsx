@@ -359,7 +359,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                 className="rounded-(--radius-tile)"
               >
                 <Plus className="size-4" />
-                Add
+                {t.add}
               </Button>
             )}
             {showForm ? (

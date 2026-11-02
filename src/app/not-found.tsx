@@ -38,7 +38,7 @@ export default async function RootNotFound() {
   if (await getCurrentUser()) {
     return (
       <div className="flex min-h-dvh flex-col bg-white px-5 py-6 sm:px-10 sm:py-8">
-        <BrandMark href="/dashboard" includeSubtitle={false} />
+        <BrandMark href="/dashboard" />
         <div className="flex flex-1 items-center justify-center">
           <div className="max-w-sm text-center">
             <h1 className="text-lg font-semibold text-foreground">{t.signedInTitle}</h1>

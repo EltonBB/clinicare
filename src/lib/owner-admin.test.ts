@@ -115,3 +115,13 @@ describe("ownerBillingRow", () => {
     expect(ownerBillingRow(row({}), NOW, ZONE).proTrial).toBeNull();
   });
 });
+
+describe("ownerBillingRow in Albanian", () => {
+  it("words the billing, the next charge and the access", () => {
+    expect(ownerBillingRow(row({}), NOW, ZONE, "sq")).toMatchObject({
+      billing: "Paguan · mujor",
+      detail: "Rinovohet më 20 nëntor 2026",
+      access: "E përdorshme",
+    });
+  });
+});

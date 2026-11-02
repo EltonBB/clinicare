@@ -10,6 +10,8 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { fmt } from "@/i18n/format";
 import { getI18n } from "@/i18n/server";
 import { WithMessages } from "@/i18n/with-messages";
+import { effectiveAutomationTemplate } from "@/lib/automations";
+import { getAutomationSettings } from "@/lib/automations-data";
 import { workspaceAccess } from "@/lib/billing-access";
 import { TRIAL_DAYS } from "@/lib/checkout-state";
 import { getCurrentBusiness } from "@/lib/business";
@@ -47,7 +49,7 @@ export default async function OnboardingCompletePage() {
     redirect("/onboarding");
   }
 
-  const [hours, staff, reminderSettings, logoUrl] = await Promise.all([
+  const [hours, staff, automations, logoUrl] = await Promise.all([
     prisma.businessHours.findMany({
       where: { businessId: business.id },
       select: { weekday: true, isOpen: true, startTime: true, endTime: true },
@@ -58,7 +60,7 @@ export default async function OnboardingCompletePage() {
       select: { name: true, role: true },
       take: 3,
     }),
-    prisma.reminderSettings.findUnique({ where: { businessId: business.id }, select: { template: true } }),
+    getAutomationSettings(business.id),
     resolveMediaDisplayUrl(business.logoUrl).catch(() => ""),
   ]);
 
@@ -96,7 +98,8 @@ export default async function OnboardingCompletePage() {
       accent={resolveBrandAccentPreset(business.brandAccentColor).value}
       hours={workingHours}
       team={staff}
-      reminderTemplate={reminderSettings?.template}
+      // What the first reminder really says, in whichever language it is written.
+      reminderTemplate={effectiveAutomationTemplate("FIRST_REMINDER", automations.FIRST_REMINDER.template)}
       focus="done"
     />
   );

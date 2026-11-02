@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { mobileRateLimit, mobileWriteBlocked, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, mobileWriteBlocked, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { postConversationMessage } from "@/lib/mobile/inbox";
 import { readMobileJson } from "@/lib/mobile/json-body";
 import { requireStaffContext } from "@/lib/staff-auth";
@@ -19,7 +19,7 @@ export async function POST(
     return staffAuthResponse(ctx);
   }
 
-  const blocked = mobileWriteBlocked(ctx.business);
+  const blocked = mobileWriteBlocked(ctx.business, ctx.locale);
   if (blocked) return blocked;
 
   const limited = await mobileRateLimit(ctx.device.id, "thread-send", { limit: 30, windowMs: 60_000 });
@@ -31,13 +31,13 @@ export async function POST(
   if ("response" in body) return body.response;
   const parsed = bodySchema.safeParse(body.data);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return mobileError(ctx.locale, "Invalid request.", 400);
   }
 
   const { id } = await params;
   const result = await postConversationMessage(ctx, id, parsed.data.body);
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+    return mobileError(ctx.locale, result.error, result.status);
   }
 
   return NextResponse.json({ threadId: result.threadId, message: result.message });

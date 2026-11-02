@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { markConversationRead } from "@/lib/mobile/inbox";
 import { readMobileJson } from "@/lib/mobile/json-body";
 import { seenMessageIdsSchema } from "@/lib/mobile/thread-read";
@@ -28,10 +28,10 @@ export async function POST(
   const body = await readMobileJson(request, true);
   if ("response" in body) return body.response;
   const parsed = bodySchema.safeParse(body.data);
-  if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  if (!parsed.success) return mobileError(ctx.locale, "Invalid request.", 400);
   const result = await markConversationRead(ctx, id, parsed.data?.seenMessageIds);
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+    return mobileError(ctx.locale, result.error, result.status);
   }
 
   return NextResponse.json(result);

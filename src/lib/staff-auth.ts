@@ -1,5 +1,6 @@
 import type { Business, StaffDevice, StaffMember } from "@prisma/client";
 
+import { requestLocale, type Locale } from "@/i18n/config";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -62,6 +63,8 @@ export type StaffContext = {
   staffMember: StaffMember;
   business: Business;
   device: StaffDevice;
+  /** The language the app asked for (Accept-Language). */
+  locale: Locale;
 };
 
 export type StaffAuthError = { error: string; status: number; retryAfterSeconds?: number };
@@ -134,5 +137,5 @@ export async function requireStaffContext(
   // timestamp) here — the single choke point for the HIPAA audit-log hook.
 
   const { staffMember, business } = device;
-  return { staffMember, business, device };
+  return { staffMember, business, device, locale: requestLocale(request) };
 }

@@ -67,7 +67,7 @@ export function MarketingFooter({ cta = false }: { cta?: FooterCta }) {
       <div className={"mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 " + (cta ? "" : "pt-16 sm:pt-20")}>
         <div className={"grid grid-cols-2 gap-10 sm:grid-cols-[1.5fr_1fr_1fr_1fr] " + (cta ? "border-t border-white/10 pt-14" : "")}>
           <div className="col-span-2 max-w-xs sm:col-span-1">
-            <BrandMark href="/" includeSubtitle={false} tone="light" />
+            <BrandMark href="/" tone="light" />
             <p className="mt-4 text-sm leading-6 text-white/55">{t.tagline}</p>
           </div>
 

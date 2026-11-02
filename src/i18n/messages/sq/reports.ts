@@ -121,6 +121,15 @@ export const reports: Translation<typeof en> = {
   pickEnd: "{from}, zgjidhni datën e mbarimit",
   analyseRange: "Analizo periudhën",
   refreshAi: "Rifresko AI",
+  refreshResult: {
+    generated: {
+      one: "U krijua një analizë e re për {count} periudhë",
+      other: "U krijua një analizë e re për {count} periudha",
+    },
+    kept: { one: " dhe u mbajt {count} periudhë e fundit", other: " dhe u mbajtën {count} periudhat e fundit" },
+    tooSoon: "Analiza e plotë me AI u rifreskua së fundi. Provoni përsëri pas orës {time}.",
+    none: "Vlerësimet me AI nuk u krijuan.",
+  },
   refreshFailed: "Analiza nuk mund të rifreskohej tani. Raportet aktuale po përdorin ende të dhënat e ruajtura.",
   pickBoth: "Zgjidhni si datën e fillimit, ashtu edhe atë të mbarimit.",
   endAfterStart: "Data e mbarimit duhet të jetë pas datës së fillimit.",

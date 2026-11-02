@@ -1,5 +1,8 @@
 import type { Appointment } from "@prisma/client";
 
+import type { Locale } from "@/i18n/config";
+import { fmt, storedLabel } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
 import { appointmentDurationMinutes } from "@/lib/calendar";
 import type { StaffDirectoryItem } from "@/lib/staff";
 import {
@@ -73,12 +76,15 @@ export function serializeMe(args: {
   >;
   clinicName: string;
   device: { deviceLabel: string | null; createdAt: Date };
+  locale?: Locale;
 }): MobileDoctor {
-  const { item, clinicName, device } = args;
+  const { item, clinicName, device, locale = "en" } = args;
+  const t = messages[locale].mobile;
   return {
     id: item.id,
     name: item.name,
-    role: item.role,
+    // A built-in role reads in the app's language; a clinic's own stays as typed.
+    role: item.role ? storedLabel(messages[locale].staff.roles, item.role) : messages[locale].staff.noRole,
     clinicName,
     email: item.email,
     phone: item.phone,
@@ -88,8 +94,8 @@ export function serializeMe(args: {
     shiftLabel: item.shiftLabel,
     canClock: item.canClock,
     clockDisabledReason: item.clockDisabledReason,
-    deviceLabel: device.deviceLabel ?? "This device",
-    pairedAtLabel: `Paired ${formatZonedFullDate(device.createdAt)}`,
+    deviceLabel: device.deviceLabel ?? t.thisDevice,
+    pairedAtLabel: fmt(t.paired, { date: formatZonedFullDate(device.createdAt, undefined, locale) }),
   };
 }
 
@@ -107,7 +113,8 @@ function toMobileAppointmentStatus(status: AppointmentForMobile["status"]): Mobi
 export function serializeAppointment(
   appointment: AppointmentForMobile,
   dayKey: "today" | "tomorrow" | string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  locale: Locale = "en"
 ): MobileAppointment {
   const startLabel = formatZonedTime24(appointment.startAt);
   const [hours, minutes] = startLabel.split(":").map(Number);
@@ -123,14 +130,15 @@ export function serializeAppointment(
     status: toMobileAppointmentStatus(appointment.status),
     hasEnded: appointment.endAt.getTime() < now.getTime(),
     dayKey,
-    dateLabel: dateLabelFor(appointment.startAt, dayKey),
+    dateLabel: dateLabelFor(appointment.startAt, dayKey, locale),
     notes: appointment.notes ?? undefined,
   };
 }
 
-export function dateLabelFor(startAt: Date, dayKey: string): string {
-  const shortDate = formatZonedShortDate(startAt);
-  if (dayKey === "today") return `Today, ${shortDate}`;
-  if (dayKey === "tomorrow") return `Tomorrow, ${shortDate}`;
-  return formatZonedWeekdayShortDate(startAt);
+export function dateLabelFor(startAt: Date, dayKey: string, locale: Locale = "en"): string {
+  const t = messages[locale].mobile;
+  const shortDate = formatZonedShortDate(startAt, undefined, locale);
+  if (dayKey === "today") return fmt(t.todayDate, { date: shortDate });
+  if (dayKey === "tomorrow") return fmt(t.tomorrowDate, { date: shortDate });
+  return formatZonedWeekdayShortDate(startAt, undefined, locale);
 }

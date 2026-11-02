@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { getConversation } from "@/lib/mobile/inbox";
 import { requireStaffContext } from "@/lib/staff-auth";
 
@@ -24,7 +24,7 @@ export async function GET(
   const { id } = await params;
   const conversation = await getConversation(ctx, id);
   if (!conversation) {
-    return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
+    return mobileError(ctx.locale, "Conversation not found.", 404);
   }
 
   return NextResponse.json({ conversation });

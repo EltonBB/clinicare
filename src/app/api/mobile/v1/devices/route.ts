@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { registerDevicePushToken } from "@/lib/mobile/inbox";
 import { readMobileJson } from "@/lib/mobile/json-body";
 import { isExpoPushToken } from "@/lib/mobile/push-token";
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if ("response" in body) return body.response;
   const parsed = bodySchema.safeParse(body.data);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return mobileError(ctx.locale, "Invalid request.", 400);
   }
 
   await registerDevicePushToken(ctx, parsed.data.expoPushToken);

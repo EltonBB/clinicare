@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 
+import { getLocale } from "@/i18n/server";
+import { writeAlbanianDefaultWording } from "@/lib/automations-data";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { businessTypes } from "@/lib/constants";
 import { normalizeStorageReference } from "@/lib/media-storage";
@@ -294,7 +297,15 @@ export async function saveOnboardingStateAction(
       };
     }
     try {
-      await bootstrapWorkspaceFromOnboarding(user, normalizedState, logoUrl || null);
+      const business = await bootstrapWorkspaceFromOnboarding(user, normalizedState, logoUrl || null);
+      // A clinic set up in Albanian starts with Albanian patient messages.
+      // Best-effort: on failure it keeps the English defaults, changeable on
+      // the Automations page.
+      if ((await getLocale()) === "sq") {
+        await writeAlbanianDefaultWording(business.id).catch((error) =>
+          logger.error("Writing a new clinic's messages in Albanian failed.", error, { businessId: business.id })
+        );
+      }
       // The Business row now exists. (workspace)/layout.tsx server-fetches
       // owner/business identity on every authenticated route, so anything
       // already cached — including a Router-Cache entry from this page's own

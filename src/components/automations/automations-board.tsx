@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { toggleAutomationAction } from "@/app/(workspace)/automations/actions";
+import { toggleAutomationAction, writeMessagesInAlbanianAction } from "@/app/(workspace)/automations/actions";
 import { AutomationEditor } from "@/components/automations/automation-editor";
 import { Toggle } from "@/components/settings/settings-toggle";
+import { Button } from "@/components/ui/button";
 import { useI18n, useServerText } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import type { AutomationKind } from "@/lib/automations";
@@ -30,11 +31,13 @@ export function AutomationsBoard({
   editors,
   clinicName,
   staffName,
+  englishWording = false,
 }: {
   cards: AutomationCard[];
   editors: Partial<Record<AutomationKind, AutomationEditorData>>;
   clinicName: string;
   staffName: string;
+  englishWording?: boolean;
 }) {
   const router = useRouter();
   const { m } = useI18n();
@@ -46,6 +49,21 @@ export function AutomationsBoard({
   const [error, setError] = useState<string | null>(null);
   const [openKind, setOpenKind] = useState<AutomationKind | null>(null);
   const [, startTransition] = useTransition();
+  const [writing, startWriting] = useTransition();
+  const [notice, setNotice] = useState<string | null>(null);
+
+  function writeInAlbanian() {
+    setError(null);
+    startWriting(async () => {
+      const result = await writeMessagesInAlbanianAction();
+      if (!result.ok) {
+        setError(serverText(result.error) ?? result.error);
+        return;
+      }
+      setNotice(t.albanian.done);
+      router.refresh();
+    });
+  }
 
   const isOn = (card: AutomationCard) => enabled[card.kind] ?? card.enabled;
 
@@ -75,7 +93,25 @@ export function AutomationsBoard({
           {error}
         </p>
       ) : null}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:h-[calc(100vh-174px)] lg:min-h-[520px] lg:grid-cols-3 lg:grid-rows-4">
+      {englishWording ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-(--radius-card) bg-primary/5 px-3.5 py-2">
+          <p className="text-sm text-foreground">{t.albanian.note}</p>
+          <Button type="button" size="sm" onClick={writeInAlbanian} disabled={writing} className="h-8">
+            {t.albanian.action}
+          </Button>
+        </div>
+      ) : notice ? (
+        <p role="status" className="mb-3 text-sm text-emerald-700">
+          {notice}
+        </p>
+      ) : null}
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:min-h-[520px] lg:grid-cols-3 lg:grid-rows-4",
+          // The grid fills the screen below the header, less the notice row when there is one.
+          englishWording ? "lg:h-[calc(100vh-226px)]" : "lg:h-[calc(100vh-174px)]"
+        )}
+      >
         {cards.map((card) => {
           const on = isOn(card);
           const modeLabel = !on ? "Off" : card.mode === "REVIEW" ? "Review first" : "Automatic";

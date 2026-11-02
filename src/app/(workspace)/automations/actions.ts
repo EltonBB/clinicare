@@ -12,7 +12,7 @@ import {
   MAX_AUTOMATION_MESSAGE_LENGTH,
   type AutomationKind,
 } from "@/lib/automations";
-import { getAutomationSettings } from "@/lib/automations-data";
+import { getAutomationSettings, writeAlbanianDefaultWording } from "@/lib/automations-data";
 import { isProBusinessPlan } from "@/lib/billing";
 import { getAuthedBusiness } from "@/lib/business";
 import { logger } from "@/lib/logger";
@@ -113,6 +113,27 @@ async function saveForBusiness(
     });
   } catch (error) {
     logger.error("Saving an automation failed.", error, { businessId, kind: input.kind });
+    return { ok: false, error: TRY_AGAIN_ERROR };
+  }
+
+  revalidateAutomationSurfaces();
+  return { ok: true };
+}
+
+/**
+ * Puts the Albanian default wording on every automation still using the
+ * English default, so the clinic's patients get their messages in Albanian.
+ * Wording the clinic wrote itself stays; switches, timing and modes don't move.
+ */
+export async function writeMessagesInAlbanianAction(): Promise<SaveAutomationResult> {
+  const auth = await getAuthedBusiness(SESSION_EXPIRED);
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const businessId = auth.business.id;
+
+  try {
+    await writeAlbanianDefaultWording(businessId);
+  } catch (error) {
+    logger.error("Writing the automations in Albanian failed.", error, { businessId });
     return { ok: false, error: TRY_AGAIN_ERROR };
   }
 

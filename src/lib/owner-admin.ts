@@ -4,6 +4,9 @@ import { planDisplayName } from "@/lib/billing";
 import { retentionEndsAt, USABLE_SUBSCRIPTION_STATUSES, workspaceAccess } from "@/lib/billing-access";
 import { proTrialState } from "@/lib/pro-trial";
 import { formatZonedFullDate } from "@/lib/time-zone";
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
 
 /**
  * Whether this signed-in user may open the owner page (/owner): their email is
@@ -58,39 +61,39 @@ export type OwnerBillingRow = {
   proTrial: "offerable" | "offered" | "active" | null;
 };
 
-const STATUS_LABEL = {
-  NONE: "No plan yet",
-  TRIALING: "Trial",
-  ACTIVE: "Paying",
-  PAST_DUE: "Payment failing",
-  PAUSED: "Paused",
-  CANCELED: "Cancelled",
-} as const;
-
-export function ownerBillingRow(business: OwnerBillingSource, now: Date, timeZone?: string): OwnerBillingRow {
-  const date = (value: Date) => formatZonedFullDate(value, timeZone);
+export function ownerBillingRow(
+  business: OwnerBillingSource,
+  now: Date,
+  timeZone?: string,
+  locale: Locale = "en"
+): OwnerBillingRow {
+  const t = messages[locale].owner;
+  const date = (value: Date) => formatZonedFullDate(value, timeZone, locale);
   const isFree = business.billingMode === "COMPLIMENTARY";
   const billedByPaddle = (USABLE_SUBSCRIPTION_STATUSES as readonly string[]).includes(business.subscriptionStatus);
-  const interval = business.billingInterval === "YEAR" ? "yearly" : business.billingInterval === "MONTH" ? "monthly" : "";
+  const interval = business.billingInterval ? t.intervals[business.billingInterval] : "";
 
   const billing = isFree
-    ? "Free account"
-    : [STATUS_LABEL[business.subscriptionStatus], billedByPaddle ? interval : ""].filter(Boolean).join(" · ");
+    ? t.free
+    : [t.statuses[business.subscriptionStatus], billedByPaddle ? interval : ""].filter(Boolean).join(" · ");
 
   let detail = "";
   if (!isFree) {
-    if (business.cancelAt && business.cancelAt > now) detail = `Ends ${date(business.cancelAt)}`;
-    else if (business.subscriptionStatus === "TRIALING" && business.trialEndsAt) detail = `Trial until ${date(business.trialEndsAt)}`;
-    else if (billedByPaddle && business.currentPeriodEndsAt) detail = `Renews ${date(business.currentPeriodEndsAt)}`;
+    if (business.cancelAt && business.cancelAt > now) detail = fmt(t.ends, { date: date(business.cancelAt) });
+    else if (business.subscriptionStatus === "TRIALING" && business.trialEndsAt)
+      detail = fmt(t.trialUntil, { date: date(business.trialEndsAt) });
+    else if (billedByPaddle && business.currentPeriodEndsAt) detail = fmt(t.renews, { date: date(business.currentPeriodEndsAt) });
   }
 
   const access = workspaceAccess(business, now);
   // A clinic made paying that never subscribes is kept 90 days too: its clock
   // starts when the owner made it paying.
   const keptUntil = access.kind !== "full" && business.lockedAt ? retentionEndsAt(business.lockedAt) : null;
-  const kept = keptUntil ? `, kept until ${date(keptUntil)}` : "";
+  const kept = keptUntil ? fmt(t.keptUntil, { date: date(keptUntil) }) : "";
   const accessLabel =
-    access.kind === "full" ? "Usable" : access.kind === "needs_plan" ? `Choosing a plan${kept}` : `Read-only${kept}`;
+    access.kind === "full"
+      ? t.access.full
+      : fmt(access.kind === "needs_plan" ? t.access.choosing : t.access.readOnly, { kept });
 
   const proTrial = proTrialState(business, now).kind;
 

@@ -42,7 +42,7 @@
 | 11 | Staff: directory, detail, forms | |
 | 12 | Inbox | |
 | 13 | Automations UI | |
-| 14 | Patient messages: per-clinic messages language, Albanian default wording for every automation, reply-intent keywords (po / jo / konfirmo / anulo) | schema column |
+| 14 | Patient messages: Albanian default wording for every automation, the clinic's saved wording is its language (no schema column: dates follow the text, one-click switch, onboarding in Albanian saves it), reply keywords po / konfirmo / anulo (not *jo*, as English leaves out *no*), staff pushes follow the clinic's language | `lib/automations.ts`, `lib/automations-data.ts` |
 | 15 | Reports: UI, rule-based insights, AI insight language | |
 | 16 | Settings + billing | |
 | 17 | Server-action error messages left after the surfaces above | sweep with the script |

@@ -2,13 +2,18 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { OwnerBillingControl } from "@/components/owner/owner-billing-control";
+import { fmt, plural } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { WorkspaceHeader, WorkspacePage, WorkspaceTable } from "@/components/workspace/workspace-layout";
 import { requireCurrentUser } from "@/lib/auth";
 import { isOwnerAdmin, ownerBillingRow } from "@/lib/owner-admin";
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Clinics | Vela", robots: { index: false, follow: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.owner.meta, robots: { index: false, follow: false } };
+}
 
 // Owner-only (VELA_ADMIN_EMAILS): every clinic's billing at a glance, where the
 // owner makes a pilot clinic free or requires it to pay, and sees which locked
@@ -37,23 +42,26 @@ export default async function OwnerPage() {
     },
     orderBy: { createdAt: "desc" },
   });
+  const { locale, m } = await getI18n();
+  const t = m.owner;
   const now = new Date();
-  const rows = businesses.map((business) => ownerBillingRow(business, now));
+  const rows = businesses.map((business) => ownerBillingRow(business, now, undefined, locale));
   const due = rows.filter((row) => row.dueForDeletion).length;
 
   return (
+    <WithMessages namespaces={["owner"]}>
     <div className="min-h-screen bg-background px-4 py-6 sm:px-6">
       <WorkspacePage size="wide">
-        <WorkspaceHeader title="Clinics" meta={due > 0 ? `${due} due for deletion` : undefined} />
+        <WorkspaceHeader title={t.title} meta={due > 0 ? plural(t.due, due, locale) : undefined} />
         <WorkspaceTable
           minWidthClassName="min-w-[960px]"
           headers={
             <div className="grid grid-cols-[1.4fr_0.6fr_1.2fr_1.4fr_1.3fr] gap-4 px-4 py-2.5 text-xs font-medium text-muted-foreground">
-              <span>Clinic</span>
-              <span>Plan</span>
-              <span>Billing</span>
-              <span>Access</span>
-              <span>Change</span>
+              <span>{t.columns.clinic}</span>
+              <span>{t.columns.plan}</span>
+              <span>{t.columns.billing}</span>
+              <span>{t.columns.access}</span>
+              <span>{t.columns.change}</span>
             </div>
           }
         >
@@ -64,7 +72,7 @@ export default async function OwnerPage() {
             >
               <div className="min-w-0">
                 <p className="truncate font-medium text-foreground">{row.name}</p>
-                <p className="text-xs text-muted-foreground">Since {row.createdOn}</p>
+                <p className="text-xs text-muted-foreground">{fmt(t.since, { date: row.createdOn })}</p>
               </div>
               <span>{row.plan}</span>
               <div className="min-w-0">
@@ -73,7 +81,7 @@ export default async function OwnerPage() {
               </div>
               <p className={cn(row.dueForDeletion && "font-medium text-destructive")}>
                 {row.access}
-                {row.dueForDeletion ? " · due for deletion" : ""}
+                {row.dueForDeletion ? t.dueSuffix : ""}
               </p>
               <OwnerBillingControl
                 businessId={row.id}
@@ -87,5 +95,6 @@ export default async function OwnerPage() {
         </WorkspaceTable>
       </WorkspacePage>
     </div>
+    </WithMessages>
   );
 }

@@ -61,6 +61,12 @@ export const automations = {
   modes: { Automatic: "Automatic", "Review first": "Review first", Off: "Off" },
   pro: "Pro",
   edit: "Edit {label}",
+  // Shown to Albanian readers while a patient message still uses the English default.
+  albanian: {
+    note: "Some patient messages are still in English.",
+    action: "Write them in Albanian",
+    done: "Patient messages are now in Albanian.",
+  },
 
   editor: {
     on: "{label} on",

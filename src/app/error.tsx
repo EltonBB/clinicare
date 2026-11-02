@@ -31,7 +31,7 @@ export default function RootError({
 
   return (
     <div className="flex min-h-dvh flex-col bg-white px-5 py-6 sm:px-10 sm:py-8">
-      <BrandMark href="/" includeSubtitle={false} />
+      <BrandMark href="/" />
       <div className="flex flex-1 items-center">
         <div className="mx-auto w-full max-w-xl">
           <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">

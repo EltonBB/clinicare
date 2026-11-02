@@ -45,7 +45,7 @@ export async function listConversations(ctx: StaffContext): Promise<MobileConver
     orderBy: { lastMessageAt: "desc" },
     include: { messages: { orderBy: { createdAt: "desc" }, take: 1 } },
   });
-  return threads.map((thread) => serializeConversation(thread));
+  return threads.map((thread) => serializeConversation(thread, new Date(), ctx.locale));
 }
 
 /**
@@ -151,7 +151,7 @@ export async function getConversation(
     // order internally, so feeding it a desc-ordered batch is safe.
     include: { messages: { orderBy: { createdAt: "desc" }, take: 100 } },
   });
-  return full ? serializeConversation(full) : null;
+  return full ? serializeConversation(full, new Date(), ctx.locale) : null;
 }
 
 export type PostMessageResult =
@@ -190,7 +190,7 @@ export async function postConversationMessage(
     return created;
   });
 
-  return { ok: true, threadId: thread.id, message: serializeMessage(message, now) };
+  return { ok: true, threadId: thread.id, message: serializeMessage(message, now, ctx.locale) };
 }
 
 export async function markConversationRead(ctx: StaffContext, idParam: string, seenMessageIds?: string[]) {
@@ -209,7 +209,7 @@ export async function listNotifications(ctx: StaffContext): Promise<MobileNotifi
     orderBy: { createdAt: "desc" },
     take: 50,
   });
-  return notifications.map((notification) => serializeNotification(notification));
+  return notifications.map((notification) => serializeNotification(notification, new Date(), ctx.locale));
 }
 
 export async function markNotificationRead(ctx: StaffContext, id: string): Promise<boolean> {

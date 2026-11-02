@@ -1,9 +1,11 @@
+import type { Locale } from "@/i18n/config";
 import { ensureAdminThread } from "@/lib/mobile/inbox";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
-import { clockLabel, dayLabel } from "@/lib/mobile/relative-time";
+import { clockLabel, dayLabel, systemNoticeText } from "@/lib/mobile/relative-time";
 import { prisma } from "@/lib/prisma";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
+import { clinicMessageLocale } from "@/lib/automations-data";
 import { acknowledgeThreadMessages } from "@/lib/mobile/thread-read";
 
 /**
@@ -29,7 +31,8 @@ export type AdminThreadView = {
 
 export async function getAdminThread(
   businessId: string,
-  staffMemberId: string
+  staffMemberId: string,
+  locale: Locale = "en"
 ): Promise<AdminThreadView> {
   // READ-ONLY: don't create a thread just because the admin viewed the page.
   const thread = await prisma.staffThread.findFirst({
@@ -59,9 +62,10 @@ export async function getAdminThread(
       id: message.id,
       mine: message.sender === "ADMIN",
       system: message.sender === "SYSTEM",
-      body: message.body,
+      // System notices are stored in English; people's own words stay as written.
+      body: message.sender === "SYSTEM" ? systemNoticeText(message.body, locale) : message.body,
       timeLabel: clockLabel(message.createdAt),
-      dayLabel: dayLabel(message.createdAt, now),
+      dayLabel: dayLabel(message.createdAt, now, locale),
     })),
     unreadForAdmin: thread.unreadForAdmin,
   };
@@ -115,7 +119,10 @@ export async function postAdminThreadMessage(
     });
     await sendStaffPush(
       devices.map((device) => device.expoPushToken),
-      buildStaffPushPayload({ kind: "message", linkType: "conversation", linkId: thread.id })
+      buildStaffPushPayload(
+        { kind: "message", linkType: "conversation", linkId: thread.id },
+        await clinicMessageLocale(businessId)
+      )
     );
   } catch (error) {
     logger.error("Failed to notify staff after saving an admin message.", error, { staffMemberId });

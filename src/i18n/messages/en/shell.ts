@@ -1,6 +1,8 @@
 // The workspace frame around every page: navigation, notifications, search,
 // banners and live toasts.
 export const shell = {
+  // Read after a nav item's count badge ("3 unread").
+  unreadWord: "unread",
   nav: {
     dashboard: "Dashboard",
     calendar: "Calendar",

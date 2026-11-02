@@ -1,5 +1,6 @@
 import type { StaffDevice } from "@prisma/client";
 
+import type { Locale } from "@/i18n/config";
 import { serializeMe, type MobileDoctor } from "@/lib/mobile/serializers";
 import { prisma } from "@/lib/prisma";
 import { buildStaffDirectoryRecord } from "@/lib/staff";
@@ -11,7 +12,7 @@ import { getZonedDayWindow, getZonedWeekWindow } from "@/lib/time-zone";
  * open) and shifts still active from today onward (bounded to 8), which is all
  * the directory record needs to derive `isCheckedIn`, `shiftLabel`, and `canClock`.
  */
-export async function loadMobileMe(device: StaffDevice): Promise<MobileDoctor | null> {
+export async function loadMobileMe(device: StaffDevice, locale: Locale = "en"): Promise<MobileDoctor | null> {
   const week = getZonedWeekWindow();
   const day = getZonedDayWindow();
 
@@ -44,10 +45,12 @@ export async function loadMobileMe(device: StaffDevice): Promise<MobileDoctor | 
     return null;
   }
 
-  const item = buildStaffDirectoryRecord(member);
+  // Shift label and why check-in is closed come out in the app's language.
+  const item = buildStaffDirectoryRecord(member, undefined, 0, false, locale);
   return serializeMe({
     item,
     clinicName: business?.name ?? "",
     device,
+    locale,
   });
 }

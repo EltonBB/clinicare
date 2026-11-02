@@ -26,7 +26,10 @@ describe("staffAuthResponse", () => {
 describe("mobileWriteBlocked", () => {
   it("lets a usable workspace write", () => {
     expect(
-      mobileWriteBlocked({ billingMode: "COMPLIMENTARY", subscriptionStatus: "NONE", cancelAt: null, trialEndsAt: null, lockedAt: null })
+      mobileWriteBlocked(
+        { billingMode: "COMPLIMENTARY", subscriptionStatus: "NONE", cancelAt: null, trialEndsAt: null, lockedAt: null },
+        "en"
+      )
     ).toBeNull();
   });
 
@@ -37,8 +40,16 @@ describe("mobileWriteBlocked", () => {
       cancelAt: null,
       trialEndsAt: null,
       lockedAt: null,
-    });
+    }, "en");
     expect(response?.status).toBe(403);
     expect(await response?.json()).toEqual({ error: expect.stringContaining("read-only") });
+  });
+
+  it("answers in the language the app asked for", async () => {
+    const response = mobileWriteBlocked(
+      { billingMode: "SUBSCRIPTION", subscriptionStatus: "CANCELED", cancelAt: null, trialEndsAt: null, lockedAt: null },
+      "sq"
+    );
+    expect(await response?.json()).toEqual({ error: expect.stringContaining("vetëm për lexim") });
   });
 });

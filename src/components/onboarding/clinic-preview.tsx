@@ -13,6 +13,7 @@ import { Check } from "lucide-react";
 import { useI18n } from "@/i18n/client";
 import type { Locale } from "@/i18n/config";
 import { fmt, numberFormatter, plural, storedLabel } from "@/i18n/format";
+import { defaultAutomationText, messageLocale } from "@/lib/automations";
 import { renderReminder } from "@/lib/messaging/render";
 import { addZonedDays, formatZonedFullDate, getZonedDateParts } from "@/lib/time-zone";
 import { hoursBetweenTimes, weekdayOrder, type WeekdayKey, type WorkingHoursState } from "@/lib/onboarding";
@@ -254,14 +255,16 @@ export function ClinicPreview(props: ClinicPreviewProps) {
   const openDays = weekdayOrder.filter((day) => hours[day].enabled);
   const dayHours = (day: WeekdayKey) => hoursBetweenTimes(hours[day].start, hours[day].end);
   const weeklyHours = openDays.reduce((total, day) => total + dayHours(day), 0);
-  const nextOpen = nextOpenDay(hours, locale);
+  // Before the clinic exists: the wording finishing will give it (Albanian when set up in Albanian).
+  const reminderText = reminderTemplate || defaultAutomationText("FIRST_REMINDER", "moved", locale);
+  const nextOpen = nextOpenDay(hours, messageLocale(reminderText));
   const reminder = nextOpen
     ? renderReminder({
         kind: "appointment_reminder",
         recipientName: "Maya",
         appointmentDate: nextOpen.label,
         appointmentTime: hours[nextOpen.day].start,
-        template: reminderTemplate ?? undefined,
+        template: reminderText,
       })
     : "";
   const typed = useTyped(reminder, still);

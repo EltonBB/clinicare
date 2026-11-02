@@ -32,7 +32,7 @@ export function CheckoutShell({
     <div className="grid min-h-dvh bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
       <main className="flex min-h-dvh min-w-0 flex-col px-4 py-6 sm:px-10 sm:py-8">
         <div className="flex items-center justify-between">
-          <BrandMark href={signedIn ? "/dashboard" : "/"} includeSubtitle={false} prefetch={false} />
+          <BrandMark href={signedIn ? "/dashboard" : "/"} prefetch={false} />
           {signedIn ? (
             <LogoutButton className="h-9 px-2.5 text-muted-foreground hover:bg-transparent hover:text-[var(--brand-ink)] [&_svg]:size-3.5" />
           ) : (
