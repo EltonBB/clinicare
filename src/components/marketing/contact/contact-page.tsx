@@ -45,19 +45,19 @@ export function ContactPage() {
   // An index, so a chosen topic survives a language switch.
   const [topic, setTopic] = useState(0);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<"errorMissing" | "errorEmail" | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
+    setError(null);
 
     if (!name.trim() || !message.trim()) {
-      setError(t.errorMissing);
+      setError("errorMissing");
       return;
     }
     if (!EMAIL_PATTERN.test(email.trim())) {
-      setError(t.errorEmail);
+      setError("errorEmail");
       return;
     }
 
@@ -160,7 +160,7 @@ export function ContactPage() {
                 </label>
                 {error ? (
                   <p role="alert" className="text-sm font-medium text-[var(--brand-ink)]">
-                    {error}
+                    {t[error]}
                   </p>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-3">

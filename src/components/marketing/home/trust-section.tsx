@@ -35,7 +35,7 @@ function message(on: Set<Key>, t: Trust["message"]) {
  */
 function ReminderBuilder() {
   const [on, setOn] = useState<Set<Key>>(() => new Set<Key>(["name", "time", "date"]));
-  const [denied, setDenied] = useState<{ label: string; n: number } | null>(null);
+  const [denied, setDenied] = useState<{ index: number; n: number } | null>(null);
   const t = useI18n().m.marketing.home.trust;
 
   const toggle = (key: Key) =>
@@ -75,15 +75,15 @@ function ReminderBuilder() {
 
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-dashed border-border/80 pt-4">
           <span className="mr-1 text-xs font-medium text-muted-foreground">{t.neverIncluded}</span>
-          {t.clinical.map((label) => (
+          {t.clinical.map((label, index) => (
             <button
-              key={label}
+              key={index}
               type="button"
               aria-disabled
-              onClick={() => setDenied((d) => ({ label, n: (d?.n ?? 0) + 1 }))}
+              onClick={() => setDenied((d) => ({ index, n: (d?.n ?? 0) + 1 }))}
               className="inline-flex h-8 cursor-not-allowed items-center rounded-full border border-dashed border-border bg-[var(--brand-wash)]/40 px-3 text-xs font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
             >
-              <span key={denied?.label === label ? denied.n : 0} className={cn("inline-flex items-center gap-1.5", denied?.label === label && "motion-safe:animate-[vela-shake_380ms_ease-out]")}>
+              <span key={denied?.index === index ? denied.n : 0} className={cn("inline-flex items-center gap-1.5", denied?.index === index && "motion-safe:animate-[vela-shake_380ms_ease-out]")}>
                 <Lock className="size-3" />
                 {label}
               </span>
@@ -101,7 +101,7 @@ function ReminderBuilder() {
               transition={{ duration: 0.25, ease: EASE }}
               className="overflow-hidden text-xs text-[var(--brand-ink)]"
             >
-              <span className="block pt-3">{fmt(t.denied, { label: denied.label })}</span>
+              <span className="block pt-3">{fmt(t.denied, { label: t.clinical[denied.index] })}</span>
             </m.p>
           ) : null}
         </AnimatePresence>

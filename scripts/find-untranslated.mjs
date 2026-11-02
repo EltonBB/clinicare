@@ -19,6 +19,7 @@ function files(path) {
 
 const WORDS = /[A-Za-z]{2,}.*[A-Za-z]/;
 const JSX_TEXT = />([^<>{}]*[A-Za-z]{2,}[^<>{}]*)</g;
+const STRING_EXPR = /\{"([^"]*[A-Za-z]{2,}[^"]*)"\}/g;
 const PROP = /\b(aria-label|title|placeholder|alt|label|description|heading|lead|tail)="([^"]*[A-Za-z]{2,}[^"]*)"/g;
 
 let total = 0;
@@ -32,6 +33,7 @@ for (const file of roots.flatMap(files)) {
       const text = match[1].trim();
       if (WORDS.test(text) && !/^[\w.]+\s*(=>|\(|&&|\?)/.test(text)) hits.push(text);
     }
+    for (const match of line.matchAll(STRING_EXPR)) hits.push(`{"${match[1]}"}`);
     for (const match of line.matchAll(PROP)) hits.push(`${match[1]}="${match[2]}"`);
     // A line that is only text inside JSX (multi-line children).
     if (!hits.length && /^[A-Z][^=;{}()<>]*[a-z][^=;{}()<>]*$/.test(trimmed) && !/^[A-Z_]+$/.test(trimmed)) hits.push(trimmed);

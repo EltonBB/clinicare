@@ -32,14 +32,21 @@ export function intlLocale(locale: Locale) {
 export function resolveLocale(cookieValue: string | undefined, acceptLanguage: string | null): Locale {
   if (isLocale(cookieValue)) return cookieValue;
 
-  const preferred = (acceptLanguage ?? "")
+  const ranges = (acceptLanguage ?? "")
     .split(",")
     .map((part) => {
       const [tag, ...params] = part.trim().split(";");
-      const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
-      return { language: tag.toLowerCase().split("-")[0], q: q ? Number(q.slice(2)) : 1 };
+      const q = params.map((p) => p.trim().toLowerCase()).find((p) => p.startsWith("q="));
+      return { language: tag.trim().toLowerCase().split("-")[0], q: q ? Number(q.slice(2)) : 1 };
     })
-    .filter((entry) => entry.language && Number.isFinite(entry.q) && entry.q > 0)
+    .filter((entry) => entry.language && Number.isFinite(entry.q));
+  // "*" stands for every language the header doesn't name (RFC 4647 §3.3.1).
+  const named = new Set(ranges.map((entry) => entry.language));
+  const preferred = ranges
+    .flatMap((entry) =>
+      entry.language === "*" ? locales.filter((l) => !named.has(l)).map((language) => ({ language, q: entry.q })) : [entry],
+    )
+    .filter((entry) => entry.q > 0)
     .sort((a, b) => b.q - a.q);
 
   return preferred.map((entry) => entry.language).find(isLocale) ?? defaultLocale;
