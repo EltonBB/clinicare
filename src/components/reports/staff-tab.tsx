@@ -2,10 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { m, useReducedMotion } from "framer-motion";
+import { m as motion, useReducedMotion } from "framer-motion";
 import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
 
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { useI18n } from "@/i18n/client";
+import { fmt, numberFormatter, plural } from "@/i18n/format";
+import { shareText } from "./overview-tab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getInitials } from "@/lib/utils";
 import { durationEntrance, easeOutExpo, staggerChildren, staggerItem } from "@/lib/motion";
@@ -13,17 +16,18 @@ import type { ReportPeriodView } from "@/lib/reports";
 
 type SortKey = "appointments" | "bookedMinutes" | "completion";
 
-const columns: Array<{ key: SortKey; label: string }> = [
-  { key: "appointments", label: "Visits" },
-  { key: "bookedMinutes", label: "Booked time" },
-  { key: "completion", label: "Completion" },
-];
+// Labels in `reports.staff.columns`.
+const columns: Array<{ key: SortKey }> = [{ key: "appointments" }, { key: "bookedMinutes" }, { key: "completion" }];
 
 function completionValue(completionRate: string) {
   return completionRate ? Number.parseFloat(completionRate) : -1;
 }
 
 export function StaffTab({ period }: { period: ReportPeriodView }) {
+  const { locale, m } = useI18n();
+  const t = m.reports.staff;
+  const number = (value: number, digits = 0) =>
+    numberFormatter(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits ? 1 : 0 }).format(value);
   const prefersReducedMotion = useReducedMotion();
   const [sortKey, setSortKey] = useState<SortKey>("appointments");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -69,12 +73,12 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
   if (totalVisits === 0) {
     return (
       <section className="surface-card flex flex-col p-3.5">
-        <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
+        <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">{t.title}</h2>
         <WorkspaceEmptyState
           compact
           icon={ChevronRight}
-          title="No staff activity yet"
-          description="Provider performance appears once appointments are assigned this period."
+          title={t.emptyTitle}
+          description={t.emptyCopy}
         />
       </section>
     );
@@ -82,9 +86,9 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
 
   return (
     <section className="surface-card flex flex-col p-3.5">
-      <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">Staff performance</h2>
+      <h2 className="px-1 pb-2 text-[15px] font-semibold text-foreground">{t.title}</h2>
       <div className="flex items-center gap-3 px-1 pb-2 text-[11px] font-semibold caps-label text-muted-foreground">
-        <span className="min-w-0 max-w-[240px] flex-1">Provider</span>
+        <span className="min-w-0 max-w-[240px] flex-1">{t.provider}</span>
         {columns.map((column) => (
           <button
             key={column.key}
@@ -101,7 +105,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
               sortKey === column.key && "text-primary"
             )}
           >
-            {column.label}
+            {t.columns[column.key]}
             {sortKey === column.key ? (
               sortDir === "desc" ? (
                 <ArrowDown className="size-3" />
@@ -113,7 +117,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
         ))}
       </div>
 
-      <m.div variants={staggerChildren} initial="initial" animate="animate">
+      <motion.div variants={staggerChildren} initial="initial" animate="animate">
         {sortedRows.map((row) => {
           const rowKey = row.id;
           const loadShare = maxBookedMinutes > 0 ? (row.bookedMinutes / maxBookedMinutes) * 100 : 0;
@@ -122,7 +126,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
             avgAppointments > 0 ? Math.round(((row.appointments - avgAppointments) / avgAppointments) * 100) : 0;
 
           return (
-            <m.div variants={staggerItem} key={rowKey}>
+            <motion.div variants={staggerItem} key={rowKey}>
               <button
                 type="button"
                 onClick={() => setOpenRowId((current) => (current === rowKey ? null : rowKey))}
@@ -155,10 +159,10 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                 </span>
                 <span className="hidden flex-1 flex-col items-end gap-1 sm:flex">
                   <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
-                    {bookedHours}h
+                    {fmt(t.hours, { count: numberFormatter(locale, { maximumFractionDigits: 1 }).format(bookedHours) })}
                   </span>
                   <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                    <m.span
+                    <motion.span
                       className="block h-full w-full origin-left bg-primary"
                       initial={prefersReducedMotion ? false : { scaleX: 0 }}
                       animate={{ scaleX: Math.min(loadShare, 100) / 100 }}
@@ -168,7 +172,7 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                       <span
                         className="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-foreground/40"
                         style={{ left: `${avgLoadShare}%` }}
-                        title="Team average load"
+                        title={t.teamAverage}
                       />
                     ) : null}
                   </span>
@@ -180,33 +184,41 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                     here would be indistinguishable from missing data in a
                     dense table row (Codex). */}
                 <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground sm:w-20">
-                  {row.completionRate || "—"}
+                  {row.completionRate ? shareText(row.completionRate, locale) : "—"}
                 </span>
               </button>
 
               {openRowId === rowKey ? (
                 <div className="state-pop mb-2 rounded-(--radius-tile) border border-dashed border-primary/25 bg-primary/5 px-3 py-2.5 text-sm">
                   <p className="text-foreground">
-                    {row.appointments} visit{row.appointments === 1 ? "" : "s"} this period, {bookedHours}{" "}
-                    booked hour{bookedHours === 1 ? "" : "s"} ({row.utilizationShare} of total staff load)
-                    {row.completionRate ? `, ${row.completionRate} completion rate.` : ", no finalized visits yet."}
+                    {fmt(t.detail, {
+                      visits: plural(t.visits, row.appointments, locale),
+                      hours: plural(t.bookedHours, bookedHours, locale),
+                      share: shareText(row.utilizationShare, locale),
+                    })}
+                    {row.completionRate
+                      ? fmt(t.withCompletion, { rate: shareText(row.completionRate, locale) })
+                      : t.noFinalized}
                     {avgAppointments > 0 && vsAverage !== 0
-                      ? ` That's ${Math.abs(vsAverage)}% ${vsAverage > 0 ? "above" : "below"} the team average of ${avgAppointments.toFixed(1)} visits.`
+                      ? fmt(vsAverage > 0 ? t.above : t.below, {
+                          percent: Math.abs(vsAverage),
+                          average: number(avgAppointments, 1),
+                        })
                       : ""}
                   </p>
                   <Link
                     href={`/staff/${row.id}`}
                     className="mt-1.5 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
                   >
-                    View profile
+                    {t.viewProfile}
                     <ChevronRight className="size-3.5" />
                   </Link>
                 </div>
               ) : null}
-            </m.div>
+            </motion.div>
           );
         })}
-      </m.div>
+      </motion.div>
     </section>
   );
 }

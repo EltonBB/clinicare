@@ -36,7 +36,7 @@ function msg(
   return { direction, sentAt: new Date(now.getTime() - hoursAgo * 3_600_000), conversationId, source };
 }
 
-const view = buildReportsViewFromWorkspace({
+const ARGS: Parameters<typeof buildReportsViewFromWorkspace>[0] = {
   business: { name: "Snapshot Clinic" },
   appointments: [
     appt(0, 9, "COMPLETED"),
@@ -77,6 +77,25 @@ const view = buildReportsViewFromWorkspace({
   aiSnapshots: [],
   now,
   timeZone: "UTC",
+};
+const view = buildReportsViewFromWorkspace(ARGS);
+
+describe("buildReportsViewFromWorkspace in Albanian", () => {
+  const sq = buildReportsViewFromWorkspace({ ...ARGS, locale: "sq" });
+
+  it("writes labels, chart axes and the rule-based insight in the reader's language", () => {
+    const weekly = sq.periods.weekly;
+    expect(weekly.label).toBe("Këtë javë");
+    expect(weekly.comparisonLabel).toBe("krahasuar me javën e kaluar");
+    expect(weekly.chart.points[0].label).toBe("J1");
+    expect(weekly.kpis.map((kpi) => kpi.label)).toContain("Shfrytëzimi i vlerësuar");
+    expect(weekly.snapshot.headline).toMatch(/^Performanca e klinikës .* këtë javë\.$/);
+    expect(weekly.snapshot.statusLabel).toBe("Vlerësim sipas rregullave");
+  });
+
+  it("keeps the internal diagnostics English, so the AI snapshot check is unchanged", () => {
+    expect(sq.periods.weekly.diagnostics).toEqual(view.periods.weekly.diagnostics);
+  });
 });
 
 describe("buildReportsViewFromWorkspace (characterization)", () => {

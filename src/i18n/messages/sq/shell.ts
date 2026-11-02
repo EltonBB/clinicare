@@ -89,6 +89,7 @@ export const shell: Translation<typeof en> = {
   settingsDialog: {
     title: "Cilësimet",
     description: "Konfiguroni si funksionon hapësira e punës.",
+    loading: "Po ngarkohen cilësimet…",
     loadError: "Nuk mundëm t'i hapnim cilësimet tani. Provoni përsëri pas pak.",
     discardTitle: "Të hidhen poshtë ndryshimet e paruajtura?",
     discardDescription: "Ndryshimet në cilësime nuk janë ruajtur. Nëse e mbyllni tani, do të humbasin.",

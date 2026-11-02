@@ -222,7 +222,7 @@ export function GlobalSearchPalette({
         showCloseButton={false}
         className="top-[12dvh] flex max-h-[min(560px,80dvh)] w-full translate-y-0 flex-col gap-0 rounded-(--radius-panel) p-0 shadow-(--shadow-pop) sm:max-w-[560px]"
       >
-        <DialogTitle className="sr-only">Search</DialogTitle>
+        <DialogTitle className="sr-only">{t.short}</DialogTitle>
         <div className="flex h-14 shrink-0 items-center gap-3 px-4">
           <Search className="size-4.5 shrink-0 text-muted-foreground" />
           <input

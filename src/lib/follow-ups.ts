@@ -1,5 +1,3 @@
-import { formatZonedShortDate, formatZonedTime, getAppTimeZone } from "@/lib/time-zone";
-
 export type FollowUpDraftKind =
   | "SLOT_OFFER"
   | "REBOOK"
@@ -32,21 +30,6 @@ export type FollowUpDraftItem = {
   // Pro: the list keeps showing it so staff can Skip it, but Send would only
   // fail (markFollowUpDraftSent refuses it), so the row leaves Send out.
   canSend: boolean;
-};
-
-const KIND_LABELS: Record<FollowUpDraftKind, string> = {
-  SLOT_OFFER: "Slot offer",
-  REBOOK: "Rebooking nudge",
-  PAYMENT: "Payment reminder",
-  THANK_YOU: "Thank-you message",
-  BOOKING_CONFIRMATION: "Booking confirmation",
-  NEW_PATIENT_WELCOME: "New patient welcome",
-  VISIT_CHANGED: "Visit moved or cancelled",
-  MISSED_VISIT: "Missed visit",
-  CHECKUP_DUE: "Check-up due",
-  FIRST_REMINDER: "First reminder",
-  SECOND_REMINDER: "Second reminder",
-  HIGH_RISK_REMINDER: "High-risk reminder",
 };
 
 export type FollowUpDraftRecord = {
@@ -90,22 +73,6 @@ export const followUpKindOrder: FollowUpDraftKind[] = [
   "VISIT_CHANGED",
 ];
 
-/** Plural labels for the page's filter chips. */
-export const followUpKindGroupLabels: Record<FollowUpDraftKind, string> = {
-  SLOT_OFFER: "Slot offers",
-  PAYMENT: "Payment reminders",
-  REBOOK: "Rebooking nudges",
-  THANK_YOU: "Thank-yous",
-  BOOKING_CONFIRMATION: "Booking confirmations",
-  NEW_PATIENT_WELCOME: "Welcomes",
-  VISIT_CHANGED: "Visit changes",
-  MISSED_VISIT: "Missed visits",
-  CHECKUP_DUE: "Check-ups due",
-  FIRST_REMINDER: "First reminders",
-  SECOND_REMINDER: "Second reminders",
-  HIGH_RISK_REMINDER: "High-risk reminders",
-};
-
 /**
  * Rows in working order: a sent slot offer that can be booked now comes
  * first, then kinds in followUpKindOrder. The server's order is kept within
@@ -126,35 +93,4 @@ export function countFollowUpsByKind(items: FollowUpDraftItem[]) {
 /** The server's rows minus the ones handled on this page since it loaded. */
 export function visibleFollowUps(items: FollowUpDraftItem[], handledKeys: string[]) {
   return items.filter((item) => !handledKeys.includes(followUpRowKey(item)));
-}
-
-/**
- * Every kind gets an honest, generic reason label; when a linked appointment
- * exists (set by a future generator — PR 4/5), the reason names it instead.
- * See this plan's Deviation 4 for why the reason isn't a stored field.
- */
-export function buildFollowUpsViewFromRecords(args: {
-  drafts: FollowUpDraftRecord[];
-  timeZone?: string;
-  // Sending a slot offer is Pro; the other kinds send on every plan.
-  canSendSlotOffers?: boolean;
-}): { items: FollowUpDraftItem[] } {
-  const { drafts, timeZone = getAppTimeZone(), canSendSlotOffers = true } = args;
-
-  const items = drafts.map((draft) => ({
-    id: draft.id,
-    clientId: draft.clientId,
-    clientName: draft.client.name,
-    kind: draft.kind,
-    kindLabel: KIND_LABELS[draft.kind],
-    body: draft.body,
-    reasonLabel: draft.appointment
-      ? `${draft.appointment.title} · ${formatZonedShortDate(draft.appointment.startAt, timeZone)} ${formatZonedTime(draft.appointment.startAt, timeZone)}`
-      : KIND_LABELS[draft.kind],
-    createdLabel: formatZonedShortDate(draft.createdAt, timeZone),
-    canBook: draft.kind === "SLOT_OFFER" && draft.status === "SENT",
-    canSend: draft.kind !== "SLOT_OFFER" || canSendSlotOffers,
-  }));
-
-  return { items };
 }

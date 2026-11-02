@@ -5,6 +5,8 @@ import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
 import { paddleConfig } from "@/lib/paddle/paddle-config";
 import { buildSettingsStateFromWorkspace, type SettingsState } from "@/lib/settings";
 import { DEFAULT_WORKFLOW_SETTINGS } from "@/lib/workflow-generators";
+import { messages } from "@/i18n/messages";
+import { getLocale } from "@/i18n/server";
 
 type SettingsUser = {
   email?: string | null;
@@ -59,8 +61,9 @@ export async function loadSettingsState(
       }),
     ]);
 
-  const logoDisplayUrl = await resolveMediaDisplayUrl(business.logoUrl);
+  const [logoDisplayUrl, locale] = await Promise.all([resolveMediaDisplayUrl(business.logoUrl), getLocale()]);
   const config = paddleConfig();
+  const m = messages[locale];
 
   return buildSettingsStateFromWorkspace({
     business,
@@ -75,5 +78,8 @@ export async function loadSettingsState(
     whatsappConnection,
     billingEnabled: config !== null,
     paddle: config ? { env: config.env, clientToken: config.clientToken } : null,
+    locale,
+    // Pro's list minus its "Everything in Basic" opener, as on /pricing.
+    billingCopy: { billing: m.settings.billing, proFeatures: m.common.plans.pro.features.slice(1) },
   });
 }

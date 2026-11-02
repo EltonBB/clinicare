@@ -180,6 +180,7 @@ const PAYLOAD: SaveAppointmentPayload = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getAuthedBusiness.mockResolvedValue({ business: BUSINESS, user: {} });
+  mocks.toBusinessIdentity.mockReturnValue({ businessName: "Clinic", ownerName: "Owner Name" });
   mocks.client.findFirst.mockResolvedValue({ id: "client_1" });
   // Permissive "open all day" so the test's fixed date/time always passes,
   // independent of which real weekday it falls on.

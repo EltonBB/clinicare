@@ -8,6 +8,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { getLocale } from "@/i18n/server";
 import { buildAuthRedirectUrl } from "@/lib/app-url";
 import {
   CONFIRMABLE_EMAIL_OTP_TYPES,
@@ -236,6 +237,8 @@ export async function signUpAction(
     password: parsed.data.password,
     options: {
       emailRedirectTo,
+      // The auth emails read it (`.Data.locale`) to write in the reader's language.
+      data: { locale: await getLocale() },
     },
   });
 
@@ -664,6 +667,8 @@ export async function updateOwnerProfileAction(
     ...currentMetadata,
     full_name: parsed.data.fullName,
     owner_phone: parsed.data.phone || null,
+    // Keeps the auth emails (password reset, email change) in the language last used here.
+    locale: await getLocale(),
   };
 
   const emailRedirectTo = await buildAuthRedirectUrl("/settings");

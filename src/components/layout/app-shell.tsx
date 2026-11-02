@@ -465,11 +465,13 @@ export function AppShell({
               pathname === item.href || pathname.startsWith(`${item.href}/`);
             // Eight items share a phone's width (~44px each), where "Dashboard"
             // and "Automations" spill into their neighbours; they read "Home"
-            // and "Auto" here (the full name stays the accessible label).
+            // and "Auto" here (the full name stays the accessible label). The
+            // tight 9.5px label is sized so the longest Albanian ones
+            // ("Pacientët", "Mesazhet") fit a 375px phone uncut.
             const label = t.nav[item.key];
             const mobileLabel = t.navShort[item.key];
             const mobileNavClasses = cn(
-              "flex min-w-0 flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
+              "flex min-w-0 flex-col items-center gap-1 rounded-(--radius-field) border border-transparent px-0 py-2 text-[9px] font-medium tracking-[-0.03em] min-[380px]:text-[9.5px] text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) active:bg-[#eef2f8]",
               isActive &&
                 "bg-primary text-primary-foreground active:bg-primary/92"
             );

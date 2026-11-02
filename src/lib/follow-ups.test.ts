@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { buildFollowUpsViewFromRecords } from "@/lib/follow-ups-view";
 import {
-  buildFollowUpsViewFromRecords,
   countFollowUpsByKind,
   followUpRowKey,
   orderFollowUps,

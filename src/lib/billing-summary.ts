@@ -5,6 +5,9 @@ import { workspaceAccess } from "@/lib/billing-access";
 import { proTrialState } from "@/lib/pro-trial";
 import { proAddedFeatures } from "@/lib/public-plans";
 import { formatZonedFullDate } from "@/lib/time-zone";
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
+import { settings as enSettings } from "@/i18n/messages/en/settings";
 
 export type BillingSummarySource = Pick<
   Business,
@@ -57,7 +60,9 @@ export type BillingSummary = {
 
 const PLAN_NAME = { BASIC: "Basic", PRO: "Pro" } as const;
 const NO_SUBSCRIPTION = { current: null, canCancel: false, canResume: false, canUpdateCard: false };
-const BILLED = { MONTH: "monthly", YEAR: "yearly" } as const;
+
+/** The reader's words for this card: `settings.billing` plus what Pro adds, in their language. */
+export type BillingSummaryCopy = { billing: typeof enSettings.billing; proFeatures: string[] };
 
 /** Settings › Billing: where the clinic stands, and what it can do about it. */
 export function buildBillingSummary(
@@ -67,16 +72,20 @@ export function buildBillingSummary(
     paddle?: { env: "sandbox" | "production"; clientToken: string } | null;
     now?: Date;
     timeZone?: string;
+    locale?: Locale;
+    copy?: BillingSummaryCopy;
   }
 ): BillingSummary {
   const now = options.now ?? new Date();
-  const date = (value: Date) => formatZonedFullDate(value, options.timeZone);
+  const t = options.copy?.billing ?? enSettings.billing;
+  const date = (value: Date) => formatZonedFullDate(value, options.timeZone, options.locale);
+  const billed = (interval: BillingInterval) => t.intervals[interval];
   const trial = proTrialState(business, now);
   const base = {
     isPro: isProBusinessPlan(business.plan),
     paddle: options.paddle ?? null,
     planName: planDisplayName(business.plan),
-    proFeatures: proAddedFeatures,
+    proFeatures: options.copy?.proFeatures ?? proAddedFeatures,
     proTrial:
       trial.kind === "offered"
         ? ({ state: "offered" } as const)
@@ -88,26 +97,26 @@ export function buildBillingSummary(
   const portal = options.billingEnabled && !!business.paddleCustomerId;
 
   if (business.billingMode === "COMPLIMENTARY") {
-    return { ...base, kind: "free", statusLabel: "Free account", note: "Your clinic uses Vela free of charge.", canManage: false, changeOptions: [], ...NO_SUBSCRIPTION };
+    return { ...base, kind: "free", statusLabel: t.statuses.free, note: t.notes.free, canManage: false, changeOptions: [], ...NO_SUBSCRIPTION };
   }
   if (access.kind === "needs_plan") {
     return {
       ...base,
       kind: "needs_plan",
-      statusLabel: "No plan yet",
-      note: "Choose a plan to start. Every plan begins with a 14-day free trial.",
+      statusLabel: t.statuses.noPlan,
+      note: t.notes.noPlan,
       canManage: false,
       changeOptions: [],
       ...NO_SUBSCRIPTION,
     };
   }
   if (access.kind === "locked") {
-    const kept = access.keptUntil ? ` Your records are kept until ${date(access.keptUntil)}.` : "";
+    const kept = access.keptUntil ? ` ${fmt(t.notes.keptUntil, { date: date(access.keptUntil) })}` : "";
     return {
       ...base,
       kind: "locked",
-      statusLabel: "Ended",
-      note: `Your plan has ended, so the workspace is read-only.${kept}`,
+      statusLabel: t.statuses.ended,
+      note: `${t.notes.ended}${kept}`,
       canManage: portal,
       changeOptions: [],
       ...NO_SUBSCRIPTION,
@@ -118,21 +127,21 @@ export function buildBillingSummary(
   const trialing = business.subscriptionStatus === "TRIALING";
   const ending = business.cancelAt && business.cancelAt > now ? business.cancelAt : null;
 
-  let statusLabel = "Active";
+  let statusLabel = t.statuses.active;
   let note = business.currentPeriodEndsAt
-    ? `Renews on ${date(business.currentPeriodEndsAt)}, billed ${BILLED[interval]}.`
-    : `Billed ${BILLED[interval]}.`;
+    ? fmt(t.notes.renews, { date: date(business.currentPeriodEndsAt), interval: billed(interval) })
+    : fmt(t.notes.billed, { interval: billed(interval) });
   if (ending) {
-    statusLabel = "Ending";
-    note = `Ends on ${date(ending)}. Resume before then to keep it.`;
+    statusLabel = t.statuses.ending;
+    note = fmt(t.notes.ends, { date: date(ending) });
   } else if (business.subscriptionStatus === "PAST_DUE") {
-    statusLabel = "Payment failed";
-    note = "Your last payment didn't go through. Update your card below.";
+    statusLabel = t.statuses.pastDue;
+    note = t.notes.pastDue;
   } else if (trialing) {
-    statusLabel = "Free trial";
+    statusLabel = t.statuses.trial;
     note = business.trialEndsAt
-      ? `Free until ${date(business.trialEndsAt)}, then billed ${BILLED[interval]}.`
-      : `Free trial, then billed ${BILLED[interval]}.`;
+      ? fmt(t.notes.trialUntil, { date: date(business.trialEndsAt), interval: billed(interval) })
+      : fmt(t.notes.trial, { interval: billed(interval) });
   }
 
   // What Paddle bills, not what the clinic currently gets: during an offered
@@ -146,14 +155,14 @@ export function buildBillingSummary(
           .filter((option) => option.plan !== currentPlan || option.interval !== interval)
           .map((option) => ({
             ...option,
-            label: `${PLAN_NAME[option.plan]}, billed ${BILLED[option.interval]}`,
+            label: fmt(t.changeLabel, { plan: PLAN_NAME[option.plan], interval: billed(option.interval) }),
             effect: trialing
-              ? "Nothing is charged before your trial ends."
+              ? t.effects.trial
               : option.interval !== interval
-                ? "Starts a new billing period today. What's left of this one goes toward it."
+                ? t.effects.newPeriod
                 : option.plan === "PRO"
-                  ? "You pay the difference for the rest of this period now."
-                  : "The unused part is credited to your next bill.",
+                  ? t.effects.payDifference
+                  : t.effects.credited,
           }))
       : [];
 

@@ -190,7 +190,7 @@ export function SettingsDialog({
             ) : (
               <span className="inline-flex items-center gap-2">
                 <span className="size-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-                Loading settings…
+                {t.loading}
               </span>
             )}
           </div>

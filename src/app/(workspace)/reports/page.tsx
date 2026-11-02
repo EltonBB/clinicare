@@ -7,6 +7,8 @@ import { WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace
 import { canUseWorkspace } from "@/lib/billing-access";
 import { getSampleReportsView } from "@/lib/reports-sample";
 import { ReportsOverview } from "@/components/reports/reports-overview";
+import { getI18n } from "@/i18n/server";
+import { WithMessages } from "@/i18n/with-messages";
 import { buildReportsViewFromWorkspace } from "@/lib/reports";
 import {
   analyticsSnapshotsCacheKey,
@@ -18,7 +20,9 @@ import { getReportWorkspaceData } from "@/lib/report-data";
 import { addZonedDays, getZonedDayWindowFromParts } from "@/lib/time-zone";
 import { logger } from "@/lib/logger";
 
-export const metadata: Metadata = { title: "Reports | Vela" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getI18n()).m.reports.meta.reports };
+}
 
 export const maxDuration = 60;
 
@@ -66,7 +70,7 @@ export default async function ReportsPage({
   if (!canUseWorkspace(business)) {
     return (
       <WorkspacePage>
-        <WorkspaceHeader title="Reports" />
+        <WorkspaceHeader title={(await getI18n()).m.reports.title} />
         <WorkspaceLockedState />
       </WorkspacePage>
     );
@@ -95,7 +99,11 @@ export default async function ReportsPage({
   }
 
   if (!isProBusinessPlan(business.plan)) {
-    return <ProFeatureLock sample={getSampleReportsView()} />;
+    return (
+      <WithMessages namespaces={["reports"]}>
+        <ProFeatureLock sample={getSampleReportsView(undefined, undefined, (await getI18n()).locale)} />
+      </WithMessages>
+    );
   }
 
   // allSettled, not all: a snapshot-history hiccup shouldn't crash the whole
@@ -162,7 +170,12 @@ export default async function ReportsPage({
     // custom range drives only the custom period, so don't repoint `now` at the
     // range end or those pills would show data anchored to the wrong day.
     customRange: selectedRange,
+    locale: (await getI18n()).locale,
   });
 
-  return <ReportsOverview view={view} />;
+  return (
+    <WithMessages namespaces={["reports"]}>
+      <ReportsOverview view={view} />
+    </WithMessages>
+  );
 }

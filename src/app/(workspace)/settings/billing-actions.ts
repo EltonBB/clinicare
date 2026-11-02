@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { getLocale } from "@/i18n/server";
 import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { buildBillingHistory, type BillingHistory } from "@/lib/billing-history";
 import { getAuthedBusiness } from "@/lib/business";
@@ -196,8 +197,11 @@ export async function getBillingHistoryAction(): Promise<BillingActionResult<{ h
   if (!config || !business.paddleCustomerId) return { ok: false, error: BILLING_UNAVAILABLE };
 
   try {
-    const transactions = await listPaddleTransactions(config, business.paddleCustomerId);
-    return { ok: true, history: buildBillingHistory(transactions) };
+    const [transactions, locale] = await Promise.all([
+      listPaddleTransactions(config, business.paddleCustomerId),
+      getLocale(),
+    ]);
+    return { ok: true, history: buildBillingHistory(transactions, undefined, locale) };
   } catch (error) {
     logger.error("Couldn't load the billing history.", error, { businessId: business.id });
     return { ok: false, error: "We couldn't load your invoices right now." };

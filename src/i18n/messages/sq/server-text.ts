@@ -163,6 +163,79 @@ export const serverText: Record<string, string> = {
   "You've sent a lot of messages in a short time. Wait about {minutes} minutes, then send again.":
     "Keni dërguar shumë mesazhe brenda një kohe të shkurtër. Prisni rreth {minutes} minuta, pastaj dërgoni përsëri.",
 
+  // Automations and To review
+  "Automations beyond the first reminder and thank-you are part of Pro.":
+    "Automatizimet përtej kujtesës së parë dhe falënderimit janë pjesë e planit Pro.",
+  "Something went wrong. Try again.": "Diçka shkoi keq. Provoni përsëri.",
+  "Write a message before saving.": "Shkruani një mesazh para se ta ruani.",
+  "Choose one of the listed times.": "Zgjidhni një nga oraret e listuara.",
+  "Your session expired. Log in again to change automations.": "Sesioni juaj skadoi. Hyni përsëri për të ndryshuar automatizimet.",
+  "Your session expired. Log in again to manage follow-ups.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar mesazhet për t'u shqyrtuar.",
+  "This follow-up was already handled.": "Ky mesazh është trajtuar tashmë.",
+  "This slot offer is no longer available.": "Kjo ofertë orari nuk është më e disponueshme.",
+  "The staff member for this slot is no longer available. Book it manually from Calendar instead.":
+    "Anëtari i stafit për këtë orar nuk është më i disponueshëm. Caktojeni manualisht nga Kalendari.",
+  "This slot is outside your working hours now. Update your working hours in Settings, or skip or decline the offer.":
+    "Ky orar tani është jashtë orarit tuaj të punës. Përditësoni orarin e punës te Cilësimet, ose kapërceni ose refuzoni ofertën.",
+  "We couldn't confirm a follow-up was delivered, so it was marked as sent. Check the patient's WhatsApp chat before contacting them again.":
+    "Nuk mundëm ta konfirmonim që mesazhi u dorëzua, prandaj u shënua si i dërguar. Kontrolloni bisedën e pacientit në WhatsApp para se ta kontaktoni përsëri.",
+  "Couldn't send this message. Try again.": "Mesazhi nuk u dërgua. Provoni përsëri.",
+
+  // Settings
+  "Currency can't be changed once payments are on record — it would misstate past amounts.":
+    "Monedha nuk mund të ndryshohet pasi të ketë pagesa të regjistruara, sepse do t'i paraqiste gabim shumat e mëparshme.",
+  "Choose one of the listed currencies.": "Zgjidhni një nga monedhat e listuara.",
+  "Reminder template is too long.": "Teksti i kujtesës është shumë i gjatë.",
+  "Your session expired. Log in again to update settings.": "Sesioni juaj skadoi. Hyni përsëri për të ndryshuar cilësimet.",
+  "Enter a valid HEX color, for example #0A22FF.": "Shkruani një ngjyrë HEX të vlefshme, për shembull #0A22FF.",
+  "Upload the clinic logo again, or use a safe HTTPS link.": "Ngarkoni përsëri logon e klinikës, ose përdorni një lidhje të sigurt HTTPS.",
+  "Settings saved, but we couldn't update your account name. Try again from Settings.":
+    "Cilësimet u ruajtën, por nuk mundëm ta përditësonim emrin e llogarisë. Provoni përsëri nga Cilësimet.",
+  "Some workflow settings aren't valid.": "Disa cilësime të automatizimeve nuk janë të vlefshme.",
+  "Your session expired. Log in again to connect WhatsApp.": "Sesioni juaj skadoi. Hyni përsëri për të lidhur WhatsApp-in.",
+  "Wait a minute before trying to connect WhatsApp again.": "Prisni një minutë para se të provoni ta lidhni përsëri WhatsApp-in.",
+  "WhatsApp connection isn't available yet. Please contact support.":
+    "Lidhja me WhatsApp ende nuk është e disponueshme. Ju lutemi kontaktoni mbështetjen.",
+  "We couldn't start the WhatsApp connection. Please try again.": "Nuk mundëm ta nisnim lidhjen me WhatsApp. Ju lutemi provoni përsëri.",
+  "Your session expired. Log in again to check WhatsApp.": "Sesioni juaj skadoi. Hyni përsëri për të kontrolluar WhatsApp-in.",
+  "We couldn't reach the WhatsApp connection. Please try again.": "Nuk mundëm ta arrinim lidhjen me WhatsApp. Ju lutemi provoni përsëri.",
+
+  // Settings › Billing
+  "Your session expired. Log in again to manage billing.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar faturimin.",
+  "Billing isn't available right now. Please try again later.": "Faturimi nuk është i disponueshëm tani. Ju lutemi provoni më vonë.",
+  "We couldn't load your billing details right now.": "Nuk mundëm t'i ngarkonim të dhënat e faturimit tani.",
+  "Some details are too long. Shorten them and try again.": "Disa të dhëna janë shumë të gjata. Shkurtojini dhe provoni përsëri.",
+  "Add the company name that goes with the VAT number.": "Shtoni emrin e kompanisë që i përket numrit të TVSH-së.",
+  "We couldn't save the address. Write to us and we'll add it.": "Nuk mundëm ta ruanim adresën. Na shkruani dhe do ta shtojmë ne.",
+  "That VAT number isn't valid. Check it, or leave it empty.": "Ky numër TVSH-je nuk është i vlefshëm. Kontrollojeni, ose lëreni bosh.",
+  "We couldn't save your billing details. Please try again.": "Nuk mundëm t'i ruanim të dhënat e faturimit. Ju lutemi provoni përsëri.",
+  "That plan isn't available.": "Ky plan nuk është i disponueshëm.",
+  "Choose a plan to start a new subscription instead.": "Zgjidhni një plan për të nisur një abonim të ri.",
+  "Your plan is set to end. Resume it first.": "Plani juaj do të përfundojë. Rifillojeni së pari.",
+  "Your last payment didn't go through. Update your card first.": "Pagesa juaj e fundit nuk kaloi. Përditësoni së pari kartën.",
+  "We couldn't change your plan. Please try again.": "Nuk mundëm ta ndryshonim planin. Ju lutemi provoni përsëri.",
+  "We couldn't load your invoices right now.": "Nuk mundëm t'i ngarkonim faturat tani.",
+  "That invoice isn't available.": "Kjo faturë nuk është e disponueshme.",
+  "We couldn't open that invoice. Please try again.": "Nuk mundëm ta hapnim këtë faturë. Ju lutemi provoni përsëri.",
+  "There's no running plan to change.": "Nuk ka asnjë plan aktiv për t'u ndryshuar.",
+  "We couldn't cancel your plan. Please try again.": "Nuk mundëm ta anulonim planin. Ju lutemi provoni përsëri.",
+  "We couldn't resume your plan. Please try again.": "Nuk mundëm ta rifillonim planin. Ju lutemi provoni përsëri.",
+  "We couldn't open the card form. Please try again.": "Nuk mundëm ta hapnim formularin e kartës. Ju lutemi provoni përsëri.",
+  "This offer isn't available any more.": "Kjo ofertë nuk është më e disponueshme.",
+  "Your Pro trial has already ended.": "Prova juaj e Pro ka përfunduar tashmë.",
+  "We couldn't switch you to Pro. Please try again.": "Nuk mundëm t'ju kalonim në Pro. Ju lutemi provoni përsëri.",
+
+  // Shared: read-only workspaces and sending (lib/billing-access, lib/messaging)
+  "This workspace is read-only because its plan has ended. Renew it in Settings › Billing to keep working.":
+    "Kjo hapësirë pune është vetëm për lexim sepse plani i saj ka përfunduar. Rinovojeni te Cilësimet › Faturimi për të vazhduar punën.",
+  "This messaging channel isn't connected yet.": "Ky kanal mesazhesh ende nuk është i lidhur.",
+  "The recipient address looks invalid.": "Adresa e marrësit duket e pavlefshme.",
+  "The reminder message is empty.": "Mesazhi i kujtesës është bosh.",
+  "The message is empty.": "Mesazhi është bosh.",
+  "We couldn't confirm the message was delivered. It may have reached the recipient.":
+    "Nuk mundëm ta konfirmonim që mesazhi u dorëzua. Mund t'i ketë arritur marrësit.",
+  "We couldn't send the message. Please try again.": "Nuk mundëm ta dërgonim mesazhin. Ju lutemi provoni përsëri.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

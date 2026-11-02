@@ -24,6 +24,9 @@ import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { WorkspaceEmptyState } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
+import type { Locale } from "@/i18n/config";
+import { fmt } from "@/i18n/format";
 import type { BillingHistory } from "@/lib/billing-history";
 import type { BillingSummary } from "@/lib/billing-summary";
 import { cn } from "@/lib/utils";
@@ -54,6 +57,9 @@ export function BillingControls({
   onChanged: () => Promise<void>;
 }) {
   const router = useRouter();
+  const { m } = useI18n();
+  const t = m.settings.billing;
+  const serverText = useServerText();
   const [message, setMessage] = useState<{ tone: "error" | "done"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const [history, setHistory] = useState<BillingHistory | null>(null);
@@ -107,23 +113,23 @@ export function BillingControls({
         </div>
         {billing.kind === "needs_plan" || billing.kind === "locked" ? (
           <Link href="/checkout" className={cn(buttonVariants({ size: "sm" }), "h-9 rounded-(--radius-card)")}>
-            {billing.kind === "locked" ? "Renew plan" : "Choose a plan"}
+            {billing.kind === "locked" ? t.renewPlan : t.choosePlan}
           </Link>
         ) : billing.canResume ? (
           <Button
             type="button"
             size="sm"
-            onClick={() => run(resumePlanAction, "Your plan will renew as before.")}
+            onClick={() => run(resumePlanAction, t.resumed)}
             disabled={pending}
             className="h-9 rounded-(--radius-card)"
           >
-            Resume plan
+            {t.resume}
           </Button>
         ) : null}
       </div>
 
       <section className="space-y-2.5">
-        <SectionTitle>{billing.isPro ? "Included in your plan" : "Unlock with Pro"}</SectionTitle>
+        <SectionTitle>{billing.isPro ? t.included : t.unlock}</SectionTitle>
         <ul className="space-y-2">
           {billing.proFeatures.map((feature) => (
             <li key={feature} className="flex items-start gap-2.5 text-sm text-foreground">
@@ -149,14 +155,14 @@ export function BillingControls({
           history={history}
           historyFailed={Boolean(historyError)}
           onCardUpdated={() => {
-            setMessage({ tone: "done", text: "Card updated." });
+            setMessage({ tone: "done", text: t.cardUpdated });
             loadHistory();
             // Paddle can list the card change a moment after the form reports it done.
             window.setTimeout(loadHistory, 2500);
             router.refresh();
             void onChanged();
           }}
-          onDetailsSaved={() => setMessage({ tone: "done", text: "Billing details saved." })}
+          onDetailsSaved={() => setMessage({ tone: "done", text: t.detailsSaved })}
         />
       ) : null}
 
@@ -164,7 +170,7 @@ export function BillingControls({
 
       {message ? (
         <p role="status" className={cn("text-sm", message.tone === "error" ? "text-destructive" : "text-emerald-700")}>
-          {message.text}
+          {message.tone === "error" ? serverText(message.text) : message.text}
         </p>
       ) : null}
 
@@ -183,16 +189,19 @@ function SectionTitle({ children, action }: { children: React.ReactNode; action?
 }
 
 function ProTrial({ billing, pending, run }: { billing: BillingSummary; pending: boolean; run: Run }) {
+  const t = useI18n().m.settings.billing;
   if (!billing.proTrial) return null;
   const offered = billing.proTrial.state === "offered";
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-(--radius-card) bg-primary/6 p-3.5">
       <div className="min-w-0">
         <p className="text-sm font-semibold text-foreground">
-          {offered ? "Try Pro free for 14 days" : `Pro trial until ${billing.proTrial.state === "active" ? billing.proTrial.endsOn : ""}`}
+          {offered
+            ? t.tryPro
+            : fmt(t.proTrialUntil, { date: billing.proTrial.state === "active" ? billing.proTrial.endsOn : "" })}
         </p>
         <p className="text-sm text-muted-foreground">
-          {offered ? "Your plan and billing stay the same." : "Then back to Basic, unless you keep Pro."}
+          {offered ? t.staysSame : t.thenBasic}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -200,32 +209,32 @@ function ProTrial({ billing, pending, run }: { billing: BillingSummary; pending:
           <Button
             type="button"
             size="sm"
-            onClick={() => run(startProTrialAction, "Your Pro trial has started.")}
+            onClick={() => run(startProTrialAction, t.trialStarted)}
             disabled={pending}
             className="h-9 rounded-(--radius-card)"
           >
-            Start trial
+            {t.startTrial}
           </Button>
         ) : (
           <>
             <Button
               type="button"
               size="sm"
-              onClick={() => run(keepProAction, "You're on Pro now.")}
+              onClick={() => run(keepProAction, t.onPro)}
               disabled={pending || !billing.canManage}
               className="h-9 rounded-(--radius-card)"
             >
-              Keep Pro
+              {t.keepPro}
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => run(endProTrialAction, "You're back on Basic.")}
+              onClick={() => run(endProTrialAction, t.onBasic)}
               disabled={pending}
               className="h-9 rounded-(--radius-card)"
             >
-              Back to Basic
+              {t.backToBasic}
             </Button>
           </>
         )}
@@ -236,6 +245,7 @@ function ProTrial({ billing, pending, run }: { billing: BillingSummary; pending:
 
 /** Basic or Pro, monthly or yearly; a different choice shows what it costs before it's confirmed. */
 function ChangePlan({ billing, pending, run }: { billing: BillingSummary; pending: boolean; run: Run }) {
+  const t = useI18n().m.settings.billing;
   const current = billing.current!;
   const [interval, setBillingInterval] = useState<Interval>(current.interval);
   const [plan, setPlan] = useState<Plan>(current.plan);
@@ -258,16 +268,16 @@ function ChangePlan({ billing, pending, run }: { billing: BillingSummary; pendin
                   interval === value ? "bg-primary/8 text-primary" : "text-muted-foreground hover:bg-secondary"
                 )}
               >
-                {value === "MONTH" ? "Monthly" : "Yearly"}
+                {value === "MONTH" ? t.monthly : t.yearly}
               </button>
             ))}
           </div>
         }
       >
-        Plan
+        {t.plan}
       </SectionTitle>
 
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Plan">
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t.plan}>
         {(["BASIC", "PRO"] as const).map((value) => {
           const selected = plan === value;
           const isCurrent = current.plan === value && current.interval === interval;
@@ -294,7 +304,7 @@ function ChangePlan({ billing, pending, run }: { billing: BillingSummary; pendin
                 {selected ? <Check className="size-2.5" strokeWidth={3.5} /> : null}
               </span>
               <span className="text-sm font-semibold text-foreground">{PLAN_NAME[value]}</span>
-              {isCurrent ? <span className="ml-auto text-xs text-muted-foreground">Current</span> : null}
+              {isCurrent ? <span className="ml-auto text-xs text-muted-foreground">{t.current}</span> : null}
             </button>
           );
         })}
@@ -307,12 +317,15 @@ function ChangePlan({ billing, pending, run }: { billing: BillingSummary; pendin
             type="button"
             size="sm"
             onClick={() =>
-              run(() => changeBillingPlanAction({ plan: option.plan, interval: option.interval }), `You're now on ${option.label}.`)
+              run(
+                () => changeBillingPlanAction({ plan: option.plan, interval: option.interval }),
+                fmt(t.switched, { plan: option.label })
+              )
             }
             disabled={pending}
             className={smallButton}
           >
-            Switch
+            {t.switch}
           </Button>
         </div>
       ) : null}
@@ -337,6 +350,9 @@ function Payment({
   onCardUpdated: () => void;
   onDetailsSaved: () => void;
 }) {
+  const { locale, m } = useI18n();
+  const t = m.settings.billing;
+  const serverText = useServerText();
   const [open, setOpen] = useState<"card" | "details" | null>(null);
   const [details, setDetails] = useState<BillingDetails | null>(null);
   const [detailsError, setDetailsError] = useState("");
@@ -355,20 +371,26 @@ function Payment({
 
   const card = history?.card;
   const billedTo = details
-    ? [details.companyName, details.city, countryName(details.countryCode)].filter(Boolean).join(", ")
-    : detailsError;
+    ? [details.companyName, details.city, countryName(details.countryCode, locale)].filter(Boolean).join(", ")
+    : serverText(detailsError);
 
   return (
     <section className="space-y-2">
-      <SectionTitle>Payment</SectionTitle>
+      <SectionTitle>{t.payment}</SectionTitle>
       <div className="rounded-(--radius-card) border border-border">
         <Row
-          label="Card"
-          value={card ? `${card.brand} ending ${card.last4} · ${card.expires}` : history || historyFailed ? "Card on file" : "Loading"}
+          label={t.card}
+          value={
+            card
+              ? fmt(t.cardEnding, { brand: card.brand === "Card" ? t.card : card.brand, last4: card.last4, expires: card.expires })
+              : history || historyFailed
+                ? t.cardOnFile
+                : t.loading
+          }
           action={
             open === "card" ? null : (
               <Button type="button" variant="ghost" size="sm" onClick={() => setOpen("card")} className={smallButton}>
-                Update
+                {t.update}
               </Button>
             )
           }
@@ -384,13 +406,13 @@ function Payment({
           />
         ) : null}
         <Row
-          label="Billed to"
-          value={billedTo || "Add company details"}
+          label={t.billedTo}
+          value={billedTo || t.addCompany}
           muted={!billedTo || Boolean(detailsError)}
           action={
             open === "details" || !details ? null : (
               <Button type="button" variant="ghost" size="sm" onClick={() => setOpen("details")} className={smallButton}>
-                Edit
+                {t.edit}
               </Button>
             )
           }
@@ -424,21 +446,23 @@ function Row({ label, value, muted, action }: { label: string; value: string; mu
 }
 
 function Invoices({ history, error }: { history: BillingHistory | null; error: string }) {
+  const t = useI18n().m.settings.billing;
+  const serverText = useServerText();
   const [showAll, setShowAll] = useState(false);
   const rows = history ? (showAll ? history.rows : history.rows.slice(0, 4)) : [];
 
   return (
     <section className="space-y-1">
-      <SectionTitle>Invoices</SectionTitle>
+      <SectionTitle>{t.invoices}</SectionTitle>
       {error ? (
-        <p className="text-sm text-muted-foreground">{error}</p>
+        <p className="text-sm text-muted-foreground">{serverText(error)}</p>
       ) : !history ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
-          Loading
+          {t.loading}
         </p>
       ) : history.rows.length === 0 ? (
-        <WorkspaceEmptyState compact title="No invoices yet" />
+        <WorkspaceEmptyState compact title={t.noInvoices} />
       ) : (
         <ul className="-mx-2">
           {rows.map((row) => (
@@ -449,7 +473,7 @@ function Invoices({ history, error }: { history: BillingHistory | null; error: s
               <span className="min-w-0 flex-1 truncate text-foreground">{row.date}</span>
               {row.status === "Paid" ? null : (
                 <span className={cn("text-xs", row.status === "Payment failed" ? "font-medium text-destructive" : "text-muted-foreground")}>
-                  {row.status}
+                  {t.invoiceStatuses[row.status]}
                 </span>
               )}
               <span className="w-24 text-right font-medium tabular-nums text-foreground">{row.amount}</span>
@@ -460,7 +484,7 @@ function Invoices({ history, error }: { history: BillingHistory | null; error: s
                   href={`/api/billing/invoices/${encodeURIComponent(row.id)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={`Download the invoice of ${row.date}`}
+                  aria-label={fmt(t.downloadInvoice, { date: row.date })}
                   className="grid size-8 place-items-center rounded-(--radius-tile) text-muted-foreground transition-colors hover:bg-white hover:text-foreground"
                 >
                   <Download className="size-3.5" aria-hidden />
@@ -474,7 +498,7 @@ function Invoices({ history, error }: { history: BillingHistory | null; error: s
       )}
       {history && history.rows.length > 4 && !showAll ? (
         <button type="button" onClick={() => setShowAll(true)} className="text-sm font-medium text-primary hover:underline">
-          Show all {history.rows.length}
+          {fmt(t.showAll, { count: history.rows.length })}
         </button>
       ) : null}
     </section>
@@ -491,6 +515,8 @@ function CardUpdate({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const { m } = useI18n();
+  const serverText = useServerText();
   const { paddle, failed } = usePaddle(paddleConfig);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -523,6 +549,7 @@ function CardUpdate({
           variant: "one-page",
           allowLogout: false,
           theme: "light",
+          // Paddle's form has no Albanian; it stays in English.
           locale: "en",
         },
       });
@@ -537,38 +564,39 @@ function CardUpdate({
     <div className="px-3 pb-3">
       {failed || error ? (
         <p role="alert" className="py-2 text-sm text-destructive">
-          {error || "The card form didn't load. Turn off any content blocker for this page, then try again."}
+          {serverText(error) || m.settings.billing.cardFormFailed}
         </p>
       ) : (
         <div className="relative min-h-[450px]">
           {loaded ? null : (
             <p className="absolute inset-x-0 top-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
-              Opening the card form
+              {m.settings.billing.openingCard}
             </p>
           )}
           <div className={CARD_FRAME} />
         </div>
       )}
       <button type="button" onClick={onCancel} className="text-sm font-medium text-muted-foreground hover:text-foreground">
-        Cancel
+        {m.common.cancel}
       </button>
     </div>
   );
 }
 
-const DETAIL_FIELDS: Array<{ key: keyof Omit<BillingDetails, "countryCode">; label: string; autoComplete: string; wide?: boolean }> = [
-  { key: "companyName", label: "Company name", autoComplete: "organization" },
-  { key: "taxNumber", label: "VAT number", autoComplete: "off" },
-  { key: "street", label: "Street address", autoComplete: "street-address", wide: true },
-  { key: "city", label: "City", autoComplete: "address-level2" },
-  { key: "postalCode", label: "Postal code", autoComplete: "postal-code" },
+// Labels in `settings.billing.fields`.
+const DETAIL_FIELDS: Array<{ key: keyof Omit<BillingDetails, "countryCode">; autoComplete: string; wide?: boolean }> = [
+  { key: "companyName", autoComplete: "organization" },
+  { key: "taxNumber", autoComplete: "off" },
+  { key: "street", autoComplete: "street-address", wide: true },
+  { key: "city", autoComplete: "address-level2" },
+  { key: "postalCode", autoComplete: "postal-code" },
 ];
 
-function countryName(code: string): string {
+function countryName(code: string, locale: Locale): string {
   if (!code) return "";
   try {
-    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+    return new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? code;
   } catch {
     return code;
   }
@@ -587,6 +615,9 @@ function DetailsForm({
   onSaved: (saved: BillingDetails) => void;
   onCancel: () => void;
 }) {
+  const { locale, m } = useI18n();
+  const t = m.settings.billing;
+  const serverText = useServerText();
   const [draft, setDraft] = useState(details);
   const [error, setError] = useState("");
   const [saving, startSaving] = useTransition();
@@ -610,7 +641,7 @@ function DetailsForm({
       <div className="grid gap-3 sm:grid-cols-2">
         {DETAIL_FIELDS.map((field) => (
           <label key={field.key} htmlFor={`billing-${field.key}`} className={cn("space-y-1.5", field.wide ? "sm:col-span-2" : "")}>
-            <span className="text-sm font-medium text-foreground">{field.label}</span>
+            <span className="text-sm font-medium text-foreground">{t.fields[field.key]}</span>
             <Input
               id={`billing-${field.key}`}
               value={draft[field.key]}
@@ -623,15 +654,15 @@ function DetailsForm({
         ))}
       </div>
       {details.countryCode ? (
-        <p className="text-xs text-muted-foreground">Country: {countryName(details.countryCode)}. Write to us to change it.</p>
+        <p className="text-xs text-muted-foreground">{fmt(t.country, { country: countryName(details.countryCode, locale) })}</p>
       ) : null}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{serverText(error)}</p> : null}
       <div className="flex gap-2">
         <Button type="button" size="sm" onClick={save} disabled={saving} className="h-9 rounded-(--radius-card)">
-          Save
+          {m.common.save}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving} className="h-9 rounded-(--radius-card)">
-          Cancel
+          {m.common.cancel}
         </Button>
       </div>
     </div>
@@ -640,6 +671,7 @@ function DetailsForm({
 
 /** Cancelling: confirmed first, and nothing changes until the period ends. */
 function CancelPlan({ billing, pending, run }: { billing: BillingSummary; pending: boolean; run: Run }) {
+  const t = useI18n().m.settings.billing;
   const [confirming, setConfirming] = useState(false);
   if (!billing.canCancel) return null;
 
@@ -651,7 +683,7 @@ function CancelPlan({ billing, pending, run }: { billing: BillingSummary; pendin
         disabled={pending}
         className="text-sm font-medium text-muted-foreground transition-colors hover:text-destructive"
       >
-        Cancel plan
+        {t.cancelPlan}
       </button>
     );
   }
@@ -659,18 +691,18 @@ function CancelPlan({ billing, pending, run }: { billing: BillingSummary; pendin
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-(--radius-card) bg-[#fafbfd] p-3.5">
       <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-        Everything keeps working until this period ends, then the workspace becomes read-only. You can resume before then.
+        {t.cancelConfirm}
       </p>
       <div className="flex gap-2">
         <Button
           type="button"
           variant="destructive"
           size="sm"
-          onClick={() => run(cancelPlanAction, "Your plan is set to end.", () => setConfirming(false))}
+          onClick={() => run(cancelPlanAction, t.cancelled, () => setConfirming(false))}
           disabled={pending}
           className="h-9 rounded-(--radius-card)"
         >
-          Cancel plan
+          {t.cancelPlan}
         </Button>
         <Button
           type="button"
@@ -680,7 +712,7 @@ function CancelPlan({ billing, pending, run }: { billing: BillingSummary; pendin
           disabled={pending}
           className="h-9 rounded-(--radius-card)"
         >
-          Keep it
+          {t.keepIt}
         </Button>
       </div>
     </div>

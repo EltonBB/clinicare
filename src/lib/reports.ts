@@ -28,6 +28,36 @@ import {
   zonedCalendarDaysBetween,
 } from "@/lib/time-zone";
 import { sumMergedIntervals } from "@/lib/utils";
+import type { Locale } from "@/i18n/config";
+import { fmt, numberFormatter, plural } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
+
+/** The reader's language and the reports view-model text. */
+type Copy = { locale: Locale; t: (typeof messages)["en"]["reports"]["view"] };
+
+function copyFor(locale: Locale): Copy {
+  return { locale, t: messages[locale].reports.view };
+}
+
+/** A displayed percentage: "86.4%" / "86,4%". */
+function percentText(value: number, { locale }: Copy) {
+  return `${numberFormatter(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
+}
+
+/**
+ * A KPI delta in the reader's language. The deltas themselves are built once in
+ * English ("+2.1 pts", "-3m", "+1,234") because the AI snapshot check compares
+ * them; only what is shown is rewritten.
+ */
+function localDelta(delta: string, copy: Copy) {
+  if (copy.locale === "en" || !delta) return delta;
+  const match = /^([+-]?)([\d,]+(?:\.\d+)?)( pts|m)?$/.exec(delta);
+  if (!match) return delta;
+  const number = numberFormatter(copy.locale).format(Number(match[2].replace(/,/g, "")));
+  const body =
+    match[3] === " pts" ? fmt(copy.t.points, { count: number }) : match[3] === "m" ? fmt(copy.t.minutes, { count: number }) : number;
+  return `${match[1]}${body}`;
+}
 
 
 export type ReportMessage = Pick<Message, "direction" | "sentAt" | "conversationId" | "source">;
@@ -207,6 +237,8 @@ type ReportsWorkspaceArgs = {
   customRange?: { start: Date; end: Date };
   now?: Date;
   timeZone?: string;
+  /** The reader's language for the report's labels, dates and rule-based insight. */
+  locale?: Locale;
 };
 
 export type ReportAiSnapshotInput = {
@@ -556,42 +588,16 @@ function parseTimeToMinutes(value: string) {
   return hours * 60 + minutes;
 }
 
-function formatComparisonLabel(period: ReportPeriodKey) {
+function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey, timeZone: string, locale: Locale) {
   if (period === "daily") {
-    return "vs yesterday";
+    return formatZonedShortDate(window.start, timeZone, locale);
   }
 
-  if (period === "weekly") {
-    return "vs last week";
+  if (period === "weekly" || period === "custom") {
+    return `${formatZonedShortDate(window.start, timeZone, locale)} - ${formatZonedShortDate(window.end, timeZone, locale)}`;
   }
 
-  if (period === "custom") {
-    return "vs previous range";
-  }
-
-  return "vs last month";
-}
-
-function formatRangeLabel(window: PeriodWindow, period: ReportPeriodKey, timeZone: string) {
-  if (period === "daily") {
-    return formatZonedShortDate(window.start, timeZone);
-  }
-
-  if (period === "weekly") {
-    return `${formatZonedShortDate(window.start, timeZone)} - ${formatZonedShortDate(
-      window.end,
-      timeZone
-    )}`;
-  }
-
-  if (period === "custom") {
-    return `${formatZonedShortDate(window.start, timeZone)} - ${formatZonedShortDate(
-      window.end,
-      timeZone
-    )}`;
-  }
-
-  return formatZonedMonthYear(window.start, timeZone);
+  return formatZonedMonthYear(window.start, timeZone, locale);
 }
 
 function isBookedStatus(status: Appointment["status"]) {
@@ -1178,67 +1184,78 @@ function toneFromScore(score: number): ReportSnapshotTone {
   return "attention";
 }
 
-function buildPerformanceSummary(stats: PeriodStats, deltas: {
-  appointments: { delta: string; trend: ReportMetricTrend };
-}) {
+function buildPerformanceSummary(
+  stats: PeriodStats,
+  deltas: {
+    appointments: { delta: string; trend: ReportMetricTrend };
+  },
+  copy: Copy
+) {
+  const t = copy.t.insight.summary;
   if (stats.scheduledCount === 0) {
-    return "No appointments are booked in this timeframe yet, so the report is using capacity, client, inbox, and schedule setup data until visit activity starts.";
+    return t.empty;
   }
 
-  const bookedHours = (stats.bookedMinutes / 60).toFixed(1).replace(/\.0$/, "");
+  const bookedHours = Math.round((stats.bookedMinutes / 60) * 10) / 10;
   const completion =
     stats.finalizedCount > 0
-      ? `${formatPercent(stats.completionRate)} completion across ${stats.finalizedCount} finalized visit${
-          stats.finalizedCount === 1 ? "" : "s"
-        }`
-      : "no finalized visits yet";
+      ? fmt(t.completion, {
+          rate: percentText(stats.completionRate, copy),
+          visits: plural(t.finalizedVisits, stats.finalizedCount, copy.locale),
+        })
+      : t.noFinalized;
+  const delta = localDelta(deltas.appointments.delta, copy);
   const movement =
     deltas.appointments.trend === "up"
-      ? `booked activity is up ${deltas.appointments.delta}`
+      ? fmt(t.up, { delta })
       : deltas.appointments.trend === "down"
-        ? `booked activity is down ${deltas.appointments.delta}`
-        : "booked activity is flat";
+        ? fmt(t.down, { delta })
+        : t.flat;
 
-  return `${stats.scheduledCount} appointment${stats.scheduledCount === 1 ? "" : "s"} are on the schedule, covering ${bookedHours} booked hour${
-    bookedHours === "1" ? "" : "s"
-  }; ${completion}, and ${movement}.`;
+  return fmt(t.main, {
+    appointments: plural(t.appointments, stats.scheduledCount, copy.locale),
+    hours: plural(t.hours, bookedHours, copy.locale),
+    completion,
+    movement,
+  });
 }
 
-function buildStrength(stats: PeriodStats, periodLabel: string) {
+function buildStrength(stats: PeriodStats, periodLabel: string, copy: Copy) {
+  const t = copy.t.insight.strength;
   // Checked first — a closed/blocked period with zero bookings still needs
   // this over "unused capacity", which implies capacity existed and simply
   // went unbooked (Codex P2, same class as buildWatch/buildFocus/
   // buildPrimaryConstraint/buildDynamicPlaybookSteps).
   if (stats.capacityMinutes <= 0) {
-    return `Utilization can't be measured ${periodLabel} — there's no configured open capacity to compare against.`;
+    return fmt(t.noCapacity, { period: periodLabel });
   }
 
   if (stats.scheduledCount === 0) {
-    return `There are no booked appointments ${periodLabel}, so the clearest signal is unused capacity rather than visit execution.`;
+    return fmt(t.noBookings, { period: periodLabel });
   }
 
   if (stats.finalizedCount === 0) {
-    return `${stats.scheduledCount} appointment${stats.scheduledCount === 1 ? "" : "s"} are booked ${periodLabel}, but none are finalized yet, so execution quality is still unproven.`;
+    return plural(t.notFinalized, stats.scheduledCount, copy.locale, { period: periodLabel });
   }
 
   if (stats.completionRate >= 90 && stats.lostSlotRate <= 8) {
-    return `Visit execution is reliable: ${formatPercent(stats.completionRate)} completed with only ${formatPercent(
-      stats.lostSlotRate
-    )} lost slots.`;
+    return fmt(t.reliable, { completion: percentText(stats.completionRate, copy), lost: percentText(stats.lostSlotRate, copy) });
   }
 
   if (stats.utilizationRate >= 70 && stats.utilizationRate <= 92) {
-    return `Capacity is being used well at ${formatPercent(stats.utilizationRate)} estimated utilization, which is a healthy operating range.`;
+    return fmt(t.utilization, { rate: percentText(stats.utilizationRate, copy) });
   }
 
   if (stats.newClients > 0) {
-    return `${stats.newClients} new client${stats.newClients === 1 ? "" : "s"} entered the clinic ${periodLabel}, which keeps acquisition moving.`;
+    return plural(t.newClients, stats.newClients, copy.locale, { period: periodLabel });
   }
 
-  return `${stats.completedCount} completed visit${stats.completedCount === 1 ? "" : "s"} give the clinic a measurable baseline ${periodLabel}.`;
+  return plural(t.baseline, stats.completedCount, copy.locale, { period: periodLabel });
 }
 
-function buildWatch(stats: PeriodStats) {
+function buildWatch(stats: PeriodStats, copy: Copy) {
+  const t = copy.t.insight.watch;
+  const rate = (value: number) => percentText(value, copy);
   // Checked before scheduledCount below — a fully closed/blocked period with
   // nothing booked still needs this over "0 booked appointments... open
   // capacity is the main issue", which reads as capacity existing and simply
@@ -1246,40 +1263,45 @@ function buildWatch(stats: PeriodStats) {
   // all (Codex P2, fresh evidence: the earlier fix only covered a booking
   // existing despite zero capacity, not the zero-booking case too).
   if (stats.capacityMinutes <= 0) {
-    return "Estimated utilization can't be measured this period — there's no configured open capacity to compare bookings against (closed hours, or a schedule block covering the window).";
+    return t.noCapacity;
   }
 
   if (stats.scheduledCount === 0) {
-    return `There are 0 booked appointments while utilization is ${formatPercent(stats.utilizationRate)}, so open capacity is the main issue.`;
+    return fmt(t.noBookings, { rate: rate(stats.utilizationRate) });
   }
 
   if (stats.finalizedCount === 0) {
-    return `${stats.scheduledCount} appointment${stats.scheduledCount === 1 ? "" : "s"} are booked but not finalized yet, so completion and lost-slot rates cannot be judged from outcomes.`;
+    return plural(t.notFinalized, stats.scheduledCount, copy.locale);
   }
 
   if (stats.lostSlotRate > 10) {
-    return `Lost-slot pressure is high at ${formatPercent(stats.lostSlotRate)} across ${stats.cancelledCount} cancelled visit${
-      stats.cancelledCount === 1 ? "" : "s"
-    }. Missed or cancelled visits are the clearest source of preventable leakage.`;
+    return fmt(t.lostSlots, {
+      rate: rate(stats.lostSlotRate),
+      cancelled: plural(t.cancelledVisits, stats.cancelledCount, copy.locale),
+    });
   }
 
   if (stats.utilizationRate < 55) {
-    return `Estimated utilization is only ${formatPercent(stats.utilizationRate)}. Open hours are not turning into enough booked care time.`;
+    return fmt(t.lowUtilization, { rate: rate(stats.utilizationRate) });
   }
 
   if (stats.utilizationRate > 95) {
-    return `Estimated utilization is ${formatPercent(stats.utilizationRate)}, which risks overload and weaker patient experience.`;
+    return fmt(t.overload, { rate: rate(stats.utilizationRate) });
   }
 
   if (stats.repeatVisitRate < 25) {
-    return `Repeat-visit rate is ${formatPercent(stats.repeatVisitRate)}. The clinic is not yet pulling enough return demand from recent patients.`;
+    return fmt(t.lowRepeat, { rate: rate(stats.repeatVisitRate) });
   }
 
   if (stats.inboundMessages > 0 && stats.followUpRate < 50) {
-    return `Only ${formatPercent(stats.followUpRate)} of inbound message volume is matched by outbound follow-up. Response discipline is still weak.`;
+    return fmt(t.lowFollowUp, { rate: rate(stats.followUpRate) });
   }
 
-  return `No single operational risk dominates right now: completion is ${formatPercent(stats.completionRate)}, lost slots are ${formatPercent(stats.lostSlotRate)}, and utilization is ${formatPercent(stats.utilizationRate)}.`;
+  return fmt(t.balanced, {
+    completion: rate(stats.completionRate),
+    lost: rate(stats.lostSlotRate),
+    utilization: rate(stats.utilizationRate),
+  });
 }
 
 function buildFocus(stats: PeriodStats) {
@@ -1325,14 +1347,15 @@ function buildFocus(stats: PeriodStats) {
   return "Keep reinforcing what works: preserve completion quality, hold cancellations down, and monitor whether growth stays manageable.";
 }
 
-function buildPrimaryConstraint(stats: PeriodStats) {
+function buildPrimaryConstraint(stats: PeriodStats, copy: Copy) {
+  const titles = copy.t.insight.constraint;
   // Checked first — a closed/blocked period with zero bookings still needs
   // this over "no booked demand" (severity high, implying action to
   // generate demand), when the real constraint is that no capacity ever
   // existed to book into (Codex P2, same class as buildWatch/buildFocus).
   if (stats.capacityMinutes <= 0) {
     return {
-      title: "Utilization can't be measured for this period",
+      title: titles.noCapacity,
       metric: "Estimated utilization",
       value: "Unmeasured",
       severity: "low" as const,
@@ -1341,7 +1364,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.scheduledCount === 0) {
     return {
-      title: "No booked demand in this timeframe",
+      title: titles.noDemand,
       metric: "Appointments",
       value: "0 booked",
       severity: "high" as const,
@@ -1350,7 +1373,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.finalizedCount === 0) {
     return {
-      title: "Booked visits need final outcomes",
+      title: titles.needOutcomes,
       metric: "Finalized visits",
       value: "0 finalized",
       severity: "medium" as const,
@@ -1359,7 +1382,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.lostSlotRate > 10) {
     return {
-      title: "Lost slots are reducing usable capacity",
+      title: titles.lostSlots,
       metric: "Lost-slot rate",
       value: formatPercent(stats.lostSlotRate),
       severity: "high" as const,
@@ -1368,7 +1391,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.utilizationRate < 55) {
     return {
-      title: "Open capacity is not converting into visits",
+      title: titles.lowUtilization,
       metric: "Estimated utilization",
       value: formatPercent(stats.utilizationRate),
       severity: "high" as const,
@@ -1377,7 +1400,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.utilizationRate > 95) {
     return {
-      title: "Schedule is near overload",
+      title: titles.overload,
       metric: "Estimated utilization",
       value: formatPercent(stats.utilizationRate),
       severity: "medium" as const,
@@ -1386,7 +1409,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.repeatVisitRate < 25) {
     return {
-      title: "Return demand needs more follow-up",
+      title: titles.lowRepeat,
       metric: "Repeat-visit rate",
       value: formatPercent(stats.repeatVisitRate),
       severity: "medium" as const,
@@ -1395,7 +1418,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
 
   if (stats.inboundMessages > 0 && stats.followUpRate < 50) {
     return {
-      title: "Inbound demand needs stronger response",
+      title: titles.lowFollowUp,
       metric: "Follow-up coverage",
       value: formatPercent(stats.followUpRate),
       severity: "medium" as const,
@@ -1403,7 +1426,7 @@ function buildPrimaryConstraint(stats: PeriodStats) {
   }
 
   return {
-    title: "No dominant operating constraint",
+    title: titles.balanced,
     metric: "Performance score",
     value: `${scorePeriod(stats)}/100`,
     severity: "low" as const,
@@ -1531,33 +1554,20 @@ function buildSnapshot(
     completion: { delta: string; trend: ReportMetricTrend };
     utilization: { delta: string; trend: ReportMetricTrend };
     clients: { delta: string; trend: ReportMetricTrend };
-  }
+  },
+  copy: Copy
 ): ReportSnapshot {
   const score = scorePeriod(stats);
   const tone = toneFromScore(score);
-  const periodLabel =
-    period === "daily"
-      ? "today"
-      : period === "weekly"
-        ? "this week"
-        : period === "custom"
-          ? "for this range"
-          : "this month";
+  const insight = copy.t.insight;
+  const periodLabel = insight.periodWords[period];
+  const headline = fmt(insight.headline[tone], { period: periodLabel });
 
-  const headline =
-    tone === "strong"
-      ? `Clinic performance is strong ${periodLabel}.`
-      : tone === "healthy"
-        ? `Clinic performance is healthy ${periodLabel}.`
-        : tone === "watch"
-          ? `Clinic performance needs watching ${periodLabel}.`
-          : `Clinic performance needs attention ${periodLabel}.`;
-
-  const summary = buildPerformanceSummary(stats, deltas);
-  const strength = buildStrength(stats, periodLabel);
-  const watch = buildWatch(stats);
+  const summary = buildPerformanceSummary(stats, deltas, copy);
+  const strength = buildStrength(stats, periodLabel, copy);
+  const watch = buildWatch(stats, copy);
   const focus = buildFocus(stats);
-  const primaryConstraint = buildPrimaryConstraint(stats);
+  const primaryConstraint = buildPrimaryConstraint(stats, copy);
   const monitorTargets = buildWhatToMonitor(stats);
 
   return {
@@ -1650,7 +1660,7 @@ function buildSnapshot(
     whatToMonitor: monitorTargets,
     source: "rules",
     status: "rules",
-    statusLabel: "Rule-based insight",
+    statusLabel: insight.rules,
     auditLabel: "Generated from current clinic metrics without AI.",
     actions: [
       {
@@ -1663,12 +1673,12 @@ function buildSnapshot(
         // reusing the already-corrected strength/focus text).
         title:
           stats.capacityMinutes <= 0
-            ? "Confirm the closed period is intentional"
+            ? insight.action.confirmClosed
             : stats.scheduledCount === 0
-              ? "Create booked demand"
+              ? insight.action.createDemand
               : stats.finalizedCount === 0
-                ? "Finalize booked visits"
-                : "Protect the strongest signal",
+                ? insight.action.finalize
+                : insight.action.protect,
         detail: strength,
         priority: "medium",
         metric:
@@ -1702,9 +1712,12 @@ function buildSnapshot(
 function applyAiSnapshot(
   fallback: ReportSnapshot,
   snapshot: ReportAiSnapshotInput | undefined,
-  isFresh: boolean
+  isFresh: boolean,
+  copy: Copy
 ): ReportSnapshot {
-  if (!snapshot) {
+  // The AI writes in English; a reader in another language gets the rule-based
+  // insight in their own language instead of an English one.
+  if (!snapshot || copy.locale !== "en") {
     return fallback;
   }
 
@@ -1716,8 +1729,8 @@ function applyAiSnapshot(
       status: snapshot.status === "ERRORED" ? "errored" : "fallback",
       statusLabel:
         snapshot.status === "ERRORED"
-          ? "AI refresh failed, using rules"
-          : "AI unavailable, using rules",
+          ? copy.t.insight.aiFailed
+          : copy.t.insight.aiUnavailable,
       auditLabel: isFresh
         ? "The current period has an audited rule-based fallback snapshot."
         : "The latest AI snapshot no longer matches the current metrics, so rules are used.",
@@ -1803,7 +1816,7 @@ function applyAiSnapshot(
     whatToMonitor: fallback.whatToMonitor,
     source: "ai",
     status: "generated",
-    statusLabel: "AI generated",
+    statusLabel: copy.t.insight.aiGenerated,
     auditLabel: "AI text was generated from the saved metrics snapshot; score is recalculated from current clinic metrics.",
     generatedAt,
     model: snapshot.model ?? undefined,
@@ -1991,6 +2004,7 @@ function buildDailyChart(
   clients: ReportClientRecord[],
   now: Date,
   timeZone: string,
+  locale: Locale,
   // Shifts the whole 7-day window back by this many days — used to build the
   // "previous period" ghost-line series from the exact same bucket logic
   // rather than a separate calculation.
@@ -2001,7 +2015,7 @@ function buildDailyChart(
       const dayWindow = getZonedDayWindowByOffset(now, index - 6 + offsetDays, timeZone);
 
       return {
-        label: formatZonedDayName(dayWindow.start, timeZone),
+        label: formatZonedDayName(dayWindow.start, timeZone, locale),
         appointments: filterAppointmentsInRange(appointments, dayWindow.start, dayWindow.end),
         newClients: countClientsCreatedInRange(clients, dayWindow.start, dayWindow.end),
       };
@@ -2014,6 +2028,7 @@ function buildWeeklyChart(
   clients: ReportClientRecord[],
   now: Date,
   timeZone: string,
+  locale: Locale,
   // Shifts the whole 8-week window back by this many weeks — see buildDailyChart.
   offsetWeeks = 0
 ): ReportChartData {
@@ -2038,7 +2053,7 @@ function buildWeeklyChart(
       const weekEnd = new Date(nextWeekStart.getTime() - 1);
 
       return {
-        label: `W${index + 1}`,
+        label: fmt(messages[locale].reports.view.week, { count: index + 1 }),
         appointments: filterAppointmentsInRange(appointments, weekStart, weekEnd),
         newClients: countClientsCreatedInRange(clients, weekStart, weekEnd),
       };
@@ -2051,6 +2066,7 @@ function buildMonthlyChart(
   clients: ReportClientRecord[],
   now: Date,
   timeZone: string,
+  locale: Locale,
   // Shifts the whole 6-month window back by this many months — see buildDailyChart.
   offsetMonths = 0
 ): ReportChartData {
@@ -2079,7 +2095,7 @@ function buildMonthlyChart(
       const monthEnd = new Date(nextMonthStart.getTime() - 1);
 
       return {
-        label: formatZonedMonthName(monthStart, timeZone),
+        label: formatZonedMonthName(monthStart, timeZone, locale),
         appointments: filterAppointmentsInRange(appointments, monthStart, monthEnd),
         newClients: countClientsCreatedInRange(clients, monthStart, monthEnd),
       };
@@ -2091,7 +2107,8 @@ function buildCustomChart(
   appointments: ReportAppointment[],
   clients: ReportClientRecord[],
   window: PeriodWindow,
-  timeZone: string
+  timeZone: string,
+  locale: Locale
 ): ReportChartData {
   const startParts = getZonedDateParts(window.start, timeZone);
   const endParts = getZonedDateParts(window.end, timeZone);
@@ -2122,8 +2139,8 @@ function buildCustomChart(
       return {
         label:
           step === 1
-            ? formatZonedShortDate(chunkStart, timeZone)
-            : `${formatZonedShortDate(chunkStart, timeZone)}+`,
+            ? formatZonedShortDate(chunkStart, timeZone, locale)
+            : `${formatZonedShortDate(chunkStart, timeZone, locale)}+`,
         appointments: filterAppointmentsInRange(appointments, chunkStart, chunkEnd),
         newClients: countClientsCreatedInRange(clients, chunkStart, chunkEnd),
       };
@@ -2137,68 +2154,69 @@ function buildKpis(args: {
   diagnostics: ReportPeriodDiagnostics;
   comparisonLabel: string;
   clientMixTotal: number;
+  copy: Copy;
 }): ReportKpi[] {
-  const { current, deltas, diagnostics, comparisonLabel, clientMixTotal } = args;
+  const { current, deltas, diagnostics, comparisonLabel, clientMixTotal, copy } = args;
+  const { t } = copy;
+  const count = (value: number) => numberFormatter(copy.locale).format(value);
+  const delta = (value: string) => localDelta(value, copy);
 
   return [
     {
       key: "appointments",
-      label: "Appointments",
-      value: current.scheduledCount.toLocaleString("en-US"),
-      delta: deltas.appointments.delta,
+      label: t.kpis.appointments,
+      value: count(current.scheduledCount),
+      delta: delta(deltas.appointments.delta),
       trend: deltas.appointments.trend,
       helper: comparisonLabel,
     },
     {
       key: "completionRate",
-      label: "Completion rate",
-      value: current.finalizedCount > 0 ? formatPercent(current.completionRate) : "",
-      delta: deltas.completion.delta,
+      label: t.kpis.completionRate,
+      value: current.finalizedCount > 0 ? percentText(current.completionRate, copy) : "",
+      delta: delta(deltas.completion.delta),
       trend: deltas.completion.trend,
       helper: deltas.completion.delta ? comparisonLabel : "",
     },
     {
       key: "newClients",
-      label: "New clients",
-      value: current.newClients.toLocaleString("en-US"),
-      delta: deltas.clients.delta,
+      label: t.kpis.newClients,
+      value: count(current.newClients),
+      delta: delta(deltas.clients.delta),
       trend: deltas.clients.trend,
       helper: comparisonLabel,
     },
     {
       key: "utilization",
-      label: "Estimated utilization",
-      value: formatPercent(current.utilizationRate),
-      delta: deltas.utilization.delta,
+      label: t.kpis.utilization,
+      value: percentText(current.utilizationRate, copy),
+      delta: delta(deltas.utilization.delta),
       trend: deltas.utilization.trend,
       helper: deltas.utilization.delta ? comparisonLabel : "",
     },
     {
       key: "avgVisitLength",
-      label: "Avg visit length",
-      value: current.averageVisitLength > 0 ? `${current.averageVisitLength}m` : "",
-      delta: deltas.averageDuration.delta,
+      label: t.kpis.avgVisitLength,
+      value: current.averageVisitLength > 0 ? fmt(t.minutes, { count: count(current.averageVisitLength) }) : "",
+      delta: delta(deltas.averageDuration.delta),
       trend: deltas.averageDuration.trend,
       helper: deltas.averageDuration.delta ? comparisonLabel : "",
     },
     {
       key: "activeClients",
-      label: "Active clients",
-      value: diagnostics.clientMix.active.toLocaleString("en-US"),
+      label: t.kpis.activeClients,
+      value: count(diagnostics.clientMix.active),
       delta: "",
       trend: "flat",
-      helper:
-        clientMixTotal > 0
-          ? `of ${clientMixTotal.toLocaleString("en-US")} client records`
-          : "",
+      helper: clientMixTotal > 0 ? fmt(t.ofClientRecords, { count: count(clientMixTotal) }) : "",
     },
     {
       key: "unreadMessages",
-      label: "Unread messages",
-      value: current.unreadMessages.toLocaleString("en-US"),
+      label: t.kpis.unreadMessages,
+      value: count(current.unreadMessages),
       delta: "",
       trend: "flat",
-      helper: current.unreadMessages > 0 ? "Open conversations" : "",
+      helper: current.unreadMessages > 0 ? t.openConversations : "",
     },
   ];
 }
@@ -2206,8 +2224,9 @@ function buildKpis(args: {
 function buildOperationalDetail(args: {
   current: PeriodStats;
   deltas: ReturnType<typeof buildMetrics>["deltas"];
+  copy: Copy;
 }): ReportDetailRow[] {
-  const { current, deltas } = args;
+  const { current, deltas, copy } = args;
   // Utilization itself is now a first-class KPI (buildKpis) rather than a
   // Highlights row — this list covers only the rates that don't have their
   // own KPI card.
@@ -2217,7 +2236,7 @@ function buildOperationalDetail(args: {
     rows.push({
       key: "lostSlot",
       label: "Lost-slot rate",
-      value: formatPercent(current.lostSlotRate),
+      value: percentText(current.lostSlotRate, copy),
       delta: deltas.lostSlot.delta,
       trend: deltas.lostSlot.trend,
       helper: "",
@@ -2228,7 +2247,7 @@ function buildOperationalDetail(args: {
     rows.push({
       key: "noShow",
       label: "No-show rate",
-      value: formatPercent(current.noShowRate),
+      value: percentText(current.noShowRate, copy),
       delta: deltas.noShow.delta,
       trend: deltas.noShow.trend,
       helper: "",
@@ -2239,7 +2258,7 @@ function buildOperationalDetail(args: {
     rows.push({
       key: "repeatVisit",
       label: "Repeat-visit rate",
-      value: formatPercent(current.repeatVisitRate),
+      value: percentText(current.repeatVisitRate, copy),
       delta: deltas.repeatVisit.delta,
       trend: deltas.repeatVisit.trend,
       helper: "",
@@ -2250,7 +2269,7 @@ function buildOperationalDetail(args: {
     rows.push({
       key: "followUp",
       label: "Follow-up coverage",
-      value: formatPercent(current.followUpRate),
+      value: percentText(current.followUpRate, copy),
       delta: deltas.followUp.delta,
       trend: deltas.followUp.trend,
       helper: "",
@@ -2289,6 +2308,7 @@ function buildPeriodView(args: {
   aiSnapshots: ReportAiSnapshotInput[];
   timeZone: string;
   aiSupported?: boolean;
+  copy: Copy;
 }): ReportPeriodView {
   const {
     key,
@@ -2302,24 +2322,26 @@ function buildPeriodView(args: {
     aiSnapshots,
     timeZone,
     aiSupported = true,
+    copy,
   } = args;
-  const comparisonLabel = formatComparisonLabel(key);
+  const comparisonLabel = copy.t.comparison[key];
   const { metrics, deltas } = buildMetrics({
     current,
     previous,
     comparisonLabel,
   });
-  const fallbackSnapshot = buildSnapshot(key, current, deltas);
+  const fallbackSnapshot = buildSnapshot(key, current, deltas, copy);
   const matchedAiSnapshot = aiSnapshotForPeriod(aiSnapshots, key, window);
   const snapshot = aiSupported
     ? applyAiSnapshot(
         fallbackSnapshot,
         matchedAiSnapshot,
-        isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartData.points, diagnostics)
+        isAiSnapshotFreshForView(matchedAiSnapshot, metrics, chartData.points, diagnostics),
+        copy
       )
     : {
         ...fallbackSnapshot,
-        statusLabel: "Rule-based analysis",
+        statusLabel: copy.t.insight.rulesForRange,
         auditLabel:
           "AI analysis covers daily, weekly, and monthly periods; custom ranges use rule-based analysis.",
       };
@@ -2328,7 +2350,7 @@ function buildPeriodView(args: {
   return {
     key,
     label,
-    rangeLabel: formatRangeLabel(window, key, timeZone),
+    rangeLabel: formatRangeLabel(window, key, timeZone, copy.locale),
     periodStart: window.start.toISOString(),
     periodEnd: window.end.toISOString(),
     periodStartKey: formatZonedDateKey(window.start, timeZone),
@@ -2348,29 +2370,16 @@ function buildPeriodView(args: {
       diagnostics,
       comparisonLabel,
       clientMixTotal: clientMixView.total,
+      copy,
     }),
-    operationalDetail: buildOperationalDetail({ current, deltas }),
+    operationalDetail: buildOperationalDetail({ current, deltas, copy }),
     statusTotal: diagnostics.statusMix.reduce((total, status) => total + status.count, 0),
     clientMixTotal: clientMixView.total,
     clientMixSegments: clientMixView.segments,
     diagnostics,
     chart: {
-      title:
-        key === "daily"
-          ? "Appointments per day"
-          : key === "weekly"
-            ? "Appointments per week"
-            : key === "custom"
-              ? "Appointments in range"
-              : "Appointments per month",
-      periodLabel:
-        key === "daily"
-          ? "Last 7 days"
-          : key === "weekly"
-            ? "Last 8 weeks"
-            : key === "custom"
-              ? "Selected date range"
-              : "Last 6 months",
+      title: copy.t.chartTitles[key],
+      periodLabel: copy.t.chartRanges[key],
       points: chartData.points,
       completedValues: chartData.completedValues,
       newClientValues: chartData.newClientValues,
@@ -2401,7 +2410,9 @@ export function buildReportsViewFromWorkspace({
   customRange,
   now = new Date(),
   timeZone = getAppTimeZone(),
+  locale = "en",
 }: ReportsWorkspaceArgs): ReportsViewModel {
+  const copy = copyFor(locale);
   // Sort once by startAt so the many per-window / per-bucket range filters can
   // binary-search instead of re-scanning the whole array each time. Every
   // downstream consumer reads this sorted copy; results are order-independent.
@@ -2661,21 +2672,22 @@ export function buildReportsViewFromWorkspace({
     : undefined;
   const customPeriod = buildPeriodView({
     key: "custom",
-    label: "Custom range",
+    label: copy.t.periods.custom,
     window: customWindow ?? weeklyWindow,
     current: customCurrent,
     previous: customPrevious,
     diagnostics: customDiagnostics,
     chartData: customWindow
-      ? buildCustomChart(appointments, clients, customWindow, timeZone)
-      : buildWeeklyChart(appointments, clients, now, timeZone),
+      ? buildCustomChart(appointments, clients, customWindow, timeZone, locale)
+      : buildWeeklyChart(appointments, clients, now, timeZone, locale),
     previousChartData:
       customWindow && previousCustomWindow
-        ? buildCustomChart(appointments, clients, previousCustomWindow, timeZone)
-        : buildWeeklyChart(appointments, clients, now, timeZone, -8),
+        ? buildCustomChart(appointments, clients, previousCustomWindow, timeZone, locale)
+        : buildWeeklyChart(appointments, clients, now, timeZone, locale, -8),
     aiSnapshots: [],
     timeZone,
     aiSupported: false,
+    copy,
   });
 
   return {
@@ -2686,39 +2698,42 @@ export function buildReportsViewFromWorkspace({
     periods: {
       daily: buildPeriodView({
         key: "daily",
-        label: "Today",
+        label: copy.t.periods.daily,
         window: dailyWindow,
         current: dailyCurrent,
         previous: dailyPrevious,
         diagnostics: dailyDiagnostics,
-        chartData: buildDailyChart(appointments, clients, now, timeZone),
-        previousChartData: buildDailyChart(appointments, clients, now, timeZone, -7),
+        chartData: buildDailyChart(appointments, clients, now, timeZone, locale),
+        previousChartData: buildDailyChart(appointments, clients, now, timeZone, locale, -7),
         aiSnapshots,
         timeZone,
+        copy,
       }),
       weekly: buildPeriodView({
         key: "weekly",
-        label: "This week",
+        label: copy.t.periods.weekly,
         window: weeklyWindow,
         current: weeklyCurrent,
         previous: weeklyPrevious,
         diagnostics: weeklyDiagnostics,
-        chartData: buildWeeklyChart(appointments, clients, now, timeZone),
-        previousChartData: buildWeeklyChart(appointments, clients, now, timeZone, -8),
+        chartData: buildWeeklyChart(appointments, clients, now, timeZone, locale),
+        previousChartData: buildWeeklyChart(appointments, clients, now, timeZone, locale, -8),
         aiSnapshots,
         timeZone,
+        copy,
       }),
       monthly: buildPeriodView({
         key: "monthly",
-        label: "This month",
+        label: copy.t.periods.monthly,
         window: monthlyWindow,
         current: monthlyCurrent,
         previous: monthlyPrevious,
         diagnostics: monthlyDiagnostics,
-        chartData: buildMonthlyChart(appointments, clients, now, timeZone),
-        previousChartData: buildMonthlyChart(appointments, clients, now, timeZone, -6),
+        chartData: buildMonthlyChart(appointments, clients, now, timeZone, locale),
+        previousChartData: buildMonthlyChart(appointments, clients, now, timeZone, locale, -6),
         aiSnapshots,
         timeZone,
+        copy,
       }),
       custom: customPeriod,
     },

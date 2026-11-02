@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { getI18n } from "@/i18n/server";
+
 import { WorkspaceHeader } from "@/components/workspace/workspace-layout";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +11,7 @@ type Tab = "automations" | "review" | "activity";
  * The page title with its three tabs. Each tab is its own button (no joined
  * segmented box, AGENTS.md rule 7); To review is Pro only and carries a live count.
  */
-export function AutomationsHeader({
+export async function AutomationsHeader({
   active,
   showReviewTab,
   reviewCount,
@@ -18,17 +20,18 @@ export function AutomationsHeader({
   showReviewTab: boolean;
   reviewCount: number;
 }) {
+  const t = (await getI18n()).m.automations;
   const tabs: Array<{ id: Tab; label: string; href: string; count?: number }> = [
-    { id: "automations", label: "Automations", href: "/automations" },
-    ...(showReviewTab ? [{ id: "review" as const, label: "To review", href: "/automations/review", count: reviewCount }] : []),
-    { id: "activity", label: "Activity", href: "/automations/activity" },
+    { id: "automations", label: t.tabs.automations, href: "/automations" },
+    ...(showReviewTab ? [{ id: "review" as const, label: t.tabs.review, href: "/automations/review", count: reviewCount }] : []),
+    { id: "activity", label: t.tabs.activity, href: "/automations/activity" },
   ];
 
   return (
     <WorkspaceHeader
-      title="Automations"
+      title={t.title}
       actions={
-        <nav aria-label="Automations sections" className="flex items-center gap-1.5">
+        <nav aria-label={t.sections} className="flex items-center gap-1.5">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
