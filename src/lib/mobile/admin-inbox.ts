@@ -6,6 +6,7 @@ import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
 import { clockLabel, dayLabel } from "@/lib/mobile/relative-time";
 import { prisma } from "@/lib/prisma";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
+import { clinicMessageLocale } from "@/lib/automations-data";
 import { acknowledgeThreadMessages } from "@/lib/mobile/thread-read";
 
 /**
@@ -119,7 +120,10 @@ export async function postAdminThreadMessage(
     });
     await sendStaffPush(
       devices.map((device) => device.expoPushToken),
-      buildStaffPushPayload({ kind: "message", linkType: "conversation", linkId: thread.id })
+      buildStaffPushPayload(
+        { kind: "message", linkType: "conversation", linkId: thread.id },
+        await clinicMessageLocale(businessId)
+      )
     );
   } catch (error) {
     logger.error("Failed to notify staff after saving an admin message.", error, { staffMemberId });

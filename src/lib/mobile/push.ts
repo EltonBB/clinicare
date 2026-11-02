@@ -1,3 +1,5 @@
+import type { Locale } from "@/i18n/config";
+import { messages } from "@/i18n/messages";
 import { logger } from "@/lib/logger";
 import { isExpoPushToken } from "@/lib/mobile/push-token";
 
@@ -27,33 +29,24 @@ export type StaffPushPayload = {
   data?: { linkType: string; linkId: string };
 };
 
-const TITLES: Record<StaffPushKind, string> = {
-  message: "New message",
-  appointment: "Schedule updated",
-  reminder: "Reminder",
-  system: "Vela Staff",
-};
-
-const BODIES: Record<StaffPushKind, string> = {
-  message: "You have a new message from your clinic.",
-  appointment: "Your schedule has changed.",
-  reminder: "You have a new reminder.",
-  system: "Open the app for details.",
-};
-
 /**
  * Build a PHI-safe push payload. Takes only a kind + an optional deep link — by
  * construction there is no way for a patient name or clinical text to enter the
  * notification. Context is fetched in-app after the deep link.
  */
-export function buildStaffPushPayload(input: {
-  kind: StaffPushKind;
-  linkType?: "conversation" | "appointment";
-  linkId?: string;
-}): StaffPushPayload {
+export function buildStaffPushPayload(
+  input: {
+    kind: StaffPushKind;
+    linkType?: "conversation" | "appointment";
+    linkId?: string;
+  },
+  // The clinic's language (clinicMessageLocale): a push can't ask the phone first.
+  locale: Locale = "en"
+): StaffPushPayload {
+  const copy = messages[locale].mobile.push;
   return {
-    title: TITLES[input.kind],
-    body: BODIES[input.kind],
+    title: copy.titles[input.kind],
+    body: copy.bodies[input.kind],
     data: input.linkType && input.linkId ? { linkType: input.linkType, linkId: input.linkId } : undefined,
   };
 }

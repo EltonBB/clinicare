@@ -14,4 +14,13 @@ export const mobile: Translation<typeof en> = {
   threadSubtitles: { "Front desk": "Recepsioni", "Vela dashboard": "Paneli i Vela" },
   thisDevice: "Kjo pajisje",
   paired: "Lidhur më {date}",
+  push: {
+    titles: { message: "Mesazh i ri", appointment: "Orari u përditësua", reminder: "Kujtesë", system: "Vela Staff" },
+    bodies: {
+      message: "Keni një mesazh të ri nga klinika juaj.",
+      appointment: "Orari juaj ndryshoi.",
+      reminder: "Keni një kujtesë të re.",
+      system: "Hapni aplikacionin për detajet.",
+    },
+  },
 };

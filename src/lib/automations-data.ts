@@ -6,6 +6,7 @@ import {
   defaultAutomationText,
   effectiveAutomationTemplate,
   isAutomationAvailable,
+  messageLocale,
   type AutomationKind,
   type AutomationMode,
 } from "@/lib/automations";
@@ -13,6 +14,7 @@ import { DEFAULT_REMINDER_TEMPLATE, LEGACY_DEFAULT_REMINDER_TEMPLATE } from "@/l
 import { isProBusinessPlan } from "@/lib/billing";
 import { workspaceUsableWhere } from "@/lib/billing-access";
 import { prisma } from "@/lib/prisma";
+import type { Locale } from "@/i18n/config";
 
 export type AutomationSettingView = {
   kind: AutomationKind;
@@ -228,6 +230,16 @@ export async function writeAlbanianDefaultWording(businessId: string): Promise<v
     ];
   });
   await prisma.$transaction(writes);
+}
+
+/**
+ * The language a clinic writes to people in: the language of its first
+ * reminder's wording. Staff push notifications follow it, since the server
+ * can't know a phone's own language when it sends one.
+ */
+export async function clinicMessageLocale(businessId: string): Promise<Locale> {
+  const settings = await getAutomationSettings(businessId);
+  return messageLocale(effectiveAutomationTemplate("FIRST_REMINDER", settings.FIRST_REMINDER.template));
 }
 
 export async function getAutomationSettings(businessId: string): Promise<AutomationSettings> {

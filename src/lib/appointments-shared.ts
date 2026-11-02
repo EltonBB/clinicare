@@ -9,6 +9,7 @@ import { retryOnWriteConflict } from "@/lib/prisma-retry";
 import { retireMissedVisitDrafts, retireVisitDrafts } from "@/lib/automation-events";
 import { offerFreedSlot, withdrawSlotOffers } from "@/lib/slot-offers";
 import { activeStaffDeviceWhere } from "@/lib/staff-device-policy";
+import { clinicMessageLocale } from "@/lib/automations-data";
 
 /**
  * Appointment-mutation side effects shared by the web calendar actions and the
@@ -593,7 +594,8 @@ export async function notifyStaffOfAppointmentChange(
       buildStaffPushPayload(
         deepLinkAppointmentId
           ? { kind: "appointment", linkType: "appointment", linkId: deepLinkAppointmentId }
-          : { kind: "appointment" }
+          : { kind: "appointment" },
+        await clinicMessageLocale(businessId)
       )
     );
   } catch (error) {

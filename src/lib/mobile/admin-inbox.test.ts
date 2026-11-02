@@ -19,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/logger", () => ({ logger: { error: mocks.logError } }));
+vi.mock("@/lib/automations-data", () => ({ clinicMessageLocale: async () => "en" }));
 vi.mock("@/lib/mobile/push", async () => {
   const actual = await vi.importActual<typeof import("./push")>("./push");
   return { ...actual, sendStaffPush: mocks.sendPush };

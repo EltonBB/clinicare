@@ -13,4 +13,14 @@ export const mobile = {
   threadSubtitles: { "Front desk": "Front desk", "Vela dashboard": "Vela dashboard" },
   thisDevice: "This device",
   paired: "Paired {date}",
+  // Push notifications: generic by design, never a patient's name or detail.
+  push: {
+    titles: { message: "New message", appointment: "Schedule updated", reminder: "Reminder", system: "Vela Staff" },
+    bodies: {
+      message: "You have a new message from your clinic.",
+      appointment: "Your schedule has changed.",
+      reminder: "You have a new reminder.",
+      system: "Open the app for details.",
+    },
+  },
 };
