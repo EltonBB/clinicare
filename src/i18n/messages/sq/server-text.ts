@@ -236,6 +236,31 @@ export const serverText: Record<string, string> = {
     "Nuk mundëm ta konfirmonim që mesazhi u dorëzua. Mund t'i ketë arritur marrësit.",
   "We couldn't send the message. Please try again.": "Nuk mundëm ta dërgonim mesazhin. Ju lutemi provoni përsëri.",
 
+  // Vela Staff app (mobile API errors, and notices stored in English)
+  "Invalid date offset.": "Data e zgjedhur nuk është e vlefshme.",
+  "That code is invalid or has expired. Ask your clinic admin for a new one.":
+    "Ky kod është i pavlefshëm ose ka skaduar. Kërkojini administratës së klinikës një kod të ri.",
+  "Too many attempts. Please wait a moment and try again.": "Shumë përpjekje. Prisni pak dhe provoni përsëri.",
+  "Invalid request.": "Kërkesë e pavlefshme.",
+  "We couldn't sign you in right now. Please try again.": "Hyrja nuk funksionoi tani. Ju lutemi provoni përsëri.",
+  "Account unavailable.": "Llogaria nuk është e disponueshme.",
+  "Unauthorized.": "Nuk keni qasje.",
+  "Too many requests. Please slow down for a moment.": "Shumë kërkesa. Ju lutemi prisni pak.",
+  "Conversation not found.": "Biseda nuk u gjet.",
+  "Your account isn't active. Contact your clinic admin.": "Llogaria juaj nuk është aktive. Kontaktoni administratën e klinikës.",
+  "You can only check in during a scheduled shift. Check with your clinic admin if your schedule looks wrong.":
+    "Hyrjen mund ta regjistroni vetëm gjatë një turni të planifikuar. Pyetni administratën e klinikës nëse orari juaj duket i gabuar.",
+  "New appointment": "Termin i ri",
+  "Schedule updated": "Orari u përditësua",
+  "Your clinic booked a new appointment for you.": "Klinika juaj ju caktoi një termin të ri.",
+  "Your clinic changed one of your appointments.": "Klinika juaj ndryshoi një nga terminet tuaja.",
+  "New message": "Mesazh i ri",
+  "You have a new message from your clinic.": "Keni një mesazh të ri nga klinika juaj.",
+  "Cancellation sent": "Anulimi u dërgua",
+  "Your clinic admin has been notified so they can reschedule.": "Administrata e klinikës u njoftua që ta riplanifikojë.",
+  "Cancelled the {time} appointment with {name} — please reschedule.":
+    "Anuloi terminin e orës {time} me {name}. Ju lutemi riplanifikojeni.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

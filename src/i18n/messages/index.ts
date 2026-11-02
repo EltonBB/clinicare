@@ -9,6 +9,7 @@ import { dashboard as enDashboard } from "./en/dashboard";
 import { inbox as enInbox } from "./en/inbox";
 import { legal as enLegal } from "./en/legal";
 import { marketing as enMarketing } from "./en/marketing";
+import { mobile as enMobile } from "./en/mobile";
 import { modules as enModules } from "./en/modules";
 import { onboarding as enOnboarding } from "./en/onboarding";
 import { reports as enReports } from "./en/reports";
@@ -25,6 +26,7 @@ import { dashboard as sqDashboard } from "./sq/dashboard";
 import { inbox as sqInbox } from "./sq/inbox";
 import { legal as sqLegal } from "./sq/legal";
 import { marketing as sqMarketing } from "./sq/marketing";
+import { mobile as sqMobile } from "./sq/mobile";
 import { modules as sqModules } from "./sq/modules";
 import { onboarding as sqOnboarding } from "./sq/onboarding";
 import { reports as sqReports } from "./sq/reports";
@@ -50,6 +52,7 @@ const en = {
   automations: enAutomations,
   reports: enReports,
   settings: enSettings,
+  mobile: enMobile,
 };
 
 export type Messages = Translation<typeof en>;
@@ -73,6 +76,7 @@ const sq: Messages = {
   automations: sqAutomations,
   reports: sqReports,
   settings: sqSettings,
+  mobile: sqMobile,
 };
 
 export const messages: Record<Locale, Messages> = { en, sq };

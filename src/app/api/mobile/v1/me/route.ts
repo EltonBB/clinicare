@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { loadMobileMe } from "@/lib/mobile/me";
 import { requireStaffContext } from "@/lib/staff-auth";
 
@@ -18,9 +18,9 @@ export async function GET(request: Request) {
     return limited;
   }
 
-  const me = await loadMobileMe(ctx.device);
+  const me = await loadMobileMe(ctx.device, ctx.locale);
   if (!me) {
-    return NextResponse.json({ error: "Account unavailable." }, { status: 404 });
+    return mobileError(ctx.locale, "Account unavailable.", 404);
   }
 
   return NextResponse.json({ me });

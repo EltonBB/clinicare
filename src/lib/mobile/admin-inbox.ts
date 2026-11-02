@@ -1,3 +1,5 @@
+import type { Locale } from "@/i18n/config";
+import { translateServerText } from "@/i18n/server-text";
 import { ensureAdminThread } from "@/lib/mobile/inbox";
 import { logger } from "@/lib/logger";
 import { buildStaffPushPayload, sendStaffPush } from "@/lib/mobile/push";
@@ -29,7 +31,8 @@ export type AdminThreadView = {
 
 export async function getAdminThread(
   businessId: string,
-  staffMemberId: string
+  staffMemberId: string,
+  locale: Locale = "en"
 ): Promise<AdminThreadView> {
   // READ-ONLY: don't create a thread just because the admin viewed the page.
   const thread = await prisma.staffThread.findFirst({
@@ -59,9 +62,10 @@ export async function getAdminThread(
       id: message.id,
       mine: message.sender === "ADMIN",
       system: message.sender === "SYSTEM",
-      body: message.body,
+      // System notices are stored in English; people's own words stay as written.
+      body: message.sender === "SYSTEM" ? translateServerText(message.body, locale) : message.body,
       timeLabel: clockLabel(message.createdAt),
-      dayLabel: dayLabel(message.createdAt, now),
+      dayLabel: dayLabel(message.createdAt, now, locale),
     })),
     unreadForAdmin: thread.unreadForAdmin,
   };

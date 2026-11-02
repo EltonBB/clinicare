@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import type { StaffContext } from "@/lib/staff-auth";
 import {
   formatZonedDateKey,
-  formatZonedTime,
+  formatZonedTime24,
   getZonedDayWindowByOffset,
 } from "@/lib/time-zone";
 
@@ -56,7 +56,7 @@ export async function getOwnAppointment(
   if (!appointment) {
     return null;
   }
-  return serializeAppointment(appointment, resolveDayKey(appointment.startAt));
+  return serializeAppointment(appointment, resolveDayKey(appointment.startAt), new Date(), ctx.locale);
 }
 
 export type MobileAppointmentsResult = {
@@ -98,8 +98,8 @@ export async function listOwnAppointments(
   });
 
   return {
-    date: { key: formatZonedDateKey(window.start), label: dateLabelFor(window.start, dayKey) },
-    appointments: appointments.map((appointment) => serializeAppointment(appointment, dayKey)),
+    date: { key: formatZonedDateKey(window.start), label: dateLabelFor(window.start, dayKey, ctx.locale) },
+    appointments: appointments.map((appointment) => serializeAppointment(appointment, dayKey, new Date(), ctx.locale)),
   };
 }
 
@@ -160,7 +160,9 @@ export async function cancelOwnAppointment(
       await postSystemMessageToAdminThread(
         ctx.business.id,
         ctx.staffMember.id,
-        `Cancelled the ${formatZonedTime(appointment.startAt)} appointment with ${appointment.client.name} — please reschedule.`
+        // Stored in English and translated when read (server-text); a 24-hour
+        // time reads the same in either language.
+        `Cancelled the ${formatZonedTime24(appointment.startAt)} appointment with ${appointment.client.name} — please reschedule.`
       );
       try {
         // Closes the loop on the staff's own side too: confirms the admin was

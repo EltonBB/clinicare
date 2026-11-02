@@ -100,7 +100,7 @@ export default async function StaffDetailsRoute({
   const { locale } = await getI18n();
   const [mobileAccess, adminThread] = await Promise.all([
     getMobileAccessStatus(business.id, staffId, locale),
-    getAdminThread(business.id, staffId),
+    getAdminThread(business.id, staffId, locale),
   ]);
 
   return (

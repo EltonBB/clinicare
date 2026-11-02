@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { listOwnAppointments } from "@/lib/mobile/appointments";
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { requireStaffContext } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   const offset =
     offsetParam !== null ? Number(offsetParam) : searchParams.get("day") === "tomorrow" ? 1 : 0;
   if (!Number.isInteger(offset) || Math.abs(offset) > MAX_OFFSET_DAYS) {
-    return NextResponse.json({ error: "Invalid date offset." }, { status: 400 });
+    return mobileError(ctx.locale, "Invalid date offset.", 400);
   }
 
   const result = await listOwnAppointments(ctx, offset);

@@ -120,3 +120,25 @@ describe("serializeNotification", () => {
     expect(serializeNotification(notif({ linkType: "appointment", linkId: null }), NOW).link).toBeUndefined();
   });
 });
+
+describe("in Albanian", () => {
+  it("labels times and days", () => {
+    expect(relativeLabel(minsAgo(5), NOW, "sq")).toBe("5 min më parë");
+    expect(dayLabel(NOW, NOW, "sq")).toBe("Sot");
+  });
+
+  it("translates stored English notices but never people's own words", () => {
+    const cancelled = "Cancelled the 09:30 appointment with Arta Krasniqi — please reschedule.";
+    expect(serializeMessage(message({ sender: "SYSTEM", body: cancelled }), NOW, "sq").body).toBe(
+      "Anuloi terminin e orës 09:30 me Arta Krasniqi. Ju lutemi riplanifikojeni."
+    );
+    expect(serializeMessage(message({ sender: "ADMIN", body: "New message" }), NOW, "sq").body).toBe("New message");
+    expect(
+      serializeNotification(
+        { id: "n1", kind: "MESSAGE", title: "New message", body: "You have a new message from your clinic.", linkType: null, linkId: null, readAt: null, createdAt: minsAgo(2) } as StaffNotification,
+        NOW,
+        "sq"
+      )
+    ).toMatchObject({ title: "Mesazh i ri", body: "Keni një mesazh të ri nga klinika juaj." });
+  });
+});

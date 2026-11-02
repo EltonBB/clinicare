@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { APPOINTMENT_NOT_FOUND_ERROR } from "@/lib/appointments-shared";
 import { getOwnAppointment } from "@/lib/mobile/appointments";
-import { mobileRateLimit, staffAuthResponse } from "@/lib/mobile/guard";
+import { mobileRateLimit, staffAuthResponse, mobileError } from "@/lib/mobile/guard";
 import { requireStaffContext } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function GET(
   const { id } = await params;
   const appointment = await getOwnAppointment(ctx, id);
   if (!appointment) {
-    return NextResponse.json({ error: APPOINTMENT_NOT_FOUND_ERROR }, { status: 404 });
+    return mobileError(ctx.locale, APPOINTMENT_NOT_FOUND_ERROR, 404);
   }
 
   return NextResponse.json({ appointment });

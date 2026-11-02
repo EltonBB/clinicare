@@ -1,6 +1,10 @@
 import type { StaffNotification, StaffThread, StaffThreadMessage } from "@prisma/client";
 
-import { clockLabel, dayLabel, relativeLabel } from "@/lib/mobile/relative-time";
+import type { Locale } from "@/i18n/config";
+import { storedLabel } from "@/i18n/format";
+import { messages } from "@/i18n/messages";
+import { translateServerText } from "@/i18n/server-text";
+import { clockLabel, dayLabel, isZonedToday, relativeLabel } from "@/lib/mobile/relative-time";
 
 /**
  * Pure view-model types + serializers for internal staff↔admin messaging and
@@ -48,15 +52,20 @@ export type MobileNotification = {
   link?: { type: "conversation" | "appointment"; id: string };
 };
 
-export function serializeMessage(message: StaffThreadMessage, now: Date = new Date()): MobileMessage {
+export function serializeMessage(
+  message: StaffThreadMessage,
+  now: Date = new Date(),
+  locale: Locale = "en"
+): MobileMessage {
   const sender: MobileMessageSender =
     message.sender === "STAFF" ? "me" : message.sender === "ADMIN" ? "them" : "system";
   return {
     id: message.id,
     sender,
-    body: message.body,
+    // System notices are stored in English; people's own words stay as written.
+    body: sender === "system" ? translateServerText(message.body, locale) : message.body,
     timeLabel: clockLabel(message.createdAt),
-    dayLabel: dayLabel(message.createdAt, now),
+    dayLabel: dayLabel(message.createdAt, now, locale),
     // Only the staff's own (outbound) messages carry a delivery state.
     delivery: sender === "me" ? (message.readAt ? "read" : "sent") : undefined,
   };
@@ -64,29 +73,31 @@ export function serializeMessage(message: StaffThreadMessage, now: Date = new Da
 
 export function serializeConversation(
   thread: StaffThread & { messages: StaffThreadMessage[] },
-  now: Date = new Date()
+  now: Date = new Date(),
+  locale: Locale = "en"
 ): MobileConversation {
+  const t = messages[locale].mobile;
   const ordered = [...thread.messages].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
   );
-  const latest = ordered[ordered.length - 1];
+  const serialized = ordered.map((message) => serializeMessage(message, now, locale));
   return {
     id: thread.id,
-    contactName: "Clinic admin",
-    subtitle: thread.subtitle ?? "Vela dashboard",
-    preview: latest?.body ?? "",
-    lastAtLabel:
-      dayLabel(thread.lastMessageAt, now) === "Today"
-        ? clockLabel(thread.lastMessageAt)
-        : dayLabel(thread.lastMessageAt, now),
+    contactName: t.clinicAdmin,
+    subtitle: storedLabel(t.threadSubtitles, thread.subtitle ?? "Vela dashboard"),
+    preview: serialized[serialized.length - 1]?.body ?? "",
+    lastAtLabel: isZonedToday(thread.lastMessageAt, now)
+      ? clockLabel(thread.lastMessageAt)
+      : dayLabel(thread.lastMessageAt, now, locale),
     unreadCount: thread.unreadForStaff,
-    messages: ordered.map((message) => serializeMessage(message, now)),
+    messages: serialized,
   };
 }
 
 export function serializeNotification(
   notification: StaffNotification,
-  now: Date = new Date()
+  now: Date = new Date(),
+  locale: Locale = "en"
 ): MobileNotification {
   const read = notification.readAt !== null;
   const linkType = notification.linkType;
@@ -97,9 +108,10 @@ export function serializeNotification(
   return {
     id: notification.id,
     kind: notification.kind.toLowerCase() as MobileNotificationKind,
-    title: notification.title,
-    body: notification.body,
-    atLabel: relativeLabel(notification.createdAt, now),
+    // Stored in English when the event happened.
+    title: translateServerText(notification.title, locale),
+    body: translateServerText(notification.body, locale),
+    atLabel: relativeLabel(notification.createdAt, now, locale),
     group: read ? "Earlier" : "New",
     read,
     link,
