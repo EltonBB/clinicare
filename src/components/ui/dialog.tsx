@@ -48,6 +48,7 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  const { m } = useI18n();
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -73,7 +74,7 @@ function DialogContent({
           >
             <XIcon
             />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{m.common.close}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

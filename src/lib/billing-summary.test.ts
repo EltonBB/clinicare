@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildBillingSummary, type BillingSummarySource } from "./billing-summary";
+import { messages } from "@/i18n/messages";
+
 import { proAddedFeatures } from "./public-plans";
 
 const NOW = new Date("2026-10-26T12:00:00Z");
@@ -168,5 +170,27 @@ describe("buildBillingSummary", () => {
       "Pro, billed monthly",
       "Pro, billed yearly",
     ]);
+  });
+});
+
+describe("buildBillingSummary in Albanian", () => {
+  const sq = (overrides: Partial<BillingSummarySource>) =>
+    buildBillingSummary(business(overrides), {
+      billingEnabled: true,
+      now: NOW,
+      timeZone: ZONE,
+      locale: "sq",
+      copy: { billing: messages.sq.settings.billing, proFeatures: messages.sq.common.plans.pro.features.slice(1) },
+    });
+
+  it("words the status, note, plan switches and Pro features in the reader's language", () => {
+    const view = sq({});
+    expect(view.statusLabel).toBe("Aktiv");
+    expect(view.note).toBe("Rinovohet më 20 nëntor 2026, me faturim mujor.");
+    expect(view.changeOptions[0]).toMatchObject({
+      label: "Basic, me faturim vjetor",
+      effect: messages.sq.settings.billing.effects.newPeriod,
+    });
+    expect(view.proFeatures).toEqual(messages.sq.common.plans.pro.features.slice(1));
   });
 });

@@ -8,7 +8,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { m } from "framer-motion";
+import { m as motion } from "framer-motion";
 import {
   Building2,
   Check,
@@ -29,7 +29,9 @@ import {
   saveSettingsAction,
 } from "@/app/(workspace)/settings/actions";
 import { businessTypes } from "@/lib/constants";
-import { currencyLabel, SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt, storedLabel } from "@/i18n/format";
 import { brandAccentPresets, normalizeBrandHexColor } from "@/lib/branding";
 import { BillingControls } from "@/components/settings/billing-controls";
 import { cn } from "@/lib/utils";
@@ -38,7 +40,6 @@ import { safeUploadErrorMessage, uploadWorkspaceImage } from "@/lib/media-storag
 import {
   phaseLabelMap,
   timeOptions,
-  weekdayLabels,
   type SaveSettingsPayload,
   type SettingsState,
 } from "@/lib/settings";
@@ -101,17 +102,13 @@ type SettingsSectionId =
   | "whatsapp"
   | "billing";
 
-const settingsNav: Array<{
-  id: SettingsSectionId;
-  icon: typeof Building2;
-  title: string;
-  subtitle: string;
-}> = [
-  { id: "business", icon: Building2, title: "Business & account", subtitle: "Owner, contact, clinic & logo" },
-  { id: "appearance", icon: Palette, title: "Appearance", subtitle: "Workspace accent color" },
-  { id: "hours", icon: Clock3, title: "Working hours", subtitle: "Booking availability" },
-  { id: "whatsapp", icon: MessageCircle, title: "WhatsApp", subtitle: "Pairing and connection" },
-  { id: "billing", icon: CreditCard, title: "Billing", subtitle: "Plan, card and invoices" },
+// Titles and subtitles in `settings.sections`.
+const settingsNav: Array<{ id: SettingsSectionId; icon: typeof Building2 }> = [
+  { id: "business", icon: Building2 },
+  { id: "appearance", icon: Palette },
+  { id: "hours", icon: Clock3 },
+  { id: "whatsapp", icon: MessageCircle },
+  { id: "billing", icon: CreditCard },
 ];
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -210,6 +207,9 @@ export function SettingsWorkspace({
   ownerPhone = "",
   initialSection,
 }: SettingsWorkspaceProps) {
+  const { m } = useI18n();
+  const t = m.settings;
+  const serverText = useServerText();
   const [state, setState] = useState(initialState);
   const [savedState, setSavedState] = useState(initialState);
   // Owner account fields live in their own state — they save through the auth
@@ -257,7 +257,7 @@ export function SettingsWorkspace({
   const isConnected = whatsappPhase === "CONNECTED";
   // The settled Settings contract keeps the status headline binary — never
   // STARTING/NEEDS_SUPPORT's own phaseLabelMap strings (Codex P1).
-  const connectionHeadline = isConnected ? "Connected" : "Not connected";
+  const connectionHeadline = m.common.whatsappPhase[isConnected ? "CONNECTED" : "NOT_STARTED"];
   const settingsDirty = useMemo(
     () => JSON.stringify(state) !== JSON.stringify(savedState),
     [state, savedState]
@@ -342,7 +342,7 @@ export function SettingsWorkspace({
 
   function handleSave() {
     if (customAccentInvalid) {
-      setErrorMessage("Enter a valid HEX color, for example #0A22FF.");
+      setErrorMessage(t.appearance.invalidHexSave);
       setMessage("");
       return;
     }
@@ -437,7 +437,7 @@ export function SettingsWorkspace({
       const result = await saveSettingsAction(payload);
 
       if (!result.ok || !result.state) {
-        setErrorMessage(result.error ?? "We couldn't save your settings.");
+        setErrorMessage(serverText(result.error) ?? t.saveFailed);
         setMessage("");
         return;
       }
@@ -473,7 +473,7 @@ export function SettingsWorkspace({
         phone: submittedAccount.phone,
       });
       setErrorMessage("");
-      setMessage(accountDirty && accountMessage ? accountMessage : "Settings saved.");
+      setMessage(accountDirty && accountMessage ? (serverText(accountMessage) ?? accountMessage) : t.saved);
       setSaveCompletionTick((tick) => tick + 1);
     });
   }
@@ -505,13 +505,13 @@ export function SettingsWorkspace({
     }
 
     if (!file.type.startsWith("image/")) {
-      setErrorMessage("Upload an image file for the clinic logo.");
+      setErrorMessage(t.business.logoNotImage);
       setMessage("");
       return;
     }
 
     if (file.size > 750_000) {
-      setErrorMessage("Logo file is too large. Upload an image under 750 KB.");
+      setErrorMessage(t.business.logoTooLarge);
       setMessage("");
       return;
     }
@@ -540,9 +540,9 @@ export function SettingsWorkspace({
         },
       }));
       setErrorMessage("");
-      setMessage("Logo uploaded. Save changes to keep it.");
+      setMessage(t.business.logoUploaded);
     } catch (error) {
-      setErrorMessage(safeUploadErrorMessage(error, "We couldn't upload this logo."));
+      setErrorMessage(serverText(safeUploadErrorMessage(error, t.business.logoFailed)) ?? t.business.logoFailed);
       setMessage("");
     } finally {
       setIsLogoUploading(false);
@@ -583,8 +583,8 @@ export function SettingsWorkspace({
     applyWhatsAppPhase("CONNECTED", "CONNECTED");
     // Clear the pairing state so the QR view yields to the connected view.
     setPairing(null);
-    setMessage("WhatsApp connected.");
-  }, [applyWhatsAppPhase]);
+    setMessage(t.whatsapp.connected);
+  }, [applyWhatsAppPhase, t.whatsapp.connected]);
 
   // Without this, the status card above kept reading whatever
   // state.whatsapp.connection said before this attempt started: a
@@ -738,9 +738,7 @@ export function SettingsWorkspace({
       pairingPollsRef.current += 1;
       if (pairingPollsRef.current > maxPolls) {
         setPairing(null);
-        setErrorMessage(
-          "Pairing timed out. Tap Connect WhatsApp to get a fresh code."
-        );
+        setErrorMessage(t.whatsapp.timedOut);
         // Nothing else ever reconciles the status card once this gives up —
         // without this it kept claiming the connection was still finishing
         // indefinitely, even across a reload.
@@ -773,7 +771,7 @@ export function SettingsWorkspace({
       active = false;
       clearInterval(id);
     };
-  }, [isPairing, markWhatsAppConnected, markWhatsAppNotStarted]);
+  }, [isPairing, markWhatsAppConnected, markWhatsAppNotStarted, t.whatsapp.timedOut]);
 
   const content = (
     <LazyMotionProvider>
@@ -827,10 +825,10 @@ export function SettingsWorkspace({
                         selected ? "text-primary" : "text-foreground"
                       )}
                     >
-                      {section.title}
+                      {t.sections[section.id].title}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {section.subtitle}
+                      {t.sections[section.id].subtitle}
                     </span>
                   </span>
                   <ChevronRight
@@ -856,7 +854,7 @@ export function SettingsWorkspace({
               disabled={isPending || isLogoUploading}
               onClick={handleSave}
             >
-              {isPending ? "Saving..." : "Save changes"}
+              {isPending ? t.saving : t.saveChanges}
             </Button>
             <Button
               variant="outline"
@@ -869,12 +867,12 @@ export function SettingsWorkspace({
               // that was supposed to clear everything (Codex P2).
               disabled={isPending || isLogoUploading || !hasUnsavedChanges}
             >
-              Discard changes
+              {t.discardChanges}
             </Button>
           </div>
         </div>
 
-        <m.div
+        <motion.div
           key={activeSection}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -883,14 +881,14 @@ export function SettingsWorkspace({
         >
           <SectionCard
             id="business"
-            title="Business & account"
-            description="Your account details and your clinic's information in one place."
+            title={t.sections.business.title}
+            description={t.business.description}
             active={activeSection === "business"}
           >
             <div className="space-y-4">
               <div className="grid gap-3.5 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <FieldLabel>Owner name</FieldLabel>
+                  <FieldLabel>{t.business.ownerName}</FieldLabel>
                   <Input
                     value={account.fullName}
                     onChange={(event) =>
@@ -903,7 +901,7 @@ export function SettingsWorkspace({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <FieldLabel>Email</FieldLabel>
+                  <FieldLabel>{t.business.email}</FieldLabel>
                   <Input
                     type="email"
                     value={account.email}
@@ -917,7 +915,7 @@ export function SettingsWorkspace({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <FieldLabel>Phone</FieldLabel>
+                  <FieldLabel>{t.business.phone}</FieldLabel>
                   <Input
                     value={account.phone}
                     onChange={(event) =>
@@ -930,7 +928,7 @@ export function SettingsWorkspace({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <FieldLabel>Business name</FieldLabel>
+                  <FieldLabel>{t.business.businessName}</FieldLabel>
                   <Input
                     value={state.business.businessName}
                     onChange={(event) =>
@@ -946,10 +944,11 @@ export function SettingsWorkspace({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <FieldLabel>Business type</FieldLabel>
+                  <FieldLabel>{t.business.businessType}</FieldLabel>
                   <NativeSelect
                     value={state.business.businessType}
                     options={[...businessTypes]}
+                    getLabel={(type) => storedLabel(m.common.businessTypes, type)}
                     onChange={(value) =>
                       setState((current) => ({
                         ...current,
@@ -962,12 +961,12 @@ export function SettingsWorkspace({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <FieldLabel>Currency</FieldLabel>
+                  <FieldLabel>{t.business.currency}</FieldLabel>
                   <NativeSelect
                     value={state.business.currency}
                     options={SUPPORTED_CURRENCIES.map((currency) => currency.code)}
-                    getLabel={currencyLabel}
-                    ariaLabel="Currency"
+                    getLabel={(code) => fmt(t.currencyOption, { name: storedLabel(t.currencies, code), code })}
+                    ariaLabel={t.business.currency}
                     onChange={(value) =>
                       setState((current) => ({
                         ...current,
@@ -987,7 +986,7 @@ export function SettingsWorkspace({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={logoDisplayUrl}
-                      alt={`${state.business.businessName || "Clinic"} logo`}
+                      alt={fmt(t.business.logoAlt, { name: state.business.businessName || t.business.clinic })}
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -997,7 +996,7 @@ export function SettingsWorkspace({
                 <div>
                   <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-(--radius-card) border border-border/80 bg-white px-3 text-sm font-medium text-foreground transition-[border-color] duration-(--duration-base) hover:border-primary/35">
                     <ImageUp className="size-4 text-primary" />
-                    {isLogoUploading ? "Uploading..." : "Upload logo"}
+                    {isLogoUploading ? t.business.uploading : t.business.uploadLogo}
                     <input
                       type="file"
                       accept="image/*"
@@ -1008,19 +1007,17 @@ export function SettingsWorkspace({
                       onChange={(event) => handleLogoUpload(event.target.files?.[0] ?? null)}
                     />
                   </label>
-                  <p className="mt-1.5 text-xs text-muted-foreground">PNG or JPG, up to 750 KB.</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{t.business.logoHint}</p>
                 </div>
               </div>
 
               <div className="space-y-3 pt-2">
-                <p className="text-sm font-medium text-foreground">
-                  Change password{" "}
-                  <span className="font-normal text-muted-foreground">
-                    — leave blank to keep your current password, or fill in all three to change it
-                  </span>
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{t.business.changePassword}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.business.changePasswordHint}</p>
+                </div>
                 <div className="space-y-1.5">
-                  <FieldLabel>Current password</FieldLabel>
+                  <FieldLabel>{t.business.currentPassword}</FieldLabel>
                   <Input
                     type="password"
                     autoComplete="current-password"
@@ -1036,7 +1033,7 @@ export function SettingsWorkspace({
                 </div>
                 <div className="grid gap-3.5 md:grid-cols-2">
                   <div className="space-y-1.5">
-                    <FieldLabel>New password</FieldLabel>
+                    <FieldLabel>{t.business.newPassword}</FieldLabel>
                     <Input
                       type="password"
                       autoComplete="new-password"
@@ -1051,7 +1048,7 @@ export function SettingsWorkspace({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <FieldLabel>Confirm password</FieldLabel>
+                    <FieldLabel>{t.business.confirmPassword}</FieldLabel>
                     <Input
                       type="password"
                       autoComplete="new-password"
@@ -1072,8 +1069,8 @@ export function SettingsWorkspace({
 
           <SectionCard
             id="appearance"
-            title="Appearance"
-            description="Pick the accent color used for primary actions, active states, and highlights across the workspace."
+            title={t.sections.appearance.title}
+            description={t.appearance.description}
             active={activeSection === "appearance"}
           >
             <div className="space-y-4">
@@ -1107,7 +1104,7 @@ export function SettingsWorkspace({
                       >
                         {selected ? <Check className="size-3.5 text-white" /> : null}
                       </span>
-                      {preset.name}
+                      {storedLabel(m.common.accentColors, preset.id)}
                     </button>
                   );
                 })}
@@ -1131,7 +1128,7 @@ export function SettingsWorkspace({
                       <Check className="size-3.5 text-white" />
                     ) : null}
                     <input
-                      aria-label="Pick custom accent color"
+                      aria-label={t.appearance.pickCustom}
                       type="color"
                       value={previewAccent}
                       onChange={(event) =>
@@ -1143,7 +1140,7 @@ export function SettingsWorkspace({
                       className="absolute inset-0 cursor-pointer opacity-0"
                     />
                   </label>
-                  <span className="text-sm font-medium text-foreground">Custom color</span>
+                  <span className="text-sm font-medium text-foreground">{t.appearance.customColor}</span>
                 </div>
                 <Input
                   value={state.appearance.accentHex}
@@ -1165,15 +1162,13 @@ export function SettingsWorkspace({
               </div>
 
               <div className="rounded-(--radius-card) bg-[#fafbfd] p-3.5">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  Preview
-                </p>
+                <p className="text-xs font-semibold text-muted-foreground">{t.appearance.preview}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <span
                     className="inline-flex h-9 items-center rounded-(--radius-card) px-3.5 text-sm font-semibold text-white"
                     style={{ backgroundColor: previewAccent }}
                   >
-                    Primary button
+                    {t.appearance.primaryButton}
                   </span>
                   <span
                     className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -1183,26 +1178,24 @@ export function SettingsWorkspace({
                       className="size-2 rounded-full"
                       style={{ backgroundColor: previewAccent }}
                     />
-                    Active state
+                    {t.appearance.activeState}
                   </span>
                   <span className="text-sm font-semibold" style={{ color: previewAccent }}>
-                    Link &amp; highlight
+                    {t.appearance.linkHighlight}
                   </span>
                 </div>
               </div>
 
               {customAccentInvalid ? (
-                <p className="text-xs font-medium text-destructive">
-                  Use a valid HEX value like #0A22FF.
-                </p>
+                <p className="text-xs font-medium text-destructive">{t.appearance.invalidHex}</p>
               ) : null}
             </div>
           </SectionCard>
 
           <SectionCard
             id="hours"
-            title="Working hours"
-            description="Set the days and times your clinic takes bookings. The calendar and reminders follow these hours."
+            title={t.sections.hours.title}
+            description={t.hours.description}
             active={activeSection === "hours"}
           >
             <div className="divide-y divide-border/65">
@@ -1218,9 +1211,9 @@ export function SettingsWorkspace({
                       <Toggle
                         checked={item.enabled}
                         onPressedChange={(checked) => updateDay(day, { enabled: checked })}
-                        ariaLabel={weekdayLabels[day]}
+                        ariaLabel={m.common.weekdays[day].name}
                       />
-                      <p className="text-sm font-medium text-foreground">{weekdayLabels[day]}</p>
+                      <p className="text-sm font-medium text-foreground">{m.common.weekdays[day].name}</p>
                     </div>
                     {item.enabled ? (
                       <div className="flex shrink-0 items-center gap-2 pl-[52px] sm:pl-0">
@@ -1229,7 +1222,7 @@ export function SettingsWorkspace({
                           options={timeOptions}
                           onChange={(value) => updateDay(day, { start: value })}
                           className="h-9 w-[104px] px-2.5"
-                          ariaLabel={`${weekdayLabels[day]} opening time`}
+                          ariaLabel={fmt(t.hours.opening, { day: m.common.weekdays[day].name })}
                         />
                         <span className="text-sm text-muted-foreground">–</span>
                         <NativeSelect
@@ -1237,11 +1230,11 @@ export function SettingsWorkspace({
                           options={timeOptions}
                           onChange={(value) => updateDay(day, { end: value })}
                           className="h-9 w-[104px] px-2.5"
-                          ariaLabel={`${weekdayLabels[day]} closing time`}
+                          ariaLabel={fmt(t.hours.closing, { day: m.common.weekdays[day].name })}
                         />
                       </div>
                     ) : (
-                      <span className="pl-[52px] text-sm font-medium text-muted-foreground sm:pl-0">Closed</span>
+                      <span className="pl-[52px] text-sm font-medium text-muted-foreground sm:pl-0">{t.hours.closed}</span>
                     )}
                   </div>
                 );
@@ -1251,8 +1244,8 @@ export function SettingsWorkspace({
 
           <SectionCard
             id="whatsapp"
-            title="WhatsApp"
-            description="Connect your clinic's WhatsApp to send appointment reminders and reply to clients from the Inbox."
+            title={t.sections.whatsapp.title}
+            description={t.whatsapp.description}
             active={activeSection === "whatsapp"}
           >
             <div className="space-y-4">
@@ -1282,12 +1275,12 @@ export function SettingsWorkspace({
                 </div>
                 <p className="mt-2 text-sm leading-5 text-muted-foreground">
                   {whatsappPhase === "CONNECTED"
-                    ? "Your clinic's WhatsApp is linked. Reminders and Inbox replies are active."
+                    ? t.whatsapp.connectedDetail
                     : whatsappPhase === "STARTING"
-                      ? "Finishing the connection — this should only take a moment."
+                      ? t.whatsapp.startingDetail
                       : whatsappPhase === "NEEDS_SUPPORT"
-                        ? "We had trouble sending a recent WhatsApp message. This usually resolves on its own — reconnect below if it keeps happening, or contact support."
-                        : "Link your clinic's WhatsApp by scanning a QR code with the clinic phone — no number setup needed."}
+                        ? t.whatsapp.troubleDetail
+                        : t.whatsapp.notStartedDetail}
                 </p>
               </div>
 
@@ -1296,28 +1289,23 @@ export function SettingsWorkspace({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={pairing.qr}
-                    alt="WhatsApp pairing QR code"
+                    alt={t.whatsapp.qrAlt}
                     width={200}
                     height={200}
                     className="rounded-lg"
                   />
                   <div className="text-center">
-                    <p className="text-sm font-medium text-foreground">
-                      Scan to connect
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      On the clinic phone, open WhatsApp → Settings → Linked
-                      devices → Link a device, then scan this code.
-                    </p>
+                    <p className="text-sm font-medium text-foreground">{t.whatsapp.scan}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{t.whatsapp.scanSteps}</p>
                     <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary">
                       <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-                      Waiting for the scan…
+                      {t.whatsapp.waiting}
                     </p>
                   </div>
                 </div>
               ) : pairing ? (
                 <div className="rounded-(--radius-card) border border-border/70 bg-white p-4 text-center text-sm text-muted-foreground">
-                  Preparing your QR code…
+                  {t.whatsapp.preparing}
                 </div>
               ) : isConnected ? (
                 <button
@@ -1326,7 +1314,7 @@ export function SettingsWorkspace({
                   disabled={isConnecting}
                   className="text-xs font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground disabled:opacity-60"
                 >
-                  {isConnecting ? "Starting…" : "Link a different device"}
+                  {isConnecting ? t.whatsapp.starting : t.whatsapp.linkDifferent}
                 </button>
               ) : (
                 <Button
@@ -1346,39 +1334,33 @@ export function SettingsWorkspace({
                   disabled={isConnecting}
                 >
                   {isConnecting
-                    ? "Starting…"
+                    ? t.whatsapp.starting
                     : whatsappPhase === "NEEDS_SUPPORT"
-                      ? "Reconnect WhatsApp"
-                      : "Connect WhatsApp"}
+                      ? t.whatsapp.reconnect
+                      : t.whatsapp.connect}
                 </Button>
               )}
 
               <ul className="space-y-2 border-t border-border/60 pt-3.5 text-sm text-muted-foreground">
-                <li className="flex items-start gap-2.5">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  Send appointment reminders to clients automatically.
-                </li>
-                <li className="flex items-start gap-2.5">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  Reply to incoming client messages from the Inbox.
-                </li>
-                <li className="flex items-start gap-2.5">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  Messages only ever include a name and appointment time — never clinical details.
-                </li>
+                {t.whatsapp.benefits.map((benefit) => (
+                  <li key={benefit} className="flex items-start gap-2.5">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                    {benefit}
+                  </li>
+                ))}
               </ul>
             </div>
           </SectionCard>
 
           <SectionCard
             id="billing"
-            title="Billing"
-            description="Your plan, payment and invoices."
+            title={t.sections.billing.title}
+            description={t.billingDescription}
             active={activeSection === "billing"}
           >
             <BillingControls billing={state.billing} active={activeSection === "billing"} onChanged={refreshBilling} />
           </SectionCard>
-        </m.div>
+        </motion.div>
       </div>
     </LazyMotionProvider>
   );

@@ -29,6 +29,8 @@ const COVERED = [
   "src/app/(workspace)/automations/review/actions.ts",
   "src/lib/follow-ups-data.ts",
   "src/lib/follow-up-dispatch.ts",
+  "src/app/(workspace)/settings/actions.ts",
+  "src/app/(workspace)/settings/billing-actions.ts",
 ];
 
 // Literals in covered files that no screen shows: log lines, and the staff
@@ -50,6 +52,17 @@ const NOT_SHOWN = new Set([
   "Inbox unread-conversation merge returned an unusually large result.",
   "Failed to normalize inbox conversations for business.",
   "Saving an automation failed.",
+  "Failed to refresh WhatsApp connection after settings load.",
+  "discardUnsavedLogoAction received a candidate outside the logos/ folder — dropped without queueing.",
+  "Couldn't load the billing details.",
+  "Couldn't save the billing details.",
+  "Couldn't change the subscription's plan.",
+  "Couldn't load the billing history.",
+  "Couldn't open an invoice.",
+  "Couldn't schedule the plan's end.",
+  "Couldn't resume the plan.",
+  "Couldn't start a card update.",
+  "Couldn't move the subscription to Pro.",
   "Switching an automation failed.",
   "Couldn't book a slot offer.",
   "Couldn't skip a follow-up draft.",

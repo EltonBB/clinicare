@@ -8,6 +8,7 @@ const SAME_IN_BOTH = new Set([
   "Vela Staff",
   "Basic",
   "Pro",
+  "Euro",
   "WhatsApp",
   "SMS",
   "Email",

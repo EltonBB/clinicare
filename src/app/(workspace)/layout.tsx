@@ -82,7 +82,7 @@ export default async function WorkspaceLayout({
   );
 
   return (
-    <WithMessages namespaces={["shell"]}>
+    <WithMessages namespaces={["shell", "settings"]}>
     <AppShell
       businessName={businessName}
       ownerName={ownerName}

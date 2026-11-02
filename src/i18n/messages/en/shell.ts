@@ -89,6 +89,7 @@ export const shell = {
   settingsDialog: {
     title: "Settings",
     description: "Configure how the workspace runs.",
+    loading: "Loading settings…",
     loadError: "We couldn't load settings right now. Try again in a moment.",
     discardTitle: "Discard unsaved changes?",
     discardDescription: "Your edits to settings haven't been saved. Closing now will lose them.",

@@ -7,6 +7,7 @@ export type BillingHistoryRow = {
   id: string;
   date: string;
   amount: string;
+  /** Shown through `settings.billing.invoiceStatuses`. */
   status: "Paid" | "Free trial" | "Payment failed";
 };
 
@@ -30,7 +31,11 @@ const CARD_BRANDS: Record<string, string> = {
  * on file (the card of the newest card payment, a card update included). A card
  * update itself is not a charge, so it isn't listed.
  */
-export function buildBillingHistory(transactions: PaddleTransaction[], timeZone?: string): BillingHistory {
+export function buildBillingHistory(
+  transactions: PaddleTransaction[],
+  timeZone?: string,
+  locale: Locale = "en"
+): BillingHistory {
   let card: BillingCard | null = null;
   const rows: BillingHistoryRow[] = [];
 
@@ -49,8 +54,8 @@ export function buildBillingHistory(transactions: PaddleTransaction[], timeZone?
     const minor = Number(transaction.details.totals.grand_total);
     rows.push({
       id: transaction.id,
-      date: formatZonedFullDate(new Date(transaction.billed_at ?? transaction.created_at), timeZone),
-      amount: formatMinorAmount(minor, transaction.currency_code),
+      date: formatZonedFullDate(new Date(transaction.billed_at ?? transaction.created_at), timeZone, locale),
+      amount: formatMinorAmount(minor, transaction.currency_code, locale),
       status: transaction.status === "past_due" ? "Payment failed" : minor === 0 ? "Free trial" : "Paid",
     });
   }

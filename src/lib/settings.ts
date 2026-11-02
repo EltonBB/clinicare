@@ -13,7 +13,8 @@ import {
   type WorkingHoursState,
   weekdayOrder,
 } from "@/lib/onboarding";
-import { buildBillingSummary, type BillingSummary } from "@/lib/billing-summary";
+import { buildBillingSummary, type BillingSummary, type BillingSummaryCopy } from "@/lib/billing-summary";
+import type { Locale } from "@/i18n/config";
 // Type-only: workflow-generators pulls in prisma, which must never reach the
 // client bundle this module is part of. The server-side loader
 // (settings-server.ts) supplies the values, defaults included.
@@ -127,6 +128,9 @@ type SettingsWorkspaceData = {
   /** Paddle is configured here (lib/paddle/paddle-config.ts): billing can be managed. */
   billingEnabled?: boolean;
   paddle?: { env: "sandbox" | "production"; clientToken: string } | null;
+  /** The reader's language for the billing card (English when left out). */
+  locale?: Locale;
+  billingCopy?: BillingSummaryCopy;
 };
 
 export function normalizeWorkingHoursFromDatabase(hours: BusinessHours[]): WorkingHoursState {
@@ -218,6 +222,8 @@ export function buildSettingsStateFromWorkspace({
   logoDisplayUrl: resolvedLogoDisplayUrl,
   billingEnabled = false,
   paddle = null,
+  locale,
+  billingCopy,
 }: SettingsWorkspaceData): SettingsState {
   const businessType = businessTypes.includes(business.businessType as BusinessType)
     ? (business.businessType as BusinessType)
@@ -262,7 +268,7 @@ export function buildSettingsStateFromWorkspace({
       template: reminderTemplate,
     },
     workflows,
-    billing: buildBillingSummary(business, { billingEnabled, paddle }),
+    billing: buildBillingSummary(business, { billingEnabled, paddle, locale, copy: billingCopy }),
   };
 }
 
