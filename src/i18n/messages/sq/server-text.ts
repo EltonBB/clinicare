@@ -144,6 +144,25 @@ export const serverText: Record<string, string> = {
   "Invalid message selection.": "Përzgjedhje e pavlefshme mesazhesh.",
   "Something went wrong.": "Diçka shkoi keq.",
 
+  // Inbox and WhatsApp sending
+  "Conversation not found in this clinic workspace.": "Biseda nuk u gjet në këtë klinikë.",
+  "We couldn't confirm this message was delivered. It may have reached the patient, so check the WhatsApp chat before sending it again.":
+    "Nuk mundëm ta konfirmonim që mesazhi u dorëzua. Mund t'i ketë arritur pacientit, prandaj kontrolloni bisedën në WhatsApp para se ta dërgoni përsëri.",
+  "Your session expired. Log in again to manage the inbox.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar mesazhet.",
+  "Write a message before sending.": "Shkruani një mesazh para se ta dërgoni.",
+  "WhatsApp is not connected for this clinic yet. Complete the clinic connection in Settings first.":
+    "WhatsApp nuk është lidhur ende për këtë klinikë. Përfundoni lidhjen te Cilësimet fillimisht.",
+  "We couldn't send the WhatsApp message.": "Nuk mundëm ta dërgonim mesazhin në WhatsApp.",
+  "Enter a valid name (and email, if provided) to convert this thread.":
+    "Shkruani një emër të vlefshëm (dhe email, nëse e jepni) për ta ruajtur këtë kontakt si pacient.",
+  "Client name is required to convert this thread.": "Emri i pacientit është i detyrueshëm për ta ruajtur këtë kontakt.",
+  "Messages can be up to 8,000 characters.": "Mesazhet mund të kenë deri në 8000 karaktere.",
+  "The message is too long to send.": "Mesazhi është shumë i gjatë për t'u dërguar.",
+  "You've sent a lot of messages in a short time. Wait a minute, then send again.":
+    "Keni dërguar shumë mesazhe brenda një kohe të shkurtër. Prisni një minutë, pastaj dërgoni përsëri.",
+  "You've sent a lot of messages in a short time. Wait about {minutes} minutes, then send again.":
+    "Keni dërguar shumë mesazhe brenda një kohe të shkurtër. Prisni rreth {minutes} minuta, pastaj dërgoni përsëri.",
+
   // No-show risk reasons (lib/no-show-risk.ts)
   "Missed a recent appointment": "Ka humbur një termin së fundmi",
   "Cancelled last-minute recently": "Ka anuluar në minutën e fundit së fundmi",

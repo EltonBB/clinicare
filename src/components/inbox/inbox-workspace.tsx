@@ -10,7 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { m } from "framer-motion";
+import { m as motion } from "framer-motion";
 import {
   ArrowRightLeft,
   ExternalLink,
@@ -47,6 +47,8 @@ import {
   WorkspacePage,
   searchFieldClass,
 } from "@/components/workspace/workspace-layout";
+import { useI18n, useServerText } from "@/i18n/client";
+import { fmt } from "@/i18n/format";
 import { cn, getInitials } from "@/lib/utils";
 import { fadeIn } from "@/lib/motion";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
@@ -137,6 +139,9 @@ export function InboxWorkspace({
   clientCount,
   recommendedClientId,
 }: InboxWorkspaceProps) {
+  const { m } = useI18n();
+  const t = m.inbox;
+  const serverText = useServerText();
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
     initialView.initialConversationId
@@ -200,7 +205,7 @@ export function InboxWorkspace({
   const bookingHref = recommendedClientId
     ? `/calendar/new?client=${recommendedClientId}`
     : "/calendar/new";
-  const connectionLine = connection.statusLabel;
+  const connectionLine = m.common.whatsappPhase[connection.phase];
 
   // Conversations the operator opened this session (marked read optimistically).
   // The 10s poll replaces the whole list from the DB; without this, a poll that
@@ -388,7 +393,7 @@ export function InboxWorkspace({
         }
 
         if (!result.ok || !result.conversation) {
-          setErrorMessage(result.error ?? "We couldn't load the full conversation history.");
+          setErrorMessage(serverText(result.error) ?? t.errors.loadHistory);
           scheduleRetry();
           return;
         }
@@ -419,7 +424,7 @@ export function InboxWorkspace({
       })
       .catch(() => {
         if (!cancelled) {
-          setErrorMessage("We couldn't load the full conversation history.");
+          setErrorMessage(t.errors.loadHistory);
           scheduleRetry();
         }
       });
@@ -430,7 +435,7 @@ export function InboxWorkspace({
         clearTimeout(retryTimer);
       }
     };
-  }, [selectedConversationId, selectedConversationHasFullHistory, hydrationRetryToken]);
+  }, [selectedConversationId, selectedConversationHasFullHistory, hydrationRetryToken, serverText, t.errors.loadHistory]);
 
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
@@ -453,7 +458,7 @@ export function InboxWorkspace({
         const result = await markConversationReadAction(conversationId);
 
         if (!result.ok) {
-          setErrorMessage(result.error ?? "We couldn't open the conversation.");
+          setErrorMessage(serverText(result.error) ?? t.errors.open);
           return;
         }
 
@@ -474,7 +479,7 @@ export function InboxWorkspace({
     }
 
     setConvertName(
-      activeConversation.displayName === "Unregistered contact"
+      activeConversation.displayName === t.view.unregistered
         ? ""
         : activeConversation.displayName
     );
@@ -504,7 +509,7 @@ export function InboxWorkspace({
       const result = await sendInboxMessageAction(activeConversationId, body);
 
       if (!result.ok) {
-        setErrorMessage(result.error ?? "We couldn't send the message.");
+        setErrorMessage(serverText(result.error) ?? t.errors.send);
         return;
       }
 
@@ -514,7 +519,7 @@ export function InboxWorkspace({
       if (!result.conversation) {
         removeConversationFromList(activeConversationId);
         setDraftMessage("");
-        setErrorMessage("Message sent. This conversation was deleted in another tab.");
+        setErrorMessage(t.errors.sentButDeleted);
         return;
       }
 
@@ -536,7 +541,7 @@ export function InboxWorkspace({
 
       if (!result.ok) {
         setConfirmingDeleteId(null);
-        setErrorMessage(result.error ?? "We couldn't delete the conversation.");
+        setErrorMessage(serverText(result.error) ?? t.errors.delete);
         return;
       }
 
@@ -559,7 +564,7 @@ export function InboxWorkspace({
       });
 
       if (!result.ok) {
-        setErrorMessage(result.error ?? "We couldn't convert this conversation.");
+        setErrorMessage(serverText(result.error) ?? t.errors.convert);
         return;
       }
 
@@ -571,7 +576,7 @@ export function InboxWorkspace({
       // it could be reloaded.
       if (!result.conversation) {
         removeConversationFromList(activeConversation.id);
-        setErrorMessage("Client saved. This conversation was deleted in another tab.");
+        setErrorMessage(t.errors.savedButDeleted);
         return;
       }
 
@@ -589,34 +594,32 @@ export function InboxWorkspace({
       <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
         <DialogContent className="max-w-[460px]">
           <DialogHeader>
-            <DialogTitle className="text-[1.1rem] font-semibold">Convert to client</DialogTitle>
-            <DialogDescription className="text-sm leading-6">
-              Create or link a client profile for this conversation without losing the history.
-            </DialogDescription>
+            <DialogTitle className="text-[1.1rem] font-semibold">{t.convert.title}</DialogTitle>
+            <DialogDescription className="text-sm leading-6">{t.convert.description}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-1">
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Phone</p>
+              <p className="text-xs font-medium text-muted-foreground">{t.convert.phone}</p>
               <p className="text-sm font-medium text-foreground">{activeConversation?.phone}</p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Client name</label>
+              <label className="text-xs font-medium text-muted-foreground">{t.convert.name}</label>
               <Input
                 value={convertName}
                 onChange={(event) => setConvertName(event.target.value)}
-                placeholder="Add the client name"
+                placeholder={t.convert.namePlaceholder}
                 className="h-10 rounded-(--radius-card) bg-white"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Email</label>
+              <label className="text-xs font-medium text-muted-foreground">{t.convert.email}</label>
               <Input
                 value={convertEmail}
                 onChange={(event) => setConvertEmail(event.target.value)}
-                placeholder="Optional email"
+                placeholder={t.convert.emailPlaceholder}
                 className="h-10 rounded-(--radius-card) bg-white"
               />
             </div>
@@ -628,11 +631,9 @@ export function InboxWorkspace({
               onClick={convertConversationToClient}
               disabled={isPending}
             >
-              {isPending ? "Converting..." : "Convert to client"}
+              {isPending ? t.convert.converting : t.convert.title}
             </Button>
-            <p className="text-xs font-medium leading-5 text-muted-foreground">
-              This keeps the thread history attached to the new client profile.
-            </p>
+            <p className="text-xs font-medium leading-5 text-muted-foreground">{t.convert.keepsHistory}</p>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -640,8 +641,8 @@ export function InboxWorkspace({
       <ConfirmDeleteDialog
         open={confirmingDeleteId !== null}
         onOpenChange={(open) => setConfirmingDeleteId(open ? confirmingDeleteId : null)}
-        title="Delete this conversation?"
-        description="This permanently removes the message history for this conversation. This can't be undone."
+        title={t.deleteTitle}
+        description={t.deleteDescription}
         isPending={isPending}
         onConfirm={() => {
           if (confirmingDeleteId) deleteConversation(confirmingDeleteId);
@@ -649,7 +650,7 @@ export function InboxWorkspace({
       />
 
       <WorkspacePage size="wide">
-        <WorkspaceHeader title="Inbox" />
+        <WorkspaceHeader title={t.title} />
 
         <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
           {/* lg:grid-rows-[minmax(0,1fr)]: the card's height is fixed at lg, but a
@@ -664,7 +665,7 @@ export function InboxWorkspace({
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search conversations..."
+                    placeholder={t.search}
                     className={searchFieldClass}
                   />
                 </div>
@@ -675,7 +676,7 @@ export function InboxWorkspace({
                     count={conversations.length}
                     onClick={() => setFilter("all")}
                   >
-                    All
+                    {t.all}
                   </FilterChip>
                   <FilterChip
                     shape="pill"
@@ -683,7 +684,7 @@ export function InboxWorkspace({
                     count={displayedUnreadTotal}
                     onClick={() => setFilter("unread")}
                   >
-                    Unread
+                    {t.unread}
                   </FilterChip>
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{connectionLine}</p>
@@ -749,19 +750,15 @@ export function InboxWorkspace({
                     cells={["identity"]}
                     rows={5}
                     className="pt-2"
-                    title="No conversations yet"
-                    description="Client WhatsApp messages land here, one thread per client."
+                    title={t.firstRunTitle}
+                    description={t.firstRunCopy}
                   />
                 ) : filteredConversations.length === 0 ? (
                   <div className="px-4 py-6">
                     <WorkspaceEmptyState
                       icon={Search}
-                      title="No conversations found"
-                      description={
-                        filter === "unread"
-                          ? "Everything is read. New replies appear here."
-                          : "Try a different search term or wait for the next client message."
-                      }
+                      title={t.noneFound}
+                      description={filter === "unread" ? t.allRead : t.tryAnotherSearch}
                       compact
                     />
                   </div>
@@ -771,7 +768,7 @@ export function InboxWorkspace({
 
             <section className="flex min-h-0 min-w-0 flex-col bg-white/92">
               {activeConversation ? (
-                <m.div
+                <motion.div
                   key={activeConversation.id}
                   variants={fadeIn}
                   initial="initial"
@@ -804,7 +801,7 @@ export function InboxWorkspace({
                             "h-9 rounded-(--radius-card) bg-white"
                           )}
                         >
-                          View profile
+                          {t.viewProfile}
                           <ExternalLink className="size-3.5" />
                         </Link>
                       ) : (
@@ -817,7 +814,7 @@ export function InboxWorkspace({
                           disabled={isPending}
                         >
                           <ArrowRightLeft className="size-3.5" />
-                          Convert to client
+                          {t.convertToClient}
                         </Button>
                       )}
                       <Button
@@ -827,8 +824,8 @@ export function InboxWorkspace({
                         className="size-9 rounded-(--radius-card) border-border/80 bg-white px-0 text-muted-foreground hover:border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
                         onClick={() => setConfirmingDeleteId(activeConversation.id)}
                         disabled={isPending}
-                        aria-label="Delete conversation"
-                        title="Delete conversation"
+                        aria-label={t.deleteConversation}
+                        title={t.deleteConversation}
                       >
                         <Trash2 className="size-4" />
                       </Button>
@@ -872,7 +869,7 @@ export function InboxWorkspace({
                               >
                                 {message.sender === "business" && isReminderMessage(message.body) ? (
                                   <span className="mb-2 inline-flex rounded-full bg-white/16 px-2.5 py-1 text-[11px] font-semibold text-primary-foreground/90">
-                                    Reminder
+                                    {t.reminder}
                                   </span>
                                 ) : null}
                                 <p>{message.body}</p>
@@ -913,7 +910,7 @@ export function InboxWorkspace({
                       <Input
                         value={draftMessage}
                         onChange={(event) => setDraftMessage(event.target.value)}
-                        placeholder={`Message ${activeConversation.displayName || ownerName}...`}
+                        placeholder={fmt(t.messagePlaceholder, { name: activeConversation.displayName || ownerName })}
                         className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                         onKeyDown={(event) => {
                           if (event.key === "Enter" && !event.shiftKey) {
@@ -925,41 +922,41 @@ export function InboxWorkspace({
                       <Button
                         onClick={sendMessage}
                         className="size-10 rounded-(--radius-card) px-0"
-                        aria-label="Send message"
+                        aria-label={t.sendMessage}
                         disabled={isPending || draftMessage.trim().length === 0}
                       >
                         <SendHorizontal className="size-4" />
                       </Button>
                     </div>
                   </div>
-                </m.div>
+                </motion.div>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-6">
                   <div className="max-w-sm text-center">
                     <p className="text-[15px] font-semibold text-foreground">
                       {query.trim().length > 0
-                        ? "No conversations match your search."
+                        ? t.noMatchTitle
                         : conversations.length > 0
-                          ? "No conversation selected"
+                          ? t.noSelectionTitle
                           : hasClients
-                            ? "A thread starts with a booking"
-                            : "Start with a client"}
+                            ? t.bookingStartsTitle
+                            : t.startWithClientTitle}
                     </p>
                     <p className="mt-1 text-sm leading-5 text-muted-foreground">
                       {query.trim().length > 0
-                        ? "Try a different client name or phone number."
+                        ? t.noMatchCopy
                         : conversations.length > 0
-                          ? "Pick one from the list to read and reply."
+                          ? t.noSelectionCopy
                           : hasClients
-                            ? "Reminders and replies for each client collect here."
-                            : "Their bookings, reminders and replies all connect to them."}
+                            ? t.bookingStartsCopy
+                            : t.startWithClientCopy}
                     </p>
                     {query.trim().length === 0 && conversations.length === 0 ? (
                       <Link
                         href={hasClients ? bookingHref : "/clients/new?next=calendar"}
                         className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-(--radius-tile)")}
                       >
-                        {hasClients ? "Book an appointment" : "Add a client"}
+                        {hasClients ? t.bookAppointment : t.addClient}
                       </Link>
                     ) : null}
                   </div>

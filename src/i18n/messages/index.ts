@@ -5,6 +5,7 @@ import { calendar as enCalendar } from "./en/calendar";
 import { clients as enClients } from "./en/clients";
 import { common as enCommon } from "./en/common";
 import { dashboard as enDashboard } from "./en/dashboard";
+import { inbox as enInbox } from "./en/inbox";
 import { legal as enLegal } from "./en/legal";
 import { marketing as enMarketing } from "./en/marketing";
 import { modules as enModules } from "./en/modules";
@@ -17,6 +18,7 @@ import { calendar as sqCalendar } from "./sq/calendar";
 import { clients as sqClients } from "./sq/clients";
 import { common as sqCommon } from "./sq/common";
 import { dashboard as sqDashboard } from "./sq/dashboard";
+import { inbox as sqInbox } from "./sq/inbox";
 import { legal as sqLegal } from "./sq/legal";
 import { marketing as sqMarketing } from "./sq/marketing";
 import { modules as sqModules } from "./sq/modules";
@@ -38,6 +40,7 @@ const en = {
   calendar: enCalendar,
   clients: enClients,
   staff: enStaff,
+  inbox: enInbox,
 };
 
 export type Messages = Translation<typeof en>;
@@ -57,6 +60,7 @@ const sq: Messages = {
   calendar: sqCalendar,
   clients: sqClients,
   staff: sqStaff,
+  inbox: sqInbox,
 };
 
 export const messages: Record<Locale, Messages> = { en, sq };

@@ -407,7 +407,8 @@ export function buildDashboardViewFromWorkspace(args: {
         contactName: conversationDisplayName(
           conversation.contactName,
           conversation.phoneNumber,
-          conversation.linkedClientName
+          conversation.linkedClientName,
+          locale
         ),
         snippet: lastMessage?.body ?? copy.noMessages,
         timeLabel:

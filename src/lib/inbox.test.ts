@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInboxViewFromWorkspace, conversationDisplayName, normalizePhone, phoneLookupKey } from "@/lib/inbox";
+import {
+  buildInboxConversation,
+  buildInboxViewFromWorkspace,
+  conversationDisplayName,
+  normalizePhone,
+  phoneLookupKey,
+} from "@/lib/inbox";
 
 describe("normalizePhone", () => {
   it("strips channel prefixes and formatting punctuation, keeping a leading +", () => {
@@ -42,6 +48,32 @@ describe("conversationDisplayName", () => {
   it("never shows a bare number or a blank as a name", () => {
     expect(conversationDisplayName("+383 44 123 456", "+38344123456")).toBe("Unregistered contact");
     expect(conversationDisplayName("  ", "+38344123456")).toBe("Unregistered contact");
+  });
+});
+
+describe("buildInboxConversation in Albanian", () => {
+  it("writes its labels and dates in the reader's language", () => {
+    const now = new Date("2026-10-31T12:00:00Z");
+    const conversation = buildInboxConversation(
+      {
+        id: "c1",
+        phoneNumber: "+38344123456",
+        contactName: "",
+        unreadCount: 0,
+        updatedAt: now,
+        messages: [
+          { id: "m1", direction: "OUTBOUND", body: "Hello", sentAt: new Date("2026-10-30T09:30:00Z"), deliveryStatus: "DELIVERED" },
+        ],
+      },
+      [],
+      now,
+      "Europe/Belgrade",
+      undefined,
+      "sq"
+    );
+
+    expect(conversation).toMatchObject({ displayName: "Kontakt i paregjistruar", lastMessageAt: "Dje" });
+    expect(conversation.messages[0]).toMatchObject({ dayLabel: "Dje", timestamp: "10:30", deliveryLabel: "Dorëzuar" });
   });
 });
 

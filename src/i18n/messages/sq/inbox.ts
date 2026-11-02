@@ -1,0 +1,66 @@
+import type { inbox as en } from "../en/inbox";
+import type { Translation } from "../types";
+
+export const inbox: Translation<typeof en> = {
+  meta: { inbox: "Mesazhet | Vela" },
+  title: "Mesazhet",
+
+  view: {
+    today: "Sot",
+    yesterday: "Dje",
+    unregistered: "Kontakt i paregjistruar",
+    clientLinked: "I lidhur me pacientin",
+    lastMessage: "Mesazhi i fundit {time}",
+    replyFirst: "Përgjigjuni fillimisht, pastaj ruajeni si pacient",
+    delivery: { QUEUED: "Në radhë", SENT: "Dërguar", DELIVERED: "Dorëzuar", READ: "Lexuar", FAILED: "Dështoi" },
+  },
+
+  search: "Kërkoni biseda...",
+  all: "Të gjitha",
+  unread: "Të palexuara",
+  firstRunTitle: "Ende nuk ka biseda",
+  firstRunCopy: "Mesazhet e pacientëve në WhatsApp vijnë këtu, një bisedë për çdo pacient.",
+  noneFound: "Nuk u gjet asnjë bisedë",
+  allRead: "Gjithçka është lexuar. Përgjigjet e reja shfaqen këtu.",
+  tryAnotherSearch: "Provoni një kërkim tjetër ose prisni mesazhin e radhës nga pacienti.",
+  viewProfile: "Shiko profilin",
+  convertToClient: "Ruaj si pacient",
+  deleteConversation: "Fshi bisedën",
+  reminder: "Kujtesë",
+  messagePlaceholder: "Mesazh për {name}...",
+  sendMessage: "Dërgo mesazhin",
+  noMatchTitle: "Asnjë bisedë nuk përputhet me kërkimin tuaj.",
+  noMatchCopy: "Provoni një emër pacienti ose numër telefoni tjetër.",
+  noSelectionTitle: "Asnjë bisedë e zgjedhur",
+  noSelectionCopy: "Zgjidhni një nga lista për ta lexuar dhe për t'u përgjigjur.",
+  bookingStartsTitle: "Një bisedë fillon me një termin",
+  bookingStartsCopy: "Kujtesat dhe përgjigjet për çdo pacient mblidhen këtu.",
+  startWithClientTitle: "Filloni me një pacient",
+  startWithClientCopy: "Terminet, kujtesat dhe përgjigjet lidhen të gjitha me pacientin.",
+  bookAppointment: "Cakto një termin",
+  addClient: "Shto një pacient",
+
+  convert: {
+    title: "Ruaj si pacient",
+    description: "Krijoni ose lidhni një profil pacienti për këtë bisedë pa humbur historinë.",
+    phone: "Telefoni",
+    name: "Emri i pacientit",
+    namePlaceholder: "Shtoni emrin e pacientit",
+    email: "Email",
+    emailPlaceholder: "Email opsional",
+    converting: "Duke ruajtur...",
+    keepsHistory: "Historia e bisedës mbetet e lidhur me profilin e ri të pacientit.",
+  },
+  deleteTitle: "Të fshihet kjo bisedë?",
+  deleteDescription: "Kjo heq përgjithmonë historinë e mesazheve të kësaj bisede. Ky veprim nuk mund të zhbëhet.",
+
+  errors: {
+    loadHistory: "Nuk mundëm ta ngarkonim historinë e plotë të bisedës.",
+    open: "Nuk mundëm ta hapnim bisedën.",
+    send: "Nuk mundëm ta dërgonim mesazhin.",
+    sentButDeleted: "Mesazhi u dërgua. Kjo bisedë u fshi në një skedë tjetër.",
+    delete: "Nuk mundëm ta fshinim bisedën.",
+    convert: "Nuk mundëm ta ruanim këtë kontakt si pacient.",
+    savedButDeleted: "Pacienti u ruajt. Kjo bisedë u fshi në një skedë tjetër.",
+  },
+};

@@ -20,6 +20,8 @@ export const common = {
   nextMonth: "Next month",
   // Monday first, two letters (month grids).
   weekdayInitials: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+  // Keyed by the WhatsApp connection phase (lib/settings).
+  whatsappPhase: { NOT_STARTED: "Not connected", STARTING: "Connecting", CONNECTED: "Connected", NEEDS_SUPPORT: "Needs attention" },
   noShowRisk: { medium: "Medium risk", high: "High risk" },
   appointmentStatus: {
     confirmed: "Confirmed",

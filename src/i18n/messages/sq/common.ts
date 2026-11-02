@@ -22,6 +22,7 @@ export const common: Translation<typeof en> = {
   previousMonth: "Muaji i kaluar",
   nextMonth: "Muaji tjetër",
   weekdayInitials: ["Hë", "Ma", "Më", "En", "Pr", "Sh", "Di"],
+  whatsappPhase: { NOT_STARTED: "Jo e lidhur", STARTING: "Duke u lidhur", CONNECTED: "E lidhur", NEEDS_SUPPORT: "Kërkon vëmendje" },
   noShowRisk: { medium: "Rrezik mesatar", high: "Rrezik i lartë" },
   appointmentStatus: {
     confirmed: "Konfirmuar",

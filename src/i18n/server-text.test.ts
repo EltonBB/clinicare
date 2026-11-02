@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { MAX_MESSAGE_BODY_LENGTH } from "@/lib/messaging/limits";
+
 import { serverText } from "./messages/sq/server-text";
 import { translateServerText } from "./server-text";
 
@@ -20,6 +22,9 @@ const COVERED = [
   "src/app/(workspace)/clients/actions.ts",
   "src/app/(workspace)/staff/actions.ts",
   "src/lib/mobile/admin-inbox.ts",
+  "src/app/(workspace)/inbox/actions.ts",
+  "src/lib/inbox-server.ts",
+  "src/lib/messaging/limits.ts",
 ];
 
 // Literals in covered files that no screen shows: log lines, and the staff
@@ -36,6 +41,10 @@ const NOT_SHOWN = new Set([
   "Failed to mark staff thread read.",
   "Failed to mark staff check-ins seen.",
   "Failed to notify staff after saving an admin message.",
+  "WhatsApp outbound send held back by the clinic's sending ceiling.",
+  "WhatsApp outbound send failed.",
+  "Inbox unread-conversation merge returned an unusually large result.",
+  "Failed to normalize inbox conversations for business.",
 ]);
 
 // Literal sentences an action shows a person: `error:`, `success:`, `message:`
@@ -59,6 +68,15 @@ describe("server messages in Albanian", () => {
     const names = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
     expect(names(target)).toEqual(names(source));
     expect(target).not.toBe(source);
+  });
+
+  // Built at runtime, so the literal scan above can't see them.
+  it("translates the messages built from numbers", () => {
+    const tooLong = `Messages can be up to ${MAX_MESSAGE_BODY_LENGTH.toLocaleString("en-US")} characters.`;
+    expect(translateServerText(tooLong, "sq")).not.toBe(tooLong);
+    expect(translateServerText("You've sent a lot of messages in a short time. Wait about 3 minutes, then send again.", "sq")).toContain(
+      "rreth 3 minuta",
+    );
   });
 
   it("fills placeholders and leaves unknown text and English alone", () => {
