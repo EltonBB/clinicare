@@ -697,7 +697,7 @@ export async function convertConversationToClientAction(
   revalidatePath("/dashboard");
   revalidatePath("/reports");
   revalidatePath(`/clients/${clientId}`);
-  await recordAudit({ businessId, actor: ownerActor(context.user), action: "client.create", clientId, recordId: conversation.id });
+  await recordAudit({ businessId, actor: ownerActor(context.user), action: "client.create", clientId, recordId: clientId });
 
   return {
     ok: true,

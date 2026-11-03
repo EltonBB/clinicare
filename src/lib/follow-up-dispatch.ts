@@ -121,7 +121,7 @@ export async function dispatchFollowUpDraft(args: {
   let failure: string | null = null;
   let rateLimited = false;
   // The draft as the last check before sending read it.
-  let claimed: { kind: string; appointmentId: string | null; appointmentGeneration: number | null } | null = null;
+  let claimed: { kind: string; appointmentId: string | null; appointmentGeneration: number | null; clientId?: string | null } | null = null;
   let retryable = false;
   // The provider can't say whether the message left (see SendFailureReason).
   let uncertain = false;
@@ -219,7 +219,7 @@ export async function dispatchFollowUpDraft(args: {
         draftId,
       });
     });
-    return { ok: true, clientId: null, notice: FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE };
+    return { ok: true, clientId: claimed?.clientId ?? null, notice: FOLLOW_UP_DELIVERY_UNCERTAIN_NOTICE };
   }
 
   if (!sent) {

@@ -97,6 +97,15 @@ export async function sendFollowUpDraftAction(
   }
 
   revalidateFollowUpSurfaces();
+  // A send whose delivery is uncertain may still have reached the patient, so
+  // it is audited like any other send.
+  await recordAudit({
+    businessId: business.id,
+    actor: ownerActor(context.user),
+    action: "conversation.send",
+    clientId: outcome.clientId ?? null,
+    recordId: draftId,
+  });
   if (outcome.notice) {
     // ok: the draft is handled, so its row leaves the list; the notice is shown
     // by the list itself, since this row won't be there to show it.
@@ -107,13 +116,6 @@ export async function sendFollowUpDraftAction(
   // sendInboxMessageAction revalidates for the same kind of write.
   revalidatePath("/dashboard");
   if (outcome.clientId) revalidatePath(`/clients/${outcome.clientId}`);
-  await recordAudit({
-    businessId: business.id,
-    actor: ownerActor(context.user),
-    action: "conversation.send",
-    clientId: outcome.clientId ?? null,
-    recordId: draftId,
-  });
   return { ok: true };
 }
 
