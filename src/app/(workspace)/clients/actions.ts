@@ -679,7 +679,7 @@ export async function addClientGalleryItemAction(
     };
   }
 
-  await prisma.clientGalleryItem.create({
+  const created = await prisma.clientGalleryItem.create({
     data: {
       businessId: business.id,
       clientId: payload.clientId,
@@ -688,7 +688,7 @@ export async function addClientGalleryItemAction(
     },
   });
 
-  await auditPatient(context, "galleryItem.create", payload.clientId);
+  await auditPatient(context, "galleryItem.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -918,7 +918,7 @@ export async function addClientMedicationAction(
     };
   }
 
-  await prisma.clientMedication.create({
+  const created = await prisma.clientMedication.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -930,7 +930,7 @@ export async function addClientMedicationAction(
     },
   });
 
-  await auditPatient(context, "medication.create", payload.clientId);
+  await auditPatient(context, "medication.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -987,7 +987,7 @@ export async function addClientDocumentAction(
   const normalizedFileUrl = normalizeOptionalPublicUrl(fileCandidate) || null;
   const normalizedStorageUrl = normalizeOptionalPublicUrl(storageCandidate);
 
-  await prisma.clientDocument.create({
+  const created = await prisma.clientDocument.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1003,7 +1003,7 @@ export async function addClientDocumentAction(
     },
   });
 
-  await auditPatient(context, "document.create", payload.clientId);
+  await auditPatient(context, "document.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1043,8 +1043,9 @@ export async function addClientPaymentAction(
   // lock, not the value read before it — otherwise a currency change that
   // commits between that earlier read and the lock would still leave "€85"
   // parsed as euros and immediately displayed as dollars (Codex #131).
+  let paymentId: string;
   try {
-    await prisma.$transaction(async (tx) => {
+    paymentId = await prisma.$transaction(async (tx) => {
       await acquireBusinessFinancialLock(tx, context.business.id);
 
       const currentBusiness = await tx.business.findUniqueOrThrow({
@@ -1057,7 +1058,7 @@ export async function addClientPaymentAction(
         throw new InvalidPaymentAmountError();
       }
 
-      await tx.clientPayment.create({
+      const created = await tx.clientPayment.create({
         data: {
           businessId: context.business.id,
           clientId: payload.clientId,
@@ -1072,6 +1073,7 @@ export async function addClientPaymentAction(
           paidAt: parseOptionalDate(payload.paidAt),
         },
       });
+      return created.id;
     });
   } catch (error) {
     if (error instanceof InvalidPaymentAmountError) {
@@ -1082,7 +1084,7 @@ export async function addClientPaymentAction(
 
   revalidatePaymentSurfaces();
 
-  await auditPatient(context, "payment.create", payload.clientId);
+  await auditPatient(context, "payment.create", payload.clientId, paymentId);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1109,7 +1111,7 @@ export async function addClientHealthItemAction(
     return { ok: false, error: "Health item label is required." };
   }
 
-  await prisma.clientHealthItem.create({
+  const created = await prisma.clientHealthItem.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1121,7 +1123,7 @@ export async function addClientHealthItemAction(
     },
   });
 
-  await auditPatient(context, "healthItem.create", payload.clientId);
+  await auditPatient(context, "healthItem.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1161,7 +1163,7 @@ export async function addClientCareNoteAction(
       })
     : null;
 
-  await prisma.clientCareNote.create({
+  const created = await prisma.clientCareNote.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1171,7 +1173,7 @@ export async function addClientCareNoteAction(
     },
   });
 
-  await auditPatient(context, "careNote.create", payload.clientId);
+  await auditPatient(context, "careNote.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1236,7 +1238,7 @@ export async function addClientTreatmentPlanItemAction(
     return { ok: false, error: "Treatment plan item title is required." };
   }
 
-  await prisma.clientTreatmentPlanItem.create({
+  const created = await prisma.clientTreatmentPlanItem.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1247,7 +1249,7 @@ export async function addClientTreatmentPlanItemAction(
     },
   });
 
-  await auditPatient(context, "treatmentItem.create", payload.clientId);
+  await auditPatient(context, "treatmentItem.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1275,7 +1277,7 @@ export async function addClientFollowUpReminderAction(
     return { ok: false, error: "Reminder title and date are required." };
   }
 
-  await prisma.clientFollowUpReminder.create({
+  const created = await prisma.clientFollowUpReminder.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1287,7 +1289,7 @@ export async function addClientFollowUpReminderAction(
     },
   });
 
-  await auditPatient(context, "followUpReminder.create", payload.clientId);
+  await auditPatient(context, "followUpReminder.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
