@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { dispatchFollowUpDraft } from "@/lib/follow-up-dispatch";
 import { logger } from "@/lib/logger";
@@ -106,6 +107,13 @@ export async function sendFollowUpDraftAction(
   // sendInboxMessageAction revalidates for the same kind of write.
   revalidatePath("/dashboard");
   if (outcome.clientId) revalidatePath(`/clients/${outcome.clientId}`);
+  await recordAudit({
+    businessId: business.id,
+    actor: ownerActor(context.user),
+    action: "conversation.send",
+    clientId: outcome.clientId ?? null,
+    recordId: draftId,
+  });
   return { ok: true };
 }
 

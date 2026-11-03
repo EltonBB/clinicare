@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 import { NewAppointmentForm } from "@/components/calendar/new-appointment-form";
 import { getI18n } from "@/i18n/server";
@@ -8,6 +9,7 @@ import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { isProBusinessPlan } from "@/lib/billing";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
 import { canUseWorkspace } from "@/lib/billing-access";
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { buildCalendarViewFromRecords } from "@/lib/calendar";
 import { prisma } from "@/lib/prisma";
@@ -102,6 +104,16 @@ export default async function EditAppointmentPage({
   if (!appointment) {
     notFound();
   }
+
+  after(() =>
+    recordAudit({
+      businessId: business.id,
+      actor: ownerActor(user),
+      action: "appointment.view",
+      clientId: appointment.clientId,
+      recordId: appointment.id,
+    })
+  );
 
   // Ensure the appointment's current client is in the bounded picker list so the
   // combobox shows it even when it isn't among the 25 most recent.

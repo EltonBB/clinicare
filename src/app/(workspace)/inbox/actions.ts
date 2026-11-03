@@ -1,12 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 
 import { getLocale } from "@/i18n/server";
 import { MAX_MESSAGE_BODY_LENGTH } from "@/lib/messaging/limits";
 import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import {
@@ -177,6 +179,17 @@ export async function hydrateConversationAction(
   }
 
   const conversation = await hydrateConversation(conversationId, context.business.id);
+  if (conversation) {
+    after(() =>
+      recordAudit({
+        businessId: context.business.id,
+        actor: ownerActor(context.user),
+        action: "conversation.view",
+        clientId: conversation.clientId ?? null,
+        recordId: conversationId,
+      })
+    );
+  }
 
   return conversation ? { ok: true, conversation } : { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
 }
@@ -406,6 +419,7 @@ export async function sendInboxMessageAction(
   if (matchedClient) {
     revalidatePath(`/clients/${matchedClient.id}`);
   }
+  await recordAudit({ businessId: context.business.id, actor: ownerActor(context.user), action: "conversation.send", clientId: matchedClient?.id ?? null, recordId: conversation.id });
 
   return {
     ok: true,
@@ -489,6 +503,13 @@ export async function deleteConversationAction(
   if (linkedClient) {
     revalidatePath(`/clients/${linkedClient.id}`);
   }
+  await recordAudit({
+    businessId: context.business.id,
+    actor: ownerActor(context.user),
+    action: "conversation.delete",
+    clientId: linkedClient?.id ?? null,
+    recordId: conversationId,
+  });
 
   return {
     ok: true,
@@ -653,6 +674,7 @@ export async function convertConversationToClientAction(
   revalidatePath("/dashboard");
   revalidatePath("/reports");
   revalidatePath(`/clients/${clientId}`);
+  await recordAudit({ businessId, actor: ownerActor(context.user), action: "client.create", clientId, recordId: conversation.id });
 
   return {
     ok: true,

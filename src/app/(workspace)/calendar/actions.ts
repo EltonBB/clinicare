@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
 import { retryOnWriteConflict } from "@/lib/prisma-retry";
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { getAuthedBusiness as getAuthedBusinessContext, toBusinessIdentity } from "@/lib/business";
 import { loadCalendarMonth, type CalendarMonthData } from "@/lib/calendar-data";
 import { isValidMonthKey } from "@/lib/calendar-range";
@@ -786,6 +787,7 @@ export async function saveAppointmentAction(
       );
     }
 
+    await recordAudit({ businessId: business.id, actor: ownerActor(context.user), action: payload.id ? "appointment.update" : "appointment.create", clientId: payload.clientId, recordId: appointmentId! });
     return {
       ok: true,
       appointment: await hydrateAppointment(appointmentId!, toBusinessIdentity(business, context.user).ownerName),
@@ -840,6 +842,7 @@ export async function cancelAppointmentAction(
   }
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+  await recordAudit({ businessId: business.id, actor: ownerActor(context.user), action: "appointment.cancel", clientId: outcome.clientId, recordId: outcome.appointmentId });
 
   if (outcome.changed) {
     await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, outcome.appointmentId);
@@ -928,6 +931,7 @@ export async function recordAppointmentAttendanceAction(
     }
   }
 
+  await recordAudit({ businessId: business.id, actor: ownerActor(context.user), action: "appointment.update", clientId: outcome.clientId, recordId: outcome.appointmentId });
   return { ok: true, status: attended ? "completed" : "no-show", clientId: outcome.clientId };
 }
 
@@ -1029,6 +1033,7 @@ export async function deleteAppointmentAction(
   }
 
   revalidateCalendarSurfaces([outcome.clientId], [outcome.staffMemberId], [outcome.appointmentId]);
+  await recordAudit({ businessId: business.id, actor: ownerActor(context.user), action: "appointment.delete", clientId: outcome.clientId, recordId: outcome.appointmentId });
 
   // No deep link — the row is gone, unlike a cancel which keeps it (status only).
   await notifyStaffOfAppointmentChange(business.id, outcome.staffMemberId, null);
