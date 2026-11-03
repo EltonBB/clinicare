@@ -17,7 +17,7 @@ import {
   APPOINTMENT_STAFF_UNAVAILABLE_WHERE,
   AVAILABLE_STAFF_WHERE,
 } from "@/lib/staff-eligibility";
-import { formatZonedFullDate, formatZonedTime, formatZonedTime24 } from "@/lib/time-zone";
+import { formatZonedTime24 } from "@/lib/time-zone";
 import { WAITLIST_ENTRY_REMOVED_ERROR } from "@/lib/waitlist";
 import { findMatchingWaitlistCandidates, releaseWaitlistEntry } from "@/lib/waitlist-data";
 import type { DraftMessage } from "@/lib/workflow-generators";

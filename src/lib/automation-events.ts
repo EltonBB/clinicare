@@ -6,7 +6,6 @@ import { dispatchSoon } from "@/lib/automation-dispatch-soon";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { lockAppointmentExclusive, lockAppointmentShared } from "@/lib/row-locks";
-import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 import { checkupDedupeKey } from "@/lib/workflow-generators";
 
 const HOUR_MS = 3_600_000;
