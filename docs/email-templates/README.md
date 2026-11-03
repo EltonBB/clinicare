@@ -39,6 +39,11 @@ account with no saved language (anyone who signed up before this) gets English.
 A password reset uses the language saved on the account, not the page the
 reset was asked from, since the person isn't signed in then.
 
+Each button link also ends in `&lang=sq` or `&lang=en`, the email's own
+language. `/auth/confirm` saves it in the `vela_locale` cookie (the one the
+language switcher sets) before it redirects, so the confirm, new-password and
+login pages after the link are in the same language as the email.
+
 For the subject, paste the same choice into the Subject field, for example:
 
 ```
@@ -55,7 +60,7 @@ Every button links to the app's own confirm route, built from the redirect the
 app passes with each request:
 
 ```
-{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=<type>
+{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=<type>&lang={{ if $sq }}sq{{ else }}en{{ end }}
 ```
 
 The app always sends `RedirectTo` as `<APP_URL>/auth/confirm?next=<page>`

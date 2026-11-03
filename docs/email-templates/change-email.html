@@ -28,7 +28,7 @@
             </tr>
             <tr>
               <td style="padding:28px 32px 0;">
-                <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email_change"
+                <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email_change&lang={{ if $sq }}sq{{ else }}en{{ end }}"
                    style="display:inline-block;background:#14152f;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:13px 24px;border-radius:8px;">
                   {{ if $sq }}Konfirmo email-in e ri{{ else }}Confirm new email{{ end }}
                 </a>
