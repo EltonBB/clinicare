@@ -59,6 +59,9 @@
     "postcss": "^8.5.13",
     "@prisma/config": {
       "deepmerge-ts": "8.0.2"
+    },
+    "@sentry/bundler-plugins": {
+      "glob": "^14.0.3"
     }
   }
 }
