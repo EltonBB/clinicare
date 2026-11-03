@@ -354,11 +354,14 @@ export function InboxWorkspace({
   // an otherwise-inert dependency of the effect below.
   const [hydrationRetryToken, setHydrationRetryToken] = useState(0);
 
-  // One audit entry per chat opened (any way it becomes selected). Fire and
+  // One audit entry per chat shown (any way it comes on screen). Fire and
   // forget: the log never holds up reading the chat.
+  // Keyed to the chat actually on screen, which a search or the Unread filter
+  // can switch to another row without changing the selection.
+  const displayedConversationId = activeConversation?.id;
   useEffect(() => {
-    if (selectedConversationId) void recordConversationViewAction(selectedConversationId).catch(() => {});
-  }, [selectedConversationId]);
+    if (displayedConversationId) void recordConversationViewAction(displayedConversationId).catch(() => {});
+  }, [displayedConversationId]);
 
   // Hydrates the selected conversation's full thread whenever it's only a
   // 1-message preview (hasFullHistory: false) — covers every way a
