@@ -191,6 +191,10 @@ describe("sendInboxMessageAction", () => {
       where: { businessId: "biz_1" },
       data: expect.objectContaining({ status: "ERRORED" }),
     });
+    // It may have reached the patient, so it is audited as a send.
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "conversation.send", recordId: CONVERSATION_ID })
+    );
   });
 
   it("keeps the plain failure copy for a definite failure", async () => {

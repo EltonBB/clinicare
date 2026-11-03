@@ -392,6 +392,16 @@ export async function sendInboxMessageAction(
         data: { status: "ERRORED", lastSyncedAt: new Date() },
       });
     }
+    // The message may already be with the patient: audited like a send.
+    if (result.reason === "delivery_uncertain") {
+      await recordAudit({
+        businessId: context.business.id,
+        actor: ownerActor(context.user),
+        action: "conversation.send",
+        clientId: matchedClient?.id ?? null,
+        recordId: conversation.id,
+      });
+    }
     return {
       ok: false,
       // Surface the specific, customer-safe copy for a too-long message and for
