@@ -1,6 +1,6 @@
 # Albanian glossary (sq)
 
-The terminology and tone every Albanian string in Vela follows: the website, the clinic workspace, patient messages and the Vela Staff app. Add a term here before using it in a dictionary. Marked *(review)* = a judgment call the owner should confirm.
+The terminology and tone every Albanian string in Vela follows: the website, the clinic workspace, patient messages and the Vela Staff app. Add a term here before using it in a dictionary.
 
 ## Tone and grammar
 
@@ -21,7 +21,7 @@ The terminology and tone every Albanian string in Vela follows: the website, the
 |---|---|
 | Dashboard | Paneli |
 | Calendar | Kalendari |
-| Clients | Pacientët *(review: "Klientët" if non-clinic businesses matter more)* |
+| Clients | Pacientët |
 | Staff | Stafi |
 | Inbox | Mesazhet |
 | Automations | Automatizimet |
@@ -37,7 +37,7 @@ The terminology and tone every Albanian string in Vela follows: the website, the
 |---|---|---|
 | appointment / booking | termin (terminet) | "booking" also *termin*; *rezervim* only where the English stresses the act of booking |
 | visit | vizitë (vizitat) | |
-| client / patient | pacient (pacientët) | *(review)* |
+| client / patient | pacient (pacientët) | Decided 2026-11-03: Vela is sold to clinics, so *pacient* everywhere. Switch to *klient* only if non-clinic businesses become the main market. |
 | new patient | pacient i ri | |
 | patient record | kartela e pacientit | |
 | staff member | anëtar i stafit | plural *anëtarët e stafit* |
