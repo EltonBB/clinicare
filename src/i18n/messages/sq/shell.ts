@@ -62,6 +62,15 @@ export const shell: Translation<typeof en> = {
     checkinYesterday: "Hyri në punë dje në {time}. Verifikoni që është aty.",
     checkinOn: "Hyri në punë më {day} në {time}. Verifikoni që është aty.",
   },
+  idle: {
+    title: "Jeni ende këtu?",
+    body: {
+      one: "Për privatësi, do të dilni automatikisht pas {count} sekonde.",
+      other: "Për privatësi, do të dilni automatikisht pas {count} sekondash.",
+    },
+    stay: "Qëndro në llogari",
+    signOut: "Dil tani",
+  },
   search: {
     label: "Kërkoni pacientë, termine, staf dhe mesazhe",
     short: "Kërko",

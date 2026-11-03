@@ -26,6 +26,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const nextPath = typeof params.next === "string" ? params.next : "/dashboard";
   const reset = params.reset === "1";
   const verified = params.verified === "1";
+  const idle = params.idle === "1";
   const t = (await getI18n()).m.auth.login;
 
   return (
@@ -41,6 +42,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       {verified ? (
         <div className="state-pop mt-6 rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
           {t.verified}
+        </div>
+      ) : null}
+      {idle ? (
+        <div className="state-pop mt-6 rounded-(--radius-field) border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary">
+          {t.idle}
         </div>
       ) : null}
       {reset ? (

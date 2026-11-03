@@ -378,6 +378,13 @@ export async function logoutAction() {
   redirect("/login");
 }
 
+/** The workspace's idle sign-out: the login page then says why. */
+export async function idleLogoutAction() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login?idle=1");
+}
+
 export async function forgotPasswordAction(
   _: PasswordResetActionState,
   formData: FormData

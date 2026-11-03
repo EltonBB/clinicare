@@ -9,6 +9,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction, type ReminderWarning } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { IdleSignOut } from "@/components/layout/idle-sign-out";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import {
   GlobalSearchPalette,
@@ -379,6 +380,7 @@ export function AppShell({
                 </DropdownMenuContent>
               </DropdownMenu>
               <form ref={logoutFormRef} action={logoutAction} className="hidden" />
+              <IdleSignOut />
             </div>
           </div>
         </aside>
