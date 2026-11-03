@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 
 import { getLocale } from "@/i18n/server";
+import { ownerActor, recordAudit, type AuditEntry } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { retireMovedCheckupDrafts } from "@/lib/automation-events";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
@@ -589,6 +590,7 @@ async function requireOwnedClient(clientId: string) {
 
   return {
     business: context.business,
+    user: context.user,
     client,
   } as const;
 }
@@ -677,7 +679,7 @@ export async function addClientGalleryItemAction(
     };
   }
 
-  await prisma.clientGalleryItem.create({
+  const created = await prisma.clientGalleryItem.create({
     data: {
       businessId: business.id,
       clientId: payload.clientId,
@@ -686,6 +688,7 @@ export async function addClientGalleryItemAction(
     },
   });
 
+  await auditPatient(context, "galleryItem.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -869,6 +872,7 @@ export async function saveClientAction(
     }
 
     await syncClientInboxThread(business.id, clientId!);
+    await auditPatient(context, payload.id ? "client.update" : "client.create", clientId!);
 
     revalidateClientDirectory();
     revalidateClientDetail(clientId!);
@@ -914,7 +918,7 @@ export async function addClientMedicationAction(
     };
   }
 
-  await prisma.clientMedication.create({
+  const created = await prisma.clientMedication.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -926,6 +930,7 @@ export async function addClientMedicationAction(
     },
   });
 
+  await auditPatient(context, "medication.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -982,7 +987,7 @@ export async function addClientDocumentAction(
   const normalizedFileUrl = normalizeOptionalPublicUrl(fileCandidate) || null;
   const normalizedStorageUrl = normalizeOptionalPublicUrl(storageCandidate);
 
-  await prisma.clientDocument.create({
+  const created = await prisma.clientDocument.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -998,6 +1003,7 @@ export async function addClientDocumentAction(
     },
   });
 
+  await auditPatient(context, "document.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1037,8 +1043,9 @@ export async function addClientPaymentAction(
   // lock, not the value read before it — otherwise a currency change that
   // commits between that earlier read and the lock would still leave "€85"
   // parsed as euros and immediately displayed as dollars (Codex #131).
+  let paymentId: string;
   try {
-    await prisma.$transaction(async (tx) => {
+    paymentId = await prisma.$transaction(async (tx) => {
       await acquireBusinessFinancialLock(tx, context.business.id);
 
       const currentBusiness = await tx.business.findUniqueOrThrow({
@@ -1051,7 +1058,7 @@ export async function addClientPaymentAction(
         throw new InvalidPaymentAmountError();
       }
 
-      await tx.clientPayment.create({
+      const created = await tx.clientPayment.create({
         data: {
           businessId: context.business.id,
           clientId: payload.clientId,
@@ -1066,6 +1073,7 @@ export async function addClientPaymentAction(
           paidAt: parseOptionalDate(payload.paidAt),
         },
       });
+      return created.id;
     });
   } catch (error) {
     if (error instanceof InvalidPaymentAmountError) {
@@ -1076,6 +1084,7 @@ export async function addClientPaymentAction(
 
   revalidatePaymentSurfaces();
 
+  await auditPatient(context, "payment.create", payload.clientId, paymentId);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1102,7 +1111,7 @@ export async function addClientHealthItemAction(
     return { ok: false, error: "Health item label is required." };
   }
 
-  await prisma.clientHealthItem.create({
+  const created = await prisma.clientHealthItem.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1114,6 +1123,7 @@ export async function addClientHealthItemAction(
     },
   });
 
+  await auditPatient(context, "healthItem.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1153,7 +1163,7 @@ export async function addClientCareNoteAction(
       })
     : null;
 
-  await prisma.clientCareNote.create({
+  const created = await prisma.clientCareNote.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1163,6 +1173,7 @@ export async function addClientCareNoteAction(
     },
   });
 
+  await auditPatient(context, "careNote.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1200,6 +1211,7 @@ export async function updateClientMedicalBackgroundAction(
     },
   });
 
+  await auditPatient(context, "client.update", payload.clientId);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1226,7 +1238,7 @@ export async function addClientTreatmentPlanItemAction(
     return { ok: false, error: "Treatment plan item title is required." };
   }
 
-  await prisma.clientTreatmentPlanItem.create({
+  const created = await prisma.clientTreatmentPlanItem.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1237,6 +1249,7 @@ export async function addClientTreatmentPlanItemAction(
     },
   });
 
+  await auditPatient(context, "treatmentItem.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1264,7 +1277,7 @@ export async function addClientFollowUpReminderAction(
     return { ok: false, error: "Reminder title and date are required." };
   }
 
-  await prisma.clientFollowUpReminder.create({
+  const created = await prisma.clientFollowUpReminder.create({
     data: {
       businessId: context.business.id,
       clientId: payload.clientId,
@@ -1276,6 +1289,7 @@ export async function addClientFollowUpReminderAction(
     },
   });
 
+  await auditPatient(context, "followUpReminder.create", payload.clientId, created.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1404,6 +1418,7 @@ export async function deleteClientAction(rawClientId: string): Promise<DeleteCli
   // survives for the /api/cron/storage-cleanup sweep to retry later (see
   // lib/media-storage-server.ts).
   after(() => attemptStorageCleanup(result.pending));
+  await auditPatient(context, "client.delete", clientId);
 
   revalidateClientDirectory();
 
@@ -1427,8 +1442,8 @@ type OwnedSubRecordContext =
   | { error: string }
   // currency is only read by the payment actions (to validate a typed amount
   // against the workspace's own currency) — every other sub-record action
-  // uses just the id, same as before.
-  | { business: { id: string; currency: string } };
+  // uses just the id, same as before. user is the owner, for the audit log.
+  | { business: { id: string; currency: string }; user: { id: string } };
 
 async function requireOwnedSubRecord(
   payload: DeleteClientSubRecordPayload,
@@ -1448,7 +1463,17 @@ async function requireOwnedSubRecord(
     return { error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
-  return { business: context.business };
+  return { business: context.business, user: context.user };
+}
+
+/** One audit entry for a change to a patient's record by the signed-in owner. */
+function auditPatient(
+  context: { business: { id: string }; user: { id: string } },
+  action: AuditEntry["action"],
+  clientId: string,
+  recordId?: string
+) {
+  return recordAudit({ businessId: context.business.id, actor: ownerActor(context.user), action, clientId, recordId });
 }
 
 export async function updateClientMedicationAction(
@@ -1490,6 +1515,7 @@ export async function updateClientMedicationAction(
     },
   });
 
+  await auditPatient(context, "medication.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1527,6 +1553,7 @@ export async function deleteClientMedicationAction(
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
+  await auditPatient(context, "medication.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1569,6 +1596,7 @@ export async function updateClientHealthItemAction(
     },
   });
 
+  await auditPatient(context, "healthItem.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1606,6 +1634,7 @@ export async function deleteClientHealthItemAction(
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
+  await auditPatient(context, "healthItem.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1645,6 +1674,7 @@ export async function updateClientCareNoteAction(
     },
   });
 
+  await auditPatient(context, "careNote.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1682,6 +1712,7 @@ export async function deleteClientCareNoteAction(
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
+  await auditPatient(context, "careNote.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1723,6 +1754,7 @@ export async function updateClientTreatmentPlanItemAction(
     },
   });
 
+  await auditPatient(context, "treatmentItem.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1760,6 +1792,7 @@ export async function deleteClientTreatmentPlanItemAction(
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
+  await auditPatient(context, "treatmentItem.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1808,6 +1841,7 @@ export async function updateClientFollowUpReminderAction(
     await retireMovedCheckupDrafts({ businessId: context.business.id, followUpReminderId: payload.id, remindAt }, tx);
   });
 
+  await auditPatient(context, "followUpReminder.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1845,6 +1879,7 @@ export async function deleteClientFollowUpReminderAction(
     return { ok: false, error: SUB_RECORD_NOT_FOUND_ERROR };
   }
 
+  await auditPatient(context, "followUpReminder.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1919,6 +1954,7 @@ export async function updateClientPaymentAction(
 
   revalidatePaymentSurfaces();
 
+  await auditPatient(context, "payment.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -1959,6 +1995,7 @@ export async function deleteClientPaymentAction(
 
   revalidatePaymentSurfaces();
 
+  await auditPatient(context, "payment.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -2001,6 +2038,7 @@ export async function updateClientDocumentAction(
     },
   });
 
+  await auditPatient(context, "document.update", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -2063,6 +2101,7 @@ export async function deleteClientDocumentAction(
   // this doesn't need to block on a Storage round-trip.
   after(() => attemptStorageCleanup(result.pending));
 
+  await auditPatient(context, "document.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }
 
@@ -2125,5 +2164,6 @@ export async function deleteClientGalleryItemAction(
   // this doesn't need to block on a Storage round-trip.
   after(() => attemptStorageCleanup(result.pending));
 
+  await auditPatient(context, "galleryItem.delete", payload.clientId, payload.id);
   return respondWithClientRecord(context.business.id, payload.clientId);
 }

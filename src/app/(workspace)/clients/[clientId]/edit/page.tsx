@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 import { EditClientForm } from "@/components/clients/edit-client-form";
 import { fmt } from "@/i18n/format";
@@ -8,6 +9,7 @@ import { WithMessages } from "@/i18n/with-messages";
 import { CreatePageShell } from "@/components/workspace/create-page-shell";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
 import { canUseWorkspace } from "@/lib/billing-access";
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +23,7 @@ export default async function EditClientPage({
 }: {
   params: Promise<{ clientId: string }>;
 }) {
-  const { business } = await requireCurrentWorkspace("/clients", {
+  const { business, user } = await requireCurrentWorkspace("/clients", {
     missingBusinessRedirect: "/onboarding",
   });
   const { locale, m } = await getI18n();
@@ -178,6 +180,10 @@ export default async function EditClientPage({
   if (!client) {
     notFound();
   }
+
+  after(() =>
+    recordAudit({ businessId: business.id, actor: ownerActor(user), action: "client.view", clientId: client.id })
+  );
 
   const record = await buildClientRecord(client, business.currency, new Date(), locale);
 
