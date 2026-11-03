@@ -385,7 +385,10 @@ export async function logoutAction() {
  */
 export async function idleLogoutAction() {
   const supabase = await createClient();
-  await supabase.auth.signOut({ scope: "local" });
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  // Still signed in: fail, so the locked workspace retries instead of being
+  // bounced from /login straight back to the dashboard.
+  if (error) throw new Error("Sign-out didn't go through.");
   redirect("/login?idle=1");
 }
 
