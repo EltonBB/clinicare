@@ -20,7 +20,6 @@ import {
   RATE_LIMIT_WAIT_HEADROOM_MS,
   REMINDER_RUN_BUDGET_MS,
 } from "@/lib/reminder-timing";
-import { formatZonedFullDate, formatZonedTime } from "@/lib/time-zone";
 
 type ReminderSyncResult = {
   sent: number;
