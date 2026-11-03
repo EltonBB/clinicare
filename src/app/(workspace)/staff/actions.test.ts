@@ -737,3 +737,28 @@ describe("saveStaffAction validates the profile before any write", () => {
     expect(mocks.staffMember.findFirst).not.toHaveBeenCalled();
   });
 });
+
+describe("saveStaffAction shift times", () => {
+  const base = { name: "Dr. Test", role: "Specialist", email: "", phone: "", profileNote: "", status: "ACTIVE" as const };
+
+  it("refuses a shift that ends at or before it starts, before writing anything", async () => {
+    const result = await saveStaffAction({
+      ...base,
+      weeklySchedule: [
+        { date: "2026-11-04", enabled: true, startTime: "09:00", endTime: "17:00" },
+        { date: "2026-11-05", enabled: true, startTime: "17:00", endTime: "09:00" },
+      ],
+    });
+    expect(result).toEqual({ ok: false, error: "A shift has to end after it starts." });
+    expect(mocks.staffMember.create).not.toHaveBeenCalled();
+    expect(mocks.staffShift.createMany).not.toHaveBeenCalled();
+  });
+
+  it("ignores the times of a day that is off", async () => {
+    const result = await saveStaffAction({
+      ...base,
+      weeklySchedule: [{ date: "2026-11-05", enabled: false, startTime: "17:00", endTime: "09:00" }],
+    });
+    expect(result).not.toEqual(expect.objectContaining({ error: "A shift has to end after it starts." }));
+  });
+});

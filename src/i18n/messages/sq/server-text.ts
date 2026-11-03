@@ -131,6 +131,7 @@ export const serverText: Record<string, string> = {
   "Your session expired. Log in again to manage staff.": "Sesioni juaj skadoi. Hyni përsëri për të menaxhuar stafin.",
   "Check the staff details and try again.": "Kontrolloni të dhënat e stafit dhe provoni përsëri.",
   "Staff name is required.": "Emri i anëtarit të stafit është i detyrueshëm.",
+  "A shift has to end after it starts.": "Ndërrimi duhet të mbarojë pasi fillon.",
   "We couldn't save the staff member.": "Nuk mundëm ta ruanim anëtarin e stafit.",
   "Inactive staff cannot check in.": "Stafi joaktiv nuk mund të regjistrojë hyrjen.",
   "This staff member is not inside a scheduled shift window.": "Ky anëtar i stafit nuk është brenda orarit të një ndërrimi të planifikuar.",
