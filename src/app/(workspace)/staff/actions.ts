@@ -82,6 +82,8 @@ const STAFF_NOT_FOUND_ERROR = "Staff member not found in this workspace.";
 
 // The staff profile form. Bounded like the client form so a crafted payload
 // can't store an oversized field or crash the action with a non-string one.
+const SHIFT_ORDER_ERROR = "A shift has to end after it starts.";
+
 const saveStaffSchema = z.object({
   id: z.string().max(64).optional(),
   name: z.string().max(200),
@@ -315,6 +317,16 @@ export async function saveStaffAction(payload: SaveStaffPayload): Promise<SaveSt
       ok: false,
       error: "Staff name is required.",
     };
+  }
+
+  // A working day whose end isn't after its start would otherwise be dropped
+  // without a word (replaceWeeklySchedule skips it) while the save reports success.
+  if (
+    payload.weeklySchedule?.some(
+      (item) => item.enabled && isValidTime(item.startTime) && isValidTime(item.endTime) && item.endTime <= item.startTime
+    )
+  ) {
+    return { ok: false, error: SHIFT_ORDER_ERROR };
   }
 
   const status = staffStatuses.includes(payload.status) ? payload.status : "ACTIVE";
