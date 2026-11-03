@@ -29,7 +29,7 @@ export const billing: Translation<typeof en> = {
     },
     billingPeriod: "Periudha e faturimit",
     monthly: "Mujore",
-    yearly: "Vjetore · 1 muaj falas",
+    yearly: "Vjetore · paguani më pak",
     planLabel: "Plani",
     headline: {
       signUpLead: "Zgjidhni një plan,",

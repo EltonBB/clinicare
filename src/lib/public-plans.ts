@@ -23,8 +23,8 @@ export const publicPlans: PublicPlan[] = [
     key: "basic",
     rank: 1,
     name: "Basic",
-    price: "$39",
-    yearlyPrice: "$429",
+    price: "€35",
+    yearlyPrice: "€400",
     cadence: "per month",
     description:
       "For solo practitioners and small clinics that need one clean daily workspace.",
@@ -43,8 +43,8 @@ export const publicPlans: PublicPlan[] = [
     key: "pro",
     rank: 2,
     name: "Pro",
-    price: "$79",
-    yearlyPrice: "$869",
+    price: "€80",
+    yearlyPrice: "€850",
     cadence: "per month",
     description:
       "For growing clinics that need deeper intelligence, team visibility, and stronger support.",

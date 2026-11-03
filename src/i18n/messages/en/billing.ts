@@ -27,7 +27,7 @@ export const billing = {
     },
     billingPeriod: "Billing period",
     monthly: "Monthly",
-    yearly: "Yearly · 1 month free",
+    yearly: "Yearly · pay less",
     planLabel: "Plan",
     headline: {
       signUpLead: "Pick a plan,",
