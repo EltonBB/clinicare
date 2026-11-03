@@ -31,7 +31,7 @@ import { useI18n, useServerText } from "@/i18n/client";
 import type { Locale } from "@/i18n/config";
 import { fmt, plural } from "@/i18n/format";
 import type { Messages } from "@/i18n/messages";
-import { businessHoursForDate, timeToMinutes } from "@/lib/calendar";
+import { businessHoursForDate, minutesToTime, quarterHourTimes, timeToMinutes } from "@/lib/calendar";
 import type {
   CalendarAppointment,
   CalendarAppointmentStatus,
@@ -62,13 +62,6 @@ const statusOptions: CalendarAppointmentStatus[] = [
   "no-show",
 ];
 
-function minutesToTime(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-}
-
-const timeSlots = Array.from({ length: 96 }, (_, index) => minutesToTime(index * 15));
 
 function formatDuration(minutes: number, t: Messages["calendar"]["form"], locale: Locale) {
   if (minutes < 60) {
@@ -167,7 +160,7 @@ export function NewAppointmentForm({
   // option even when it sits off the grid (e.g. 12:39), so editing shows it
   // instead of a blank select.
   const startOptions = selectedHours.enabled
-    ? Array.from(new Set([...timeSlots, startTime]))
+    ? Array.from(new Set([...quarterHourTimes, startTime]))
         .filter((time) => {
           const minutes = timeToMinutes(time);
           return minutes >= openMinutes && minutes < closeMinutes;

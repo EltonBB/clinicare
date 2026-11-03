@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FormError, FormField } from "@/components/workspace/form-parts";
+import { FormError, FormField, FormSelect } from "@/components/workspace/form-parts";
 import {
   fieldInputClass,
   fieldSelectClass,
@@ -30,9 +30,12 @@ import {
 import { useI18n, useServerText } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import type { Messages } from "@/i18n/messages";
-import type { CalendarSelectOption } from "@/lib/calendar";
+import { quarterHourTimes, type CalendarSelectOption } from "@/lib/calendar";
 import { isInvalidPreferredWindow, WAITLIST_TIME_RANGE_ERROR } from "@/lib/waitlist";
 import type { WaitlistEntryRow } from "@/lib/waitlist-data";
+
+// "" first: no preferred time.
+const anyQuarterHour = ["", ...quarterHourTimes];
 
 type WaitlistPanelProps = {
   open: boolean;
@@ -307,24 +310,20 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
                     ))}
                   </div>
                 </FormField>
-                <FormField label={t.from}>
-                  <Input
-                    type="time"
-                    value={form.preferredFrom}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, preferredFrom: event.target.value }))
-                    }
-                    className={fieldInputClass}
-                  />
-                </FormField>
-                <FormField label={t.to}>
-                  <Input
-                    type="time"
-                    value={form.preferredTo}
-                    onChange={(event) => setForm((current) => ({ ...current, preferredTo: event.target.value }))}
-                    className={fieldInputClass}
-                  />
-                </FormField>
+                <FormSelect
+                  label={t.from}
+                  value={form.preferredFrom}
+                  options={anyQuarterHour}
+                  emptyLabel={t.noPreference}
+                  onChange={(preferredFrom) => setForm((current) => ({ ...current, preferredFrom }))}
+                />
+                <FormSelect
+                  label={t.to}
+                  value={form.preferredTo}
+                  options={anyQuarterHour}
+                  emptyLabel={t.noPreference}
+                  onChange={(preferredTo) => setForm((current) => ({ ...current, preferredTo }))}
+                />
                 <FormField label={t.notes} className="sm:col-span-2">
                   <Textarea
                     value={form.notes}

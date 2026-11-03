@@ -346,6 +346,14 @@ export function appointmentDurationMinutes(appointment: Pick<Appointment, "start
   return Math.max(differenceInMinutes(appointment.endAt, appointment.startAt), 0);
 }
 
+/** Minutes since midnight as a "HH:mm" time. */
+export function minutesToTime(minutes: number) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/** Every quarter hour of the day, the times the forms offer (24-hour in both languages, unlike the browser's own time field). */
+export const quarterHourTimes = Array.from({ length: 96 }, (_, index) => minutesToTime(index * 15));
+
 /** Parses a "HH:mm" display time (as rendered on calendar pills/forms) into minutes since midnight, for sorting/comparison. */
 export function timeToMinutes(time: string) {
   const [hours, minutes] = time.split(":").map(Number);

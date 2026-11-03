@@ -21,11 +21,21 @@ import {
 } from "@/components/workspace/form-parts";
 import {
   fieldInputClass,
+  fieldSelectClass,
   fieldTextareaClass,
   WorkspaceFormSection,
 } from "@/components/workspace/workspace-layout";
+import { quarterHourTimes } from "@/lib/calendar";
 import type { StaffRecord } from "@/lib/staff";
 import { staffRoles, staffStatuses, type StaffStatus } from "@/lib/staff-options";
+import { cn } from "@/lib/utils";
+
+const shiftTimeClass = cn(fieldSelectClass, "h-9 min-w-0 flex-1 px-2 sm:w-32 sm:flex-none sm:px-3");
+
+/** The quarter hours, plus a saved shift time that falls between them so it isn't lost. */
+function timeChoices(current: string) {
+  return current && !quarterHourTimes.includes(current) ? [...quarterHourTimes, current].sort() : quarterHourTimes;
+}
 
 type NewStaffFormProps = {
   staff?: StaffRecord;
@@ -257,21 +267,31 @@ export function NewStaffForm({ staff, businessHours = [] }: NewStaffFormProps) {
               </label>
               {item.enabled ? (
                 <div className="flex w-full items-center gap-2 sm:w-auto">
-                  <Input
-                    type="time"
+                  <select
                     value={item.startTime}
                     onChange={(event) => updateSchedule(index, { startTime: event.target.value })}
-                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
+                    className={shiftTimeClass}
                     aria-label={fmt(t.shiftStart, { day: item.day })}
-                  />
+                  >
+                    {timeChoices(item.startTime).map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
                   <span className="text-muted-foreground">–</span>
-                  <Input
-                    type="time"
+                  <select
                     value={item.endTime}
                     onChange={(event) => updateSchedule(index, { endTime: event.target.value })}
-                    className="h-9 min-w-0 flex-1 rounded-(--radius-card) bg-white px-2 text-sm max-sm:[&::-webkit-calendar-picker-indicator]:hidden sm:w-32 sm:flex-none sm:px-3.5"
+                    className={shiftTimeClass}
                     aria-label={fmt(t.shiftEnd, { day: item.day })}
-                  />
+                  >
+                    {timeChoices(item.endTime).map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               ) : (
                 <span className="text-sm text-muted-foreground">{t.off}</span>
