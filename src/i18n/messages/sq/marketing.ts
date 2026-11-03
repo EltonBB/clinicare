@@ -196,7 +196,7 @@ export const marketing: Translation<typeof en> = {
   planStrip: {
     billingPeriod: "Periudha e faturimit",
     monthly: "Mujore",
-    yearly: "Vjetore · 1 muaj falas",
+    yearly: "Vjetore · paguani më pak",
     includes: "Përfshin",
     adds: "Shton",
     trial: "Provë falas {days}-ditore",
@@ -321,7 +321,7 @@ export const marketing: Translation<typeof en> = {
     faqs: [
       { q: "Si funksionon prova falas?", a: "Çdo plan fillon me 14 ditë falas. Shtoni një kartë kur filloni dhe gjatë provës nuk tarifohet asgjë. Nëse nuk anuloni para se të mbarojë, plani juaj fillon dhe faturoheni. Ju njoftojmë me email para se të ndodhë kjo." },
       { q: "Cili është ndryshimi mes Basic dhe Pro?", a: "Basic mbulon punën e përditshme: oraret, kartelat, dokumentet, pagesat dhe mesazhet. Pro shton raporte me vlerësime me ndihmën e AI, shfrytëzimin e stafit, ndjekjen e mosparaqitjeve dhe mbështetje me përparësi." },
-      { q: "A mund ta ndryshoj planin ose të paguaj për vit?", a: "Po. Kaloni mes Basic dhe Pro, ose mes pagesës mujore dhe vjetore, në çdo kohë nga Cilësimet. Pagesa vjetore ju jep dymbëdhjetë muaj me çmimin e njëmbëdhjetë. Kalimi në një plan më të lartë tarifohet për pjesën e mbetur të periudhës; kalimi në një më të ulët kreditohet në faturën e ardhshme. Kalimi mes pagesës mujore dhe vjetore nis një periudhë të re po atë ditë, duke zbritur pjesën e papërdorur të së vjetrës." },
+      { q: "A mund ta ndryshoj planin ose të paguaj për vit?", a: "Po. Kaloni mes Basic dhe Pro, ose mes pagesës mujore dhe vjetore, në çdo kohë nga Cilësimet. Pagesa vjetore kushton më pak se dymbëdhjetë pagesa mujore. Kalimi në një plan më të lartë tarifohet për pjesën e mbetur të periudhës; kalimi në një më të ulët kreditohet në faturën e ardhshme. Kalimi mes pagesës mujore dhe vjetore nis një periudhë të re po atë ditë, duke zbritur pjesën e papërdorur të së vjetrës." },
       { q: "Në cilën monedhë do të paguaj?", a: "Çmimet shfaqen në monedhën tuaj, sipas vendndodhjes, dhe e përfshijnë tashmë TVSH-në. Ajo që shihni është ajo që paguani." },
       { q: "Çfarë ndodh nëse ndaloj pagesën?", a: "Hapësira juaj e punës bëhet vetëm për lexim: i shihni ende të gjitha kartelat, por nuk mund të shtoni ose të ndryshoni asgjë dhe pacientëve nuk u dërgohen mesazhe. I ruajmë kartelat tuaja 90 ditë dhe rinovimi i zhbllokon të gjitha menjëherë." },
       { q: "A janë private të dhënat e klinikës sime?", a: "Kartelat ruhen në hapësirë me identifikim dhe kontroll qasjeje, me privatësi dhe siguri të ndërtuara që në fillim, jo të shtuara më vonë." },

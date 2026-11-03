@@ -16,18 +16,21 @@ pilot clinics he chooses to keep free.
 
 ### Plans and prices (owner decisions)
 
-| Plan  | Monthly | Yearly (one month free) | Free trial |
+| Plan  | Monthly | Yearly                  | Free trial |
 |-------|---------|-------------------------|------------|
-| Basic | $39     | $429                    | 14 days    |
-| Pro   | $79     | $869                    | 14 days    |
+| Basic | €35     | €400                    | 14 days    |
+| Pro   | €80     | €850                    | 14 days    |
+
+(Prices changed on 2026-11-03 by the owner, from $39/$429 and $79/$869. Yearly is now
+simply cheaper than twelve months, not exactly one month free.)
 
 (Pro's trial was 7 days in the first draft; the owner moved it to 14 on 2026-10-26 after
 the research: Pro's value needs a couple of weeks of real bookings to show, and Paddle
 only sends its "your trial is ending" reminder for trials longer than 7 days.)
 
 - Prices are shown and charged **in the visitor's local currency, picked by Paddle from
-  their location**. Euro prices are set by hand to the same numbers (€39 / €79 / €429 /
-  €869); every other currency uses Paddle's automatic conversion of the USD price
+  their location**. Euro prices are set by hand to the same numbers (€35 / €80 / €400 /
+  €850); every other currency uses Paddle's automatic conversion of the USD price
   (*my call*, owner did not object).
 - **Prices include VAT** (owner decision): the clinic pays exactly the listed price in
   every country, and Paddle, as merchant of record, takes the tax out of it. The Paddle

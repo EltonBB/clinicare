@@ -8,6 +8,12 @@
 // webhooks away: set VERCEL_PROTECTION_BYPASS to the project's "Protection
 // Bypass for Automation" secret and it rides on the webhook URL.
 //
+// With --prices-only it just brings the existing prices to the amounts below
+// (same price ids, so nothing in Vercel changes) and creates nothing: no
+// product, price, webhook or .env file. That is how a price change ships:
+//
+//   PADDLE_ENV=production PADDLE_API_KEY=... node scripts/paddle-setup.mjs --prices-only
+//
 // Writes PADDLE_PRICE_IDS and PADDLE_WEBHOOK_SECRET to .env.paddle.local
 // (git-ignored) instead of printing them, so the secret never lands in a
 // terminal log; copy both into the Vercel environment from there.
@@ -23,8 +29,9 @@ const env = process.env.PADDLE_ENV;
 const apiKey = process.env.PADDLE_API_KEY;
 const appUrl = process.env.APP_URL?.replace(/\/+$/, "");
 const protectionBypass = process.env.VERCEL_PROTECTION_BYPASS?.trim();
-if ((env !== "sandbox" && env !== "production") || !apiKey || !appUrl?.startsWith("https://")) {
-  console.error("Set PADDLE_ENV (sandbox|production), PADDLE_API_KEY and an https APP_URL.");
+const pricesOnly = process.argv.includes("--prices-only");
+if ((env !== "sandbox" && env !== "production") || !apiKey || (!pricesOnly && !appUrl?.startsWith("https://"))) {
+  console.error("Set PADDLE_ENV (sandbox|production), PADDLE_API_KEY and (unless --prices-only) an https APP_URL.");
   process.exit(1);
 }
 const apiBase = env === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com";
@@ -38,8 +45,8 @@ const EURO_COUNTRIES = [
 
 const TRIAL_DAYS = 14;
 const PLANS = [
-  { plan: "BASIC", name: "Vela Basic", month: 3900, year: 42900 },
-  { plan: "PRO", name: "Vela Pro", month: 7900, year: 86900 },
+  { plan: "BASIC", name: "Vela Basic", month: 3500, year: 40000 },
+  { plan: "PRO", name: "Vela Pro", month: 8000, year: 85000 },
 ];
 const SUBSCRIPTION_EVENTS = [
   "subscription.created",
@@ -83,6 +90,7 @@ async function listAll(path) {
 async function ensureProduct({ plan, name }) {
   const existing = (await listAll("/products?status=active")).find((product) => product.custom_data?.vela_plan === plan);
   if (existing) return existing.id;
+  if (pricesOnly) throw new Error(`No ${name} product in Paddle ${env}: run the full setup first.`);
   const created = await paddle("/products", {
     method: "POST",
     body: { name, tax_category: "saas", custom_data: { vela_plan: plan } },
@@ -96,7 +104,17 @@ async function ensurePrice(productId, { plan, name }, interval, amount, trial) {
   const existing = (await listAll(`/prices?product_id=${productId}&status=active`)).find(
     (price) => price.custom_data?.vela_price === key
   );
-  if (existing) return existing.id;
+  const unitPrice = { amount: String(amount), currency_code: "USD" };
+  const overrides = [{ country_codes: EURO_COUNTRIES, unit_price: { amount: String(amount), currency_code: "EUR" } }];
+  if (existing) {
+    const euro = existing.unit_price_overrides?.find((override) => override.unit_price.currency_code === "EUR");
+    if (existing.unit_price.amount !== unitPrice.amount || euro?.unit_price.amount !== unitPrice.amount) {
+      await paddle(`/prices/${existing.id}`, { method: "PATCH", body: { unit_price: unitPrice, unit_price_overrides: overrides } });
+      console.log(`Updated price ${key} to ${amount / 100}.`);
+    }
+    return existing.id;
+  }
+  if (pricesOnly) throw new Error(`No ${key} price in Paddle ${env}: run the full setup first.`);
   const cadence = interval === "MONTH" ? "Monthly" : "Yearly";
   const created = await paddle("/prices", {
     method: "POST",
@@ -104,8 +122,8 @@ async function ensurePrice(productId, { plan, name }, interval, amount, trial) {
       product_id: productId,
       description: `${name}, ${cadence.toLowerCase()}${trial ? `, ${TRIAL_DAYS}-day free trial` : ""}`,
       name: `${cadence}${trial ? ` with ${TRIAL_DAYS}-day free trial` : ""}`,
-      unit_price: { amount: String(amount), currency_code: "USD" },
-      unit_price_overrides: [{ country_codes: EURO_COUNTRIES, unit_price: { amount: String(amount), currency_code: "EUR" } }],
+      unit_price: unitPrice,
+      unit_price_overrides: overrides,
       billing_cycle: { interval: interval === "MONTH" ? "month" : "year", frequency: 1 },
       ...(trial ? { trial_period: { interval: "day", frequency: TRIAL_DAYS } } : {}),
       tax_mode: "internal",
@@ -148,6 +166,10 @@ for (const plan of PLANS) {
       noTrial: await ensurePrice(productId, plan, interval, amount, false),
     };
   }
+}
+if (pricesOnly) {
+  console.log(`Done. Prices in Paddle ${env} match the amounts in this script.`);
+  process.exit(0);
 }
 const webhookSecret = await ensureWebhook();
 

@@ -193,7 +193,7 @@ export const marketing = {
   planStrip: {
     billingPeriod: "Billing period",
     monthly: "Monthly",
-    yearly: "Yearly · 1 month free",
+    yearly: "Yearly · pay less",
     includes: "Includes",
     adds: "Adds",
     trial: "{days}-day free trial",
@@ -319,7 +319,7 @@ export const marketing = {
     faqs: [
       { q: "How does the free trial work?", a: "Every plan starts with 14 days free. You add a card when you start, and nothing is charged during the trial. If you don't cancel before it ends, your plan begins and you're billed. We email you before that happens." },
       { q: "What's the difference between Basic and Pro?", a: "Basic covers daily operations: scheduling, records, documents, payments, and inbox. Pro adds reports with AI-assisted insights, staff utilization, no-show tracking, and priority support." },
-      { q: "Can I switch plans or pay yearly?", a: "Yes. Switch between Basic and Pro, or monthly and yearly, any time in Settings. Yearly gives you twelve months for the price of eleven. A move up is charged for the rest of the period; a move down is credited to your next bill. Switching between monthly and yearly starts a new period that day, less the unused part of the old one." },
+      { q: "Can I switch plans or pay yearly?", a: "Yes. Switch between Basic and Pro, or monthly and yearly, any time in Settings. Yearly costs less than twelve monthly payments. A move up is charged for the rest of the period; a move down is credited to your next bill. Switching between monthly and yearly starts a new period that day, less the unused part of the old one." },
       { q: "Which currency will I pay in?", a: "Prices show in your own currency, based on where you are, and already include VAT. What you see is what you pay." },
       { q: "What happens if I stop paying?", a: "Your workspace becomes read-only: you can still see every record, but you can't add or change anything, and no messages go to your patients. We keep your records for 90 days, and renewing unlocks everything at once." },
       { q: "Is my clinic data private?", a: "Records live in authenticated, access-controlled storage, with privacy and security built in from day one, not bolted on later." },
