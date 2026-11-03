@@ -35,6 +35,11 @@ export function usePlanPrice({ paddle, previewPriceIds }: PlanPricing): (plan: P
   };
 }
 
+/** One plan's monthly price in the visitor's currency, its list price until Paddle answers. */
+export function LocalPlanPrice({ pricing, plan }: { pricing: PlanPricing; plan: PublicPlan }) {
+  return usePlanPrice(pricing)(plan, "MONTH");
+}
+
 /**
  * Each half links to that plan's checkout (with the chosen billing period)
  * and lifts its own background on hover; Pro's half lists only what it adds
