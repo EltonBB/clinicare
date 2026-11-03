@@ -48,6 +48,7 @@ npm run db:setup-auth-sync       # scripts/setup-auth-delete-sync.mjs
 6. One more review pass, same sizing rule as step 3. Finds something → fix it and repeat this step until clean — without re-running step 5, which only runs once per cycle. Clean immediately → stop.
 7. Push / open the PR. Wait for Codex's review.
 8. Codex clean → merge. Codex finds something → fix it, then re-enter the loop from step 3 (not a narrow reactive patch) before pushing again.
+9. **Post-batch QA (owner rule, 2026-11-03).** Once the last PR of a batch is merged and everything is in `main`, QA every change in the batch together: re-read the combined diff, run the gates on `main` (`tsc`, lint, `vitest`, `npm audit --omit=dev`), confirm the production deploy went green, and exercise each change, edge cases included (bad input, empty states, both languages, phone width, a concurrent edit), looking for bugs, security holes and anything else that could cause a problem. Fix what turns up through this same loop as new small PRs; when nothing does, report back "clean" with what was checked.
 
 **Token efficiency applies throughout, not just review passes:** default to the cheapest tool that answers the question — direct Grep/Read over a dispatched agent for a simple lookup, one targeted agent over ten parallel ones for a small diff. Spend fully when a task genuinely needs it to get a correct result — that's still what matters most — but treat that as the exception, not the default.
 
