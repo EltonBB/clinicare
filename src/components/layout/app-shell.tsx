@@ -9,6 +9,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { refreshWorkspaceNotificationsAction, type ReminderWarning } from "@/app/(workspace)/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { IdleSignOut } from "@/components/layout/idle-sign-out";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import {
   GlobalSearchPalette,
@@ -78,6 +79,8 @@ type AppShellProps = {
   businessName?: string;
   ownerName?: string;
   ownerEmail?: string;
+  // When this session signed in (ms): tells a fresh login from a returning, abandoned one.
+  signedInAt?: number;
   ownerPhone?: string;
   planName?: string;
   planStatus?: string;
@@ -98,6 +101,7 @@ export function AppShell({
   ownerName = "Alex Rivera",
   ownerEmail = "owner@vela.app",
   ownerPhone = "",
+  signedInAt = 0,
   brandAccentColor = null,
   logoUrl = null,
   billingBanner = null,
@@ -379,6 +383,7 @@ export function AppShell({
                 </DropdownMenuContent>
               </DropdownMenu>
               <form ref={logoutFormRef} action={logoutAction} className="hidden" />
+              <IdleSignOut signedInAt={signedInAt} />
             </div>
           </div>
         </aside>

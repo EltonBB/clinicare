@@ -32,6 +32,7 @@ export const auth: Translation<typeof en> = {
     title: "Mirë se u kthyet",
     lede: "Hyni në hapësirën e punës së klinikës suaj.",
     verified: "Email-i juaj u konfirmua. Hyni për të vazhduar.",
+    idle: "Dolët automatikisht nga llogaria pas 30 minutash pa aktivitet, për t'i mbajtur private kartelat e pacientëve.",
     reset: "Fjalëkalimi juaj u rivendos. Hyni me fjalëkalimin e ri.",
     submit: "Hyr",
     pending: "Duke hyrë...",

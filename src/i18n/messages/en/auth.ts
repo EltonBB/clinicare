@@ -31,6 +31,7 @@ export const auth = {
     lede: "Sign in to your clinic workspace.",
     verified: "Your email was confirmed. Log in to continue.",
     reset: "Your password has been reset. Log in with the new one.",
+    idle: "You were signed out after 30 minutes without activity, to keep patient records private.",
     submit: "Log in",
     pending: "Logging in...",
     noAccount: "Need a new workspace?",

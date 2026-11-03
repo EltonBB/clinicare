@@ -378,6 +378,20 @@ export async function logoutAction() {
   redirect("/login");
 }
 
+/**
+ * The workspace's idle sign-out: the login page then says why. Only this
+ * browser's session ends, so an unattended computer never signs the owner out
+ * of another one they are working on.
+ */
+export async function idleLogoutAction() {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  // Still signed in: fail, so the locked workspace retries instead of being
+  // bounced from /login straight back to the dashboard.
+  if (error) throw new Error("Sign-out didn't go through.");
+  redirect("/login?idle=1");
+}
+
 export async function forgotPasswordAction(
   _: PasswordResetActionState,
   formData: FormData

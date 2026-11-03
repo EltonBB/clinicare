@@ -63,6 +63,15 @@ export const shell = {
     checkinYesterday: "Checked in yesterday at {time} — verify they're in.",
     checkinOn: "Checked in {day} at {time} — verify they're in.",
   },
+  idle: {
+    title: "Still there?",
+    body: {
+      one: "For privacy, you'll be signed out in {count} second.",
+      other: "For privacy, you'll be signed out in {count} seconds.",
+    },
+    stay: "Stay signed in",
+    signOut: "Sign out now",
+  },
   search: {
     label: "Search clients, appointments, staff, and messages",
     short: "Search",
