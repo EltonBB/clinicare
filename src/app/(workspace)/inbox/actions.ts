@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { z } from "zod";
 
 import { getLocale } from "@/i18n/server";
@@ -179,19 +178,43 @@ export async function hydrateConversationAction(
   }
 
   const conversation = await hydrateConversation(conversationId, context.business.id);
-  if (conversation) {
-    after(() =>
-      recordAudit({
-        businessId: context.business.id,
-        actor: ownerActor(context.user),
-        action: "conversation.view",
-        clientId: conversation.clientId ?? null,
-        recordId: conversationId,
-      })
-    );
-  }
 
   return conversation ? { ok: true, conversation } : { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
+}
+
+/**
+ * The audit entry for opening a chat. The Inbox calls it once per chat it
+ * shows, whether or not that chat's history was already loaded, so every
+ * open is recorded (with the patient when the number matches one).
+ */
+export async function recordConversationViewAction(rawConversationId: string): Promise<void> {
+  const context = await getAuthedBusiness({ access: "read" });
+  if ("error" in context) return;
+  const conversationId = parseRecordId(rawConversationId);
+  if (!conversationId) return;
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, businessId: context.business.id },
+    select: { id: true, phoneNumber: true },
+  });
+  if (!conversation) return;
+
+  const phoneKey = phoneLookupKey(conversation.phoneNumber);
+  const linkedClient = phoneKey
+    ? await prisma.client.findFirst({
+        where: { businessId: context.business.id, phoneKey },
+        orderBy: CLIENT_MATCH_ORDER,
+        select: { id: true },
+      })
+    : null;
+
+  await recordAudit({
+    businessId: context.business.id,
+    actor: ownerActor(context.user),
+    action: "conversation.view",
+    clientId: linkedClient?.id ?? null,
+    recordId: conversation.id,
+  });
 }
 
 export async function markConversationReadAction(

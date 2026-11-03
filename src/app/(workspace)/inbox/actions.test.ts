@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => {
   const syncWhatsAppConnectionForBusiness = vi.fn();
   const $transaction = vi.fn();
   const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn() };
+  const recordAudit = vi.fn();
   return {
+    recordAudit,
     logger,
     conversation,
     client,
@@ -32,6 +34,11 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/messaging", () => ({ sendMessage: mocks.sendMessage }));
 
+vi.mock("@/lib/audit", () => ({
+  recordAudit: mocks.recordAudit,
+  ownerActor: (user: { id?: string }) => ({ type: "OWNER", id: user.id }),
+}));
+
 vi.mock("@/lib/whatsapp-connection", () => ({
   syncWhatsAppConnectionForBusiness: mocks.syncWhatsAppConnectionForBusiness,
 }));
@@ -49,6 +56,7 @@ import {
   deleteConversationAction,
   hydrateConversationAction,
   markConversationReadAction,
+  recordConversationViewAction,
   sendInboxMessageAction,
 } from "./actions";
 
@@ -217,5 +225,25 @@ describe("sendInboxMessageAction body limits", () => {
     expect(result).toEqual({ ok: false, error: "Messages can be up to 8,000 characters." });
     expect(mocks.conversation.findFirst).not.toHaveBeenCalled();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordConversationViewAction", () => {
+  it("records opening a chat, linked to the patient whose number it is", async () => {
+    mocks.conversation.findFirst.mockResolvedValue(CONVERSATION);
+    mocks.client.findFirst.mockResolvedValue({ id: "client_1" });
+
+    await recordConversationViewAction(CONVERSATION_ID);
+
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_1", action: "conversation.view", clientId: "client_1", recordId: CONVERSATION_ID })
+    );
+  });
+
+  it("records nothing for a chat outside this clinic or a bad id", async () => {
+    mocks.conversation.findFirst.mockResolvedValue(null);
+    await recordConversationViewAction(CONVERSATION_ID);
+    await recordConversationViewAction({ not: "" } as unknown as string);
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
   });
 });

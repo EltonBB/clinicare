@@ -24,6 +24,7 @@ import {
   deleteConversationAction,
   hydrateConversationAction,
   markConversationReadAction,
+  recordConversationViewAction,
   refreshInboxAction,
   sendInboxMessageAction,
 } from "@/app/(workspace)/inbox/actions";
@@ -352,6 +353,12 @@ export function InboxWorkspace({
   // Bumped by a failed hydration attempt below to trigger a bounded retry —
   // an otherwise-inert dependency of the effect below.
   const [hydrationRetryToken, setHydrationRetryToken] = useState(0);
+
+  // One audit entry per chat opened (any way it becomes selected). Fire and
+  // forget: the log never holds up reading the chat.
+  useEffect(() => {
+    if (selectedConversationId) void recordConversationViewAction(selectedConversationId).catch(() => {});
+  }, [selectedConversationId]);
 
   // Hydrates the selected conversation's full thread whenever it's only a
   // 1-message preview (hasFullHistory: false) — covers every way a
