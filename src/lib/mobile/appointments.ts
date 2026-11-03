@@ -1,3 +1,4 @@
+import { recordAudit, staffActor } from "@/lib/audit";
 import { queueVisitMessage } from "@/lib/automation-events";
 import {
   cancelAppointmentCore,
@@ -50,12 +51,20 @@ export async function getOwnAppointment(
       endAt: true,
       status: true,
       notes: true,
+      clientId: true,
       client: { select: { name: true } },
     },
   });
   if (!appointment) {
     return null;
   }
+  await recordAudit({
+    businessId: ctx.business.id,
+    actor: staffActor(ctx.staffMember),
+    action: "appointment.view",
+    clientId: appointment.clientId,
+    recordId: appointment.id,
+  });
   return serializeAppointment(appointment, resolveDayKey(appointment.startAt), new Date(), ctx.locale);
 }
 
@@ -131,6 +140,14 @@ export async function cancelOwnAppointment(
   if (!outcome.ok) {
     return { ok: false, status: outcome.status, error: outcome.error };
   }
+
+  await recordAudit({
+    businessId: ctx.business.id,
+    actor: staffActor(ctx.staffMember),
+    action: "appointment.cancel",
+    clientId: outcome.clientId,
+    recordId: outcome.appointmentId,
+  });
 
   if (!outcome.changed) {
     // Already cancelled — nothing new to reflect or notify the admin about.

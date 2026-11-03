@@ -7,6 +7,7 @@ import { getLocale } from "@/i18n/server";
 import { MAX_MESSAGE_BODY_LENGTH } from "@/lib/messaging/limits";
 import { manualSendRefusal } from "@/lib/messaging/send-limits";
 import { prisma } from "@/lib/prisma";
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { getAuthedBusiness as getAuthedBusinessContext } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import {
@@ -179,6 +180,41 @@ export async function hydrateConversationAction(
   const conversation = await hydrateConversation(conversationId, context.business.id);
 
   return conversation ? { ok: true, conversation } : { ok: false, error: CONVERSATION_NOT_FOUND_ERROR };
+}
+
+/**
+ * The audit entry for opening a chat. The Inbox calls it once per chat it
+ * shows, whether or not that chat's history was already loaded, so every
+ * open is recorded (with the patient when the number matches one).
+ */
+export async function recordConversationViewAction(rawConversationId: string): Promise<void> {
+  const context = await getAuthedBusiness({ access: "read" });
+  if ("error" in context) return;
+  const conversationId = parseRecordId(rawConversationId);
+  if (!conversationId) return;
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, businessId: context.business.id },
+    select: { id: true, phoneNumber: true },
+  });
+  if (!conversation) return;
+
+  const phoneKey = phoneLookupKey(conversation.phoneNumber);
+  const linkedClient = phoneKey
+    ? await prisma.client.findFirst({
+        where: { businessId: context.business.id, phoneKey },
+        orderBy: CLIENT_MATCH_ORDER,
+        select: { id: true },
+      })
+    : null;
+
+  await recordAudit({
+    businessId: context.business.id,
+    actor: ownerActor(context.user),
+    action: "conversation.view",
+    clientId: linkedClient?.id ?? null,
+    recordId: conversation.id,
+  });
 }
 
 export async function markConversationReadAction(
@@ -356,6 +392,16 @@ export async function sendInboxMessageAction(
         data: { status: "ERRORED", lastSyncedAt: new Date() },
       });
     }
+    // The message may already be with the patient: audited like a send.
+    if (result.reason === "delivery_uncertain") {
+      await recordAudit({
+        businessId: context.business.id,
+        actor: ownerActor(context.user),
+        action: "conversation.send",
+        clientId: matchedClient?.id ?? null,
+        recordId: conversation.id,
+      });
+    }
     return {
       ok: false,
       // Surface the specific, customer-safe copy for a too-long message and for
@@ -406,6 +452,7 @@ export async function sendInboxMessageAction(
   if (matchedClient) {
     revalidatePath(`/clients/${matchedClient.id}`);
   }
+  await recordAudit({ businessId: context.business.id, actor: ownerActor(context.user), action: "conversation.send", clientId: matchedClient?.id ?? null, recordId: conversation.id });
 
   return {
     ok: true,
@@ -489,6 +536,13 @@ export async function deleteConversationAction(
   if (linkedClient) {
     revalidatePath(`/clients/${linkedClient.id}`);
   }
+  await recordAudit({
+    businessId: context.business.id,
+    actor: ownerActor(context.user),
+    action: "conversation.delete",
+    clientId: linkedClient?.id ?? null,
+    recordId: conversationId,
+  });
 
   return {
     ok: true,
@@ -653,6 +707,7 @@ export async function convertConversationToClientAction(
   revalidatePath("/dashboard");
   revalidatePath("/reports");
   revalidatePath(`/clients/${clientId}`);
+  await recordAudit({ businessId, actor: ownerActor(context.user), action: "client.create", clientId, recordId: clientId });
 
   return {
     ok: true,

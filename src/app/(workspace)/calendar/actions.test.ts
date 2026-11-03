@@ -30,7 +30,9 @@ const mocks = vi.hoisted(() => {
   const withdrawSlotOffers = vi.fn();
   const cancelAppointmentCore = vi.fn();
   const deleteAppointmentCore = vi.fn();
+  const recordAudit = vi.fn();
   return {
+    recordAudit,
     offerFreedSlot,
     withdrawSlotOffers,
     appointment,
@@ -74,6 +76,11 @@ vi.mock("@/lib/prisma", () => ({
     scheduleBlock: mocks.scheduleBlock,
     $transaction: mocks.$transaction,
   },
+}));
+
+vi.mock("@/lib/audit", () => ({
+  recordAudit: mocks.recordAudit,
+  ownerActor: (user: { id?: string }) => ({ type: "OWNER", id: user.id }),
 }));
 
 vi.mock("@/lib/business", () => ({
@@ -1663,6 +1670,9 @@ describe("cancelAppointmentAction", () => {
     expect(result).toEqual({ ok: true, appointmentId: "appt_1" });
     expect(mocks.cancelAppointmentCore).toHaveBeenCalledWith({ id: "appt_1", businessId: "biz_1" });
     expect(mocks.revalidateCalendarSurfaces).toHaveBeenCalledWith(["client_1"], ["staff_1"], ["appt_1"]);
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_1", action: "appointment.cancel", clientId: "client_1", recordId: "appt_1" })
+    );
     // The notice is bound to the version and patient the cancel committed.
     expect(queueVisitMessage).toHaveBeenCalledWith({
       businessId: "biz_1",
