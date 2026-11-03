@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
+  const recordAudit = vi.fn();
   const client = {
     findFirst: vi.fn(),
     findFirstOrThrow: vi.fn(),
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
   const withdrawSlotOffersOnClientAppointments = vi.fn();
   const after = vi.fn();
   return {
+    recordAudit,
     client,
     clientMedication,
     clientHealthItem,
@@ -72,6 +74,11 @@ vi.mock("@/lib/prisma", () => ({
     waitlistEntry: mocks.waitlistEntry,
     $transaction: mocks.$transaction,
   },
+}));
+
+vi.mock("@/lib/audit", () => ({
+  recordAudit: mocks.recordAudit,
+  ownerActor: (user: { id?: string }) => ({ type: "OWNER", id: user.id }),
 }));
 
 vi.mock("@/lib/business", () => ({
@@ -219,6 +226,10 @@ describe("deleteClientAction", () => {
     expect(mocks.client.deleteMany).toHaveBeenCalledWith({
       where: { id: CLIENT_ID, businessId: "biz_1" },
     });
+    // Who deleted which patient, ids only, after the delete went through.
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: "biz_1", action: "client.delete", clientId: CLIENT_ID })
+    );
     // Recorded inside the same transaction as the delete (the tx passed
     // through is whatever $transaction's callback received above), using a
     // fresh in-transaction re-read rather than the earlier existence check.
@@ -468,6 +479,8 @@ describe.each([
     const result = await action(SUB_RECORD_PAYLOAD);
 
     expect(result).toEqual({ ok: false, error: SUB_RECORD_NOT_FOUND_ERROR });
+    // Nothing changed, so nothing is audited.
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
     expect(mocks[model].deleteMany).toHaveBeenCalledWith({
       where: { id: SUB_RECORD_ID, clientId: CLIENT_ID, businessId: "biz_1" },
     });

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 import { ClientDetailsPage } from "@/components/clients/client-details-page";
 import { getI18n } from "@/i18n/server";
 import { WithMessages } from "@/i18n/with-messages";
+import { ownerActor, recordAudit } from "@/lib/audit";
 import { requireCurrentWorkspace } from "@/lib/business";
 import { buildClientRecord } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +19,7 @@ export default async function ClientDetailsRoute({
 }: {
   params: Promise<{ clientId: string }>;
 }) {
-  const { business } = await requireCurrentWorkspace("/clients", {
+  const { business, user } = await requireCurrentWorkspace("/clients", {
     missingBusinessRedirect: "/onboarding",
   });
   const { clientId } = await params;
@@ -195,6 +197,11 @@ export default async function ClientDetailsRoute({
   if (!client) {
     notFound();
   }
+
+  // Written once the page is on its way, so the audit log adds no wait.
+  after(() =>
+    recordAudit({ businessId: business.id, actor: ownerActor(user), action: "client.view", clientId: client.id })
+  );
 
   // ClientDetailsPage seeds its state from this prop once (useState), so it
   // never re-reads a later render's fresh currency-formatted record on its

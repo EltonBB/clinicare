@@ -81,6 +81,7 @@ model Business {
   followUpDrafts         FollowUpDraft[]
   waitlistEntries        WaitlistEntry[]
   automationSettings     AutomationSetting[]
+  auditLogs              AuditLog[]
 }
 
 model BusinessHours {
@@ -1119,4 +1120,33 @@ model PendingStorageCleanup {
 
   @@index([nextAttemptAt])
   @@index([businessId])
+}
+
+// Who looked at or changed which patient's data, and when (ROADMAP Step 3
+// safeguard). Ids only, never names, notes or any other content, so the log
+// itself holds no patient detail. Not linked to Client on purpose: the trail
+// outlives a deleted patient (it goes only with the whole clinic). Written
+// through lib/audit.ts.
+model AuditLog {
+  id         String         @id @default(cuid())
+  businessId String
+  actorType  AuditActorType
+  // The owner's auth user id, or the StaffMember id for the staff app.
+  actorId    String
+  // "<part>.<verb>", e.g. "client.view", "payment.update", "appointment.cancel".
+  action     String
+  // The patient whose data it was (null for a chat with an unknown number).
+  clientId   String?
+  // The specific record touched (a payment, a visit), when there is one.
+  recordId   String?
+  createdAt  DateTime       @default(now())
+  business   Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([businessId, clientId, createdAt])
+}
+
+enum AuditActorType {
+  OWNER
+  STAFF
 }
