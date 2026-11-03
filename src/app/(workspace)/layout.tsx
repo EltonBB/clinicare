@@ -3,6 +3,7 @@ import { after } from "next/server";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { getI18n } from "@/i18n/server";
+import { getSessionSignedInAt } from "@/lib/auth";
 import { WithMessages } from "@/i18n/with-messages";
 import { WorkspaceToaster } from "@/components/layout/workspace-toaster";
 import { completePastConfirmedAppointments } from "@/lib/appointments";
@@ -87,6 +88,7 @@ export default async function WorkspaceLayout({
       businessName={businessName}
       ownerName={ownerName}
       ownerEmail={user.email ?? ""}
+      signedInAt={await getSessionSignedInAt(user)}
       ownerPhone={ownerPhone}
       planName={planDisplayName(business.plan)}
       planStatus={planStatusLabel(business.planStatus)}

@@ -14,6 +14,16 @@ export function idleState(now: number, lastActivity: number): IdleState {
   return "active";
 }
 
+/**
+ * Where a newly opened tab starts the clock. Activity recorded after this
+ * session signed in that has since run out means an abandoned session was
+ * reopened, so it keeps that deadline; anything else (a fresh login, a first
+ * visit, activity from before this sign-in) starts now.
+ */
+export function startingActivity(now: number, shared: number, signedInAt: number): number {
+  return shared > signedInAt && idleState(now, shared) === "expired" ? shared : now;
+}
+
 /** Whole seconds until sign-out, never below zero. */
 export function secondsLeft(now: number, lastActivity: number): number {
   return Math.max(0, Math.ceil((lastActivity + IDLE_SIGN_OUT_MS - now) / 1000));

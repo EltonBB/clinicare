@@ -378,10 +378,14 @@ export async function logoutAction() {
   redirect("/login");
 }
 
-/** The workspace's idle sign-out: the login page then says why. */
+/**
+ * The workspace's idle sign-out: the login page then says why. Only this
+ * browser's session ends, so an unattended computer never signs the owner out
+ * of another one they are working on.
+ */
 export async function idleLogoutAction() {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login?idle=1");
 }
 

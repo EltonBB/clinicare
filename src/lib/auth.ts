@@ -14,6 +14,28 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   return user ?? null;
 });
 
+/**
+ * When this browser's session signed in (ms), from the sign-in record (`amr`)
+ * in its access token, else the account's last sign-in. Only the idle
+ * timeout uses it, to tell a fresh login from a reopened, abandoned session;
+ * it never decides who the user is (getCurrentUser does that).
+ */
+export async function getSessionSignedInAt(user: User): Promise<number> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getSession();
+  let fromToken = 0;
+  try {
+    const payload = data.session?.access_token.split(".")[1] ?? "";
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { amr?: unknown };
+    for (const entry of Array.isArray(claims.amr) ? claims.amr : []) {
+      if (typeof entry?.timestamp === "number") fromToken = Math.max(fromToken, entry.timestamp * 1000);
+    }
+  } catch {
+    // No session or an unreadable token: fall back below.
+  }
+  return fromToken || Date.parse(user.last_sign_in_at ?? "") || 0;
+}
+
 export async function requireCurrentUser(nextPath = "/dashboard"): Promise<User> {
   const user = await getCurrentUser();
 
