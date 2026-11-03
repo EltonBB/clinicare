@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
 
+import { planPricing } from "@/components/marketing/shared/plan-strip";
+import { LocalPlanPrice } from "@/components/marketing/shared/plan-strip-interactive";
 import { ReportsSections } from "@/components/reports/reports-overview";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { WorkspaceHeader, WorkspacePage } from "@/components/workspace/workspace-layout";
@@ -41,7 +43,10 @@ export async function ProFeatureLock({ sample }: { sample: ReportsViewModel }) {
         </div>
         <div className="flex shrink-0 flex-col gap-3 lg:w-56 lg:items-stretch">
           <p className="text-sm text-muted-foreground">
-            <span className="text-2xl font-semibold tracking-tight text-foreground">{proPlan.price}</span> {proPlan.cadence}
+            <span className="text-2xl font-semibold tracking-tight text-foreground">
+              <LocalPlanPrice pricing={planPricing()} plan={proPlan} />
+            </span>{" "}
+            {proPlan.cadence}
           </p>
           <Link
             href="/checkout?plan=pro"
