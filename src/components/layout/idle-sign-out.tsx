@@ -52,19 +52,6 @@ export function IdleSignOut({ signedInAt }: { signedInAt: number }) {
   const retryAt = useRef(0);
   const expired = useRef(false);
 
-  const markActive = useCallback((force = false) => {
-    // Past the limit, activity no longer counts: only signing out ends it.
-    if (expired.current) return;
-    const at = Date.now();
-    lastActivity.current = at;
-    if (force || at - lastWrite.current >= WRITE_EVERY_MS) {
-      lastWrite.current = at;
-      writeShared(at);
-    }
-    // A deliberate "stay" closes the warning now, not on the next tick.
-    if (force) setClock({ now: at, last: at });
-  }, []);
-
   const signOut = useCallback(() => {
     if (signingOut.current || Date.now() < retryAt.current) return;
     signingOut.current = true;
@@ -78,6 +65,28 @@ export function IdleSignOut({ signedInAt }: { signedInAt: number }) {
       }
     });
   }, []);
+
+  const markActive = useCallback((force = false) => {
+    // Past the limit, activity no longer counts: only signing out ends it.
+    // Checked here too, not only on the timer, so a click on a reopened or
+    // just-woken tab can't revive a session whose deadline already passed.
+    const at = Date.now();
+    const last = Math.max(lastActivity.current, readShared());
+    if (expired.current || idleState(at, last) === "expired") {
+      expired.current = true;
+      lastActivity.current = last;
+      setClock({ now: at, last });
+      signOut();
+      return;
+    }
+    lastActivity.current = at;
+    if (force || at - lastWrite.current >= WRITE_EVERY_MS) {
+      lastWrite.current = at;
+      writeShared(at);
+    }
+    // A deliberate "stay" closes the warning now, not on the next tick.
+    if (force) setClock({ now: at, last: at });
+  }, [signOut]);
 
   useEffect(() => {
     const start = Date.now();
