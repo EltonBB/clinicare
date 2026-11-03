@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { isLocale, LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE } from "@/i18n/config";
 import {
   authConfirmContinuationPath,
   confirmedSignupLoginPath,
@@ -52,6 +54,17 @@ import { createClient } from "@/utils/supabase/server";
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  // The email's language (the account's, see docs/email-templates): the pages
+  // after the link follow it, the same cookie the language switcher sets.
+  const lang = url.searchParams.get("lang");
+  if (isLocale(lang)) {
+    (await cookies()).set(LOCALE_COOKIE, lang, {
+      path: "/",
+      maxAge: LOCALE_COOKIE_MAX_AGE,
+      sameSite: "lax",
+      secure: url.protocol === "https:",
+    });
+  }
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type");
   const code = url.searchParams.get("code");
