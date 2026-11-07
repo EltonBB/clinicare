@@ -174,6 +174,7 @@ export function InboxWorkspace({
     () => window.matchMedia(SIDE_BY_SIDE_QUERY).matches,
     () => false
   );
+  const chatOnScreen = sideBySide || threadOpenOnSmallScreens;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [draftMessage, setDraftMessage] = useState("");
@@ -322,6 +323,9 @@ export function InboxWorkspace({
   const messageListRef = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
   const previousConversationIdRef = useRef<string | undefined>(undefined);
+  // A chat mounted while hidden (a phone showing just the list) was "scrolled"
+  // at zero height, so it scrolls again once it actually comes on screen.
+  const wasOnScreenRef = useRef(chatOnScreen);
   // Set right before sendMessage's own state update lands, so the operator
   // always sees their own message appear even if they'd scrolled up to
   // reread history — unlike an incoming poll reply, a local send should
@@ -360,12 +364,14 @@ export function InboxWorkspace({
     if (!container) return;
     const isNewConversation = previousConversationIdRef.current !== activeConversation?.id;
     previousConversationIdRef.current = activeConversation?.id;
-    if (isNewConversation || wasNearBottomRef.current || justSentRef.current) {
+    const justShown = chatOnScreen && !wasOnScreenRef.current;
+    wasOnScreenRef.current = chatOnScreen;
+    if (isNewConversation || justShown || wasNearBottomRef.current || justSentRef.current) {
       container.scrollTop = container.scrollHeight;
       wasNearBottomRef.current = true;
       justSentRef.current = false;
     }
-  }, [activeConversation?.id, newestMessageId, messageCount, sendRevision]);
+  }, [activeConversation?.id, newestMessageId, messageCount, sendRevision, chatOnScreen]);
 
   // Fresh retry budget each time a different conversation is selected —
   // independent of the retry-token effect below, which bumps within the
@@ -384,7 +390,6 @@ export function InboxWorkspace({
   // Keyed to the chat actually on screen, which a search or the Unread filter
   // can switch to another row without changing the selection. On a small
   // screen showing just the list, no chat is on screen.
-  const chatOnScreen = sideBySide || threadOpenOnSmallScreens;
   const displayedConversationId = chatOnScreen ? activeConversation?.id : undefined;
   useEffect(() => {
     if (displayedConversationId) void recordConversationViewAction(displayedConversationId).catch(() => {});
