@@ -904,6 +904,16 @@ export function InboxWorkspace({
                     </div>
                   </div>
 
+                  {/* Below lg the list (where errors normally show) is hidden
+                      while a chat is open, so a failed send or delete says so here. */}
+                  {errorMessage ? (
+                    <div className="px-4 pb-2 lg:hidden">
+                      <div className="rounded-(--radius-card) border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                        {errorMessage}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div
                     ref={messageListRef}
                     onScroll={handleMessageListScroll}
