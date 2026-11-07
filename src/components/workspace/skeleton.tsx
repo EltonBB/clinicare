@@ -183,9 +183,10 @@ export function InboxPageSkeleton() {
   return (
     <div className={pageSizes.wide}>
       <SkeletonHeader showAction={false} />
-      <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
+      {/* Same box as the loaded Inbox card (inbox-workspace.tsx), at its first-paint offset. */}
+      <div className="surface-card h-[calc(100dvh_-_174px_-_7rem)] min-h-[420px] overflow-hidden p-0 lg:h-[calc(100dvh_-_174px_-_1rem)] lg:min-h-[440px]">
         <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="space-y-3 border-b border-border/70 p-3 lg:border-b-0 lg:border-r">
+          <div className="space-y-3 p-3 lg:border-r lg:border-border/70">
             <SkeletonBlock className="h-10 w-full" />
             <div className="flex gap-2">
               <SkeletonBlock className="h-7 w-16" />
@@ -206,7 +207,8 @@ export function InboxPageSkeleton() {
               </div>
             ))}
           </div>
-          <div className="flex h-full flex-col">
+          {/* Small screens open on the list alone, like the loaded Inbox. */}
+          <div className="hidden h-full flex-col lg:flex">
             <div className="flex-1 space-y-3 p-4">
               <SkeletonBlock className="mb-1 h-14 w-full" />
               <SkeletonBlock className="h-14 w-2/3" />

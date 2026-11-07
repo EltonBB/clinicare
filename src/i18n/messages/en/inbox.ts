@@ -23,6 +23,7 @@ export const inbox = {
   allRead: "Everything is read. New replies appear here.",
   tryAnotherSearch: "Try a different search term or wait for the next client message.",
   viewProfile: "View profile",
+  backToConversations: "All conversations",
   convertToClient: "Convert to client",
   deleteConversation: "Delete conversation",
   reminder: "Reminder",

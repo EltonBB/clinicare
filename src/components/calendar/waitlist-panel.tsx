@@ -205,7 +205,7 @@ export function WaitlistPanel({ open, onOpenChange, entries, clients, staffMembe
       }}
     >
       <DialogContent className="max-w-lg p-0 sm:max-w-lg">
-        <div className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden">
+        <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col overflow-hidden">
           <DialogHeader className="shrink-0 gap-1 px-5 pb-4 pt-5">
             <DialogTitle>{t.title}</DialogTitle>
             <DialogDescription className="sr-only">

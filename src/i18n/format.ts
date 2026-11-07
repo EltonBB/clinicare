@@ -166,5 +166,8 @@ export function dateText(locale: Locale, date: Date, options: Intl.DateTimeForma
 
 /** Two dates as one range ("Oct 26 – Nov 1, 2026", "26 tet – 1 nën 2026"). */
 export function dateRangeText(locale: Locale, from: Date, to: Date, options: Intl.DateTimeFormatOptions) {
-  return dateFormatter(locale, options).formatRange(from, to);
+  // Node's and the browser's ICU put different spaces around the dash (thin vs
+  // plain), so the same label rendered twice failed hydration on every
+  // Calendar load. Plain spaces read the same and match on both sides.
+  return dateFormatter(locale, options).formatRange(from, to).replace(/[   ]/g, " ");
 }

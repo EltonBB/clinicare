@@ -8,10 +8,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
 } from "react";
 import { m as motion } from "framer-motion";
 import {
+  ArrowLeft,
   ArrowRightLeft,
   ExternalLink,
   Search,
@@ -53,6 +55,7 @@ import { fmt } from "@/i18n/format";
 import { cn, getInitials } from "@/lib/utils";
 import { fadeIn } from "@/lib/motion";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
+import { fillViewportRef } from "@/hooks/fill-viewport";
 import type { InboxViewModel } from "@/lib/inbox";
 import type { SettingsState } from "@/lib/settings";
 
@@ -62,9 +65,20 @@ type InboxWorkspaceProps = {
   connection: SettingsState["whatsapp"]["connection"];
   clientCount: number;
   recommendedClientId?: string;
+  /** A deep link (?conversation= / ?client=) named the chat, so phones open on it rather than the list. */
+  openOnThread?: boolean;
 };
 
 type InboxFilter = "all" | "unread";
+
+// From lg the list and the open chat sit side by side.
+const SIDE_BY_SIDE_QUERY = "(min-width: 1024px)";
+
+function subscribeToSideBySide(notify: () => void) {
+  const query = window.matchMedia(SIDE_BY_SIDE_QUERY);
+  query.addEventListener("change", notify);
+  return () => query.removeEventListener("change", notify);
+}
 
 function isReminderMessage(body: string) {
   const normalized = body.toLowerCase();
@@ -141,6 +155,7 @@ export function InboxWorkspace({
   connection,
   clientCount,
   recommendedClientId,
+  openOnThread = false,
 }: InboxWorkspaceProps) {
   const { m } = useI18n();
   const t = m.inbox;
@@ -148,6 +163,16 @@ export function InboxWorkspace({
   const [conversations, setConversations] = useState(initialView.conversations);
   const [selectedConversationId, setSelectedConversationId] = useState(
     initialView.initialConversationId
+  );
+  // Below lg the list and the open chat don't fit side by side, so one shows
+  // at a time: the list until a chat is opened, then the chat with a way back.
+  const [threadOpenOnSmallScreens, setThreadOpenOnSmallScreens] = useState(openOnThread);
+  // False until the browser says otherwise (the server can't know the
+  // screen), so a phone never logs the chat hidden behind its list as viewed.
+  const sideBySide = useSyncExternalStore(
+    subscribeToSideBySide,
+    () => window.matchMedia(SIDE_BY_SIDE_QUERY).matches,
+    () => false
   );
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
@@ -357,8 +382,10 @@ export function InboxWorkspace({
   // One audit entry per chat shown (any way it comes on screen). Fire and
   // forget: the log never holds up reading the chat.
   // Keyed to the chat actually on screen, which a search or the Unread filter
-  // can switch to another row without changing the selection.
-  const displayedConversationId = activeConversation?.id;
+  // can switch to another row without changing the selection. On a small
+  // screen showing just the list, no chat is on screen.
+  const chatOnScreen = sideBySide || threadOpenOnSmallScreens;
+  const displayedConversationId = chatOnScreen ? activeConversation?.id : undefined;
   useEffect(() => {
     if (displayedConversationId) void recordConversationViewAction(displayedConversationId).catch(() => {});
   }, [displayedConversationId]);
@@ -451,6 +478,7 @@ export function InboxWorkspace({
 
   function openConversation(conversationId: string) {
     setSelectedConversationId(conversationId);
+    setThreadOpenOnSmallScreens(true);
     locallyReadIdsRef.current.add(conversationId);
     setConversations((current) =>
       current.map((conversation) =>
@@ -559,6 +587,8 @@ export function InboxWorkspace({
 
       removeConversationFromList(conversationId);
       setConfirmingDeleteId(null);
+      // The chat that was open is gone: small screens go back to the list.
+      setThreadOpenOnSmallScreens(false);
       setDraftMessage("");
       setErrorMessage("");
     });
@@ -664,13 +694,24 @@ export function InboxWorkspace({
       <WorkspacePage size="wide">
         <WorkspaceHeader title={t.title} />
 
-        <div className="surface-card min-h-[640px] overflow-hidden p-0 lg:h-[calc(100vh-174px)]">
-          {/* lg:grid-rows-[minmax(0,1fr)]: the card's height is fixed at lg, but a
+        {/* Fills the rest of the screen, measured from where it starts (see
+            fillViewportRef), so the composer stays on screen on a short laptop
+            and under a banner; below lg the fixed bottom nav is left clear. */}
+        <div
+          ref={fillViewportRef}
+          className="surface-card h-[calc(100dvh_-_var(--fill-top,174px)_-_7rem)] min-h-[420px] overflow-hidden p-0 lg:h-[calc(100dvh_-_var(--fill-top,174px)_-_1rem)] lg:min-h-[440px]"
+        >
+          {/* grid-rows-[minmax(0,1fr)]: the card's height is fixed, but a
               grid's single implicit row is content-sized, so both panes grew to
               their full height and the card clipped them; their own scroll areas
               never engaged and long threads couldn't be scrolled (owner, 2026-10-18). */}
-          <div className="grid h-full grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col border-b border-border/80 lg:border-b-0 lg:border-r">
+          <div className="grid h-full grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)]">
+            <aside
+              className={cn(
+                "flex min-h-0 flex-col lg:border-r lg:border-border/80",
+                threadOpenOnSmallScreens && activeConversation && "max-lg:hidden"
+              )}
+            >
               <div className="space-y-2.5 px-3.5 pb-3 pt-3.5">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -778,7 +819,13 @@ export function InboxWorkspace({
               </div>
             </aside>
 
-            <section className="flex min-h-0 min-w-0 flex-col bg-white/92">
+            <section
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col bg-white/92",
+                // With no chats yet the pane carries the first-run action, so it stays.
+                !(threadOpenOnSmallScreens && activeConversation) && conversations.length > 0 && "max-lg:hidden"
+              )}
+            >
               {activeConversation ? (
                 <motion.div
                   key={activeConversation.id}
@@ -789,6 +836,14 @@ export function InboxWorkspace({
                 >
                   <div className="flex items-center justify-between gap-3.5 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setThreadOpenOnSmallScreens(false)}
+                        aria-label={t.backToConversations}
+                        className="-ml-1.5 flex size-9 shrink-0 items-center justify-center rounded-(--radius-tile) text-muted-foreground transition-colors duration-(--duration-base) hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 lg:hidden"
+                      >
+                        <ArrowLeft className="size-4" />
+                      </button>
                       <Avatar size="lg" shape="square">
                         <AvatarFallback className="bg-white text-xs font-semibold text-primary">
                           {getInitials(activeConversation.clientName)}

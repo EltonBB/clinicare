@@ -24,6 +24,7 @@ export const inbox: Translation<typeof en> = {
   allRead: "Gjithçka është lexuar. Përgjigjet e reja shfaqen këtu.",
   tryAnotherSearch: "Provoni një kërkim tjetër ose prisni mesazhin e radhës nga pacienti.",
   viewProfile: "Shiko profilin",
+  backToConversations: "Të gjitha bisedat",
   convertToClient: "Ruaj si pacient",
   deleteConversation: "Fshi bisedën",
   reminder: "Kujtesë",
