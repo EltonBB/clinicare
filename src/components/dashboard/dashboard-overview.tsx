@@ -57,7 +57,9 @@ function KpiTile({
     <Link
       href={href}
       className={cn(
-        "surface-card card-hover group/kpi relative flex min-h-[104px] min-w-0 flex-col justify-between p-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
+        // Shorter on phones, where the five tiles stack two by two and filled
+        // a whole screen before any real content.
+        "surface-card card-hover group/kpi relative flex min-h-[76px] min-w-0 flex-col sm:min-h-[104px] justify-between p-3.5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/45",
         className
       )}
     >

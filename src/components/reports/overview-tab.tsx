@@ -658,7 +658,7 @@ export function HighlightsCard({ period }: { period: ReportPeriodView }) {
           {highlights.map((highlight) => (
             <div key={highlight.title} className="rounded-(--radius-tile) px-3 py-2.5">
               <p className="text-sm font-medium text-foreground">{highlight.title}</p>
-              <p className="truncate text-xs text-muted-foreground">{highlight.detail}</p>
+              <p title={highlight.detail} className="line-clamp-2 text-xs text-muted-foreground">{highlight.detail}</p>
             </div>
           ))}
         </div>
@@ -933,7 +933,8 @@ function InsightRow({
         {badge ? <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", priorityStyles[badgeTone ?? "medium"])}>{badge}</span> : null}
       </div>
       <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-foreground">{title}</p>
-      {text ? <p className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{text}</p> : null}
+      {/* Two lines, not one: a single line cut every detail mid-sentence at every screen width. */}
+      {text ? <p title={text} className="mt-0.5 line-clamp-2 text-xs leading-4 text-muted-foreground">{text}</p> : null}
     </div>
   );
 }

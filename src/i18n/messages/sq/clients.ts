@@ -78,8 +78,6 @@ export const clients: Translation<typeof en> = {
     addClient: "Shto një pacient",
     noMatchTitle: "Asnjë pacient nuk përputhet me këtë pamje",
     noMatchCopy: "Provoni një kërkim ose filtër tjetër.",
-    lastVisitLabel: "Vizita e fundit:",
-    visitsLabel: "Vizita:",
     noAppointments: "Ende nuk ka termine",
     details: "Detajet",
     pageOf: "Faqja {page} nga {count}",
