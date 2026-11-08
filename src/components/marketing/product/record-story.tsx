@@ -237,7 +237,7 @@ function Recap({ labels, lead, rest, progress, still }: { labels: string[]; lead
       className="grid gap-10 rounded-(--radius-mkt-card) bg-[var(--brand-wash)]/60 px-6 py-10 sm:px-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-center lg:gap-16 lg:px-12"
       style={still ? undefined : { opacity, y }}
     >
-      <p className="text-balance text-[clamp(1.6rem,2.4vw,2rem)] font-semibold leading-[1.15] tracking-[-0.03em] text-[var(--brand-ink)]">
+      <p className="text-balance text-[clamp(1.6rem,2.4_*_var(--mkt-vw),2rem)] font-semibold leading-[1.15] tracking-[-0.03em] text-[var(--brand-ink)]">
         {lead} <span className="text-muted-foreground">{rest}</span>
       </p>
 

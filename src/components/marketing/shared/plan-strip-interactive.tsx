@@ -92,7 +92,7 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
             >
               <h3 className="text-xl font-semibold text-[var(--brand-ink)]">{plan.name}</h3>
               <p className="mt-6 flex items-baseline gap-2">
-                <span className="text-[clamp(3.5rem,6vw,5rem)] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums transition-colors duration-(--duration-slow) group-hover/plan:text-primary">
+                <span className="text-[clamp(3.5rem,6_*_var(--mkt-vw),5rem)] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums transition-colors duration-(--duration-slow) group-hover/plan:text-primary">
                   {price}
                 </span>
                 <span className="text-sm text-muted-foreground">{interval === "YEAR" ? m.common.plans.perYear : plan.cadence}</span>

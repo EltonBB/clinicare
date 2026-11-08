@@ -160,6 +160,23 @@
   ::selection {
     background: rgba(10, 34, 255, 0.22);
   }
+
+  /* The marketing column (max-w-7xl: the public pages, legal pages and 404)
+     widens on big monitors instead of leaving a narrow strip in the middle. */
+  @media (width >= 96rem) {
+    :root {
+      --container-7xl: 90rem;
+    }
+  }
+
+  /* Marketing type scales with the viewport only as far as the column does.
+     The column stops growing at 1280px (1440px from 1536px), so beyond that
+     a vw-sized headline kept growing into a fixed column and broke onto more
+     lines on a 1536px+ PC than on a 1440px MacBook. Capped at the size it
+     has at 1440px, which grows again in step with the wider column. */
+  :root {
+    --mkt-vw: min(1vw, calc(var(--container-7xl) * 0.01125));
+  }
 }
 
 @layer utilities {
@@ -366,7 +383,7 @@
   }
 
   .display-1 {
-    font-size: clamp(2.9rem, 6vw + 0.6rem, 6.75rem);
+    font-size: clamp(2.9rem, 6 * var(--mkt-vw) + 0.6rem, 6.75rem);
     /* 1.02, not tighter: stacked lines must clear descenders (p, g, y) on the
        line above ascenders (l, i) on the line below. */
     line-height: 1.02;
@@ -375,14 +392,14 @@
   }
 
   .display-2 {
-    font-size: clamp(2.15rem, 3.3vw + 0.85rem, 3.9rem);
+    font-size: clamp(2.15rem, 3.3 * var(--mkt-vw) + 0.85rem, 3.9rem);
     line-height: 1.0;
     letter-spacing: -0.022em;
     font-weight: 600;
   }
 
   .display-3 {
-    font-size: clamp(1.7rem, 2.2vw + 0.6rem, 2.7rem);
+    font-size: clamp(1.7rem, 2.2 * var(--mkt-vw) + 0.6rem, 2.7rem);
     line-height: 1.06;
     letter-spacing: -0.018em;
     font-weight: 600;

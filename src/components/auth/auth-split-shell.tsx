@@ -51,7 +51,10 @@ export async function AuthSplitShell({ children }: { children: ReactNode }) {
       </main>
 
       <aside className="relative hidden overflow-hidden bg-[var(--brand-ink)] text-white lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:justify-end">
-        <div className="relative flex flex-1 items-center justify-center px-10 pt-12 xl:px-14">
+        {/* A size container, so the orbit can size itself to the room actually
+            left above the promise: on a short laptop screen its old 52vh cap
+            was taller than that, and the panel cut its top off. */}
+        <div className="relative flex min-h-0 flex-1 items-center justify-center px-10 pt-12 [container-type:size] xl:px-14">
           <ModuleOrbit />
         </div>
 
