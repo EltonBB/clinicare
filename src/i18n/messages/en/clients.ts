@@ -78,8 +78,6 @@ export const clients = {
     addClient: "Add a client",
     noMatchTitle: "No clients match this view",
     noMatchCopy: "Try a different search term or filter.",
-    lastVisitLabel: "Last visit:",
-    visitsLabel: "Visits:",
     noAppointments: "No appointments yet",
     details: "Details",
     pageOf: "Page {page} of {count}",

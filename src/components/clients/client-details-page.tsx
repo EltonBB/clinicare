@@ -761,7 +761,10 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         </TabsList>
 
         <TabsContent value="overview" className="grid items-start gap-3">
-          <div className="grid items-stretch gap-3 grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
+          {/* Wrapping flex, not an auto-fit grid: a card left alone on the last
+              row (Health at tablet widths) stretches across it instead of
+              leaving an empty cell beside it. */}
+          <div className="flex flex-wrap gap-3 *:flex-[1_1_280px]">
             <WorkspaceCard title={t.nextAppointment}>
               {nextAppointment ? (
                 <div className="flex items-start justify-between gap-3">

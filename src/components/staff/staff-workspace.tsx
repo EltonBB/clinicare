@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState, useTransition } from "react";
+import { Fragment, useDeferredValue, useMemo, useState, useTransition } from "react";
 import { ChevronRight, Plus, Search } from "lucide-react";
 
 import { checkInStaffAction, checkOutStaffAction } from "@/app/(workspace)/staff/actions";
@@ -34,8 +34,15 @@ type StaffWorkspaceProps = {
 
 // Every row is its own grid, so the actions column is a fixed width, sized for
 // the longer Albanian check-in label ("Regjistro hyrjen") beside Details.
+// The table starts at xl (the ~880px it needs without Completion fits a 1280px
+// laptop beside the sidebar); Completion joins at 1400px (written 87.5rem: a px breakpoint
+// sorts unpredictably against the rem-based xl), where its ~1070px
+// fit. Below xl each member is one compact row instead.
 const staffTableGrid =
-  "lg:grid-cols-[minmax(230px,1.4fr)_120px_130px_minmax(170px,1fr)_120px_210px]";
+  "xl:grid-cols-[minmax(200px,1.4fr)_120px_120px_minmax(150px,1fr)_210px] min-[87.5rem]:grid-cols-[minmax(230px,1.4fr)_120px_130px_minmax(170px,1fr)_120px_210px]";
+// The first-run ghost rows are decoration, so they just share the width out.
+const staffFirstRunGrid =
+  "lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.6fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,1fr)]";
 
 function statusDot(status: StaffStatus) {
   return cn(
@@ -154,7 +161,8 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
 
       <div className="section-reveal space-y-3">
         <WorkspaceToolbar>
-          <div className="relative w-full flex-1">
+          {/* A floor so the filter chips can't squeeze it to a stub beside them (1024-1279). */}
+          <div className="relative w-full flex-1 lg:min-w-60">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
@@ -198,24 +206,21 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
         ) : null}
 
         <WorkspaceTable
-          headerClassName="py-2.5"
-          // The columns need ~1050px (the row actions hold two buttons); on a
-          // laptop-width card the table scrolls sideways rather than clipping them.
-          minWidthClassName="lg:min-w-[1050px]"
+          headerClassName="py-2.5 max-xl:hidden"
           headers={
-            <div className={cn("hidden w-full gap-3 lg:grid", staffTableGrid)}>
+            <div className={cn("hidden w-full gap-3 xl:grid", staffTableGrid)}>
               <span>{t.columns.member}</span>
               <span>{t.columns.role}</span>
               <span>{t.columns.status}</span>
               <span>{t.columns.today}</span>
-              <span>{t.columns.completion}</span>
+              <span className="hidden min-[87.5rem]:block">{t.columns.completion}</span>
               <span className="text-right">{t.columns.actions}</span>
             </div>
           }
         >
           {!hasStaff ? (
             <WorkspaceFirstRun
-              gridClassName={staffTableGrid}
+              gridClassName={staffFirstRunGrid}
               cells={["identity", "pill", "pill", "wide", "text", "action"]}
               title={t.firstRunTitle}
               description={t.firstRunCopy}
@@ -232,52 +237,41 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
               />
             </div>
           ) : (
-            filteredStaff.map((member) => (
-              <div
-                key={member.id}
-                className={cn(
-                  "grid gap-3 px-3.5 py-2 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] lg:min-h-[54px] lg:items-center",
-                  staffTableGrid
-                )}
-              >
-                <HoverPrefetchLink
-                  href={
-                    member.unreadMessages > 0
-                      ? `/staff/${member.id}?tab=messages`
-                      : `/staff/${member.id}`
-                  }
-                  className="flex min-w-0 items-center gap-3"
-                >
-                  <Avatar size="lg" shape="square">
-                    <AvatarFallback className="bg-white text-xs font-semibold text-primary">
-                      {getInitials(member.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 font-semibold text-foreground">
-                      <span className="min-w-0 truncate">{member.name}</span>
-                      {member.unreadMessages > 0 || member.hasUnseenCheckIn ? (
-                        <span
-                          className="size-1.5 shrink-0 rounded-full bg-primary"
-                          aria-label={
-                            member.unreadMessages > 0 && member.hasUnseenCheckIn
-                              ? fmt(t.unreadAndCheckIn, {
-                                  messages: plural(m.staff.unreadMessages, member.unreadMessages, locale),
-                                })
-                              : member.unreadMessages > 0
-                                ? plural(m.staff.unreadMessages, member.unreadMessages, locale)
-                                : t.checkInToReview
-                          }
-                        />
-                      ) : null}
-                    </p>
-                  </div>
-                </HoverPrefetchLink>
-                <div className="min-w-0">
-                  <span className="inline-flex max-w-full truncate rounded-md bg-primary/8 px-2.5 py-1 text-xs font-semibold text-primary">
-                    {roleLabel(member.role)}
-                  </span>
-                </div>
+            filteredStaff.map((member) => {
+              const href =
+                member.unreadMessages > 0 ? `/staff/${member.id}?tab=messages` : `/staff/${member.id}`;
+              const avatar = (
+                <Avatar size="lg" shape="square">
+                  <AvatarFallback className="bg-white text-xs font-semibold text-primary">
+                    {getInitials(member.name)}
+                  </AvatarFallback>
+                </Avatar>
+              );
+              const nameLine = (
+                <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <span className="min-w-0 truncate">{member.name}</span>
+                  {member.unreadMessages > 0 || member.hasUnseenCheckIn ? (
+                    <span
+                      className="size-1.5 shrink-0 rounded-full bg-primary"
+                      aria-label={
+                        member.unreadMessages > 0 && member.hasUnseenCheckIn
+                          ? fmt(t.unreadAndCheckIn, {
+                              messages: plural(m.staff.unreadMessages, member.unreadMessages, locale),
+                            })
+                          : member.unreadMessages > 0
+                            ? plural(m.staff.unreadMessages, member.unreadMessages, locale)
+                            : t.checkInToReview
+                      }
+                    />
+                  ) : null}
+                </p>
+              );
+              const shift = member.shiftLabel
+                ? member.shiftLabel
+                : member.nextShift
+                  ? fmt(t.next, { shift: member.nextShift })
+                  : t.noShiftPlanned;
+              const status = (
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm text-foreground">
                     <span className={statusDot(member.status)} />
@@ -289,63 +283,104 @@ export function StaffWorkspace({ initialView }: StaffWorkspaceProps) {
                     </p>
                   ) : null}
                 </div>
-                <div className="min-w-0 text-sm">
-                  {member.shiftLabel ? (
-                    <p className="truncate font-medium text-foreground">{member.shiftLabel}</p>
-                  ) : member.nextShift ? (
-                    <p className="truncate text-muted-foreground">{fmt(t.next, { shift: member.nextShift })}</p>
-                  ) : (
-                    <p className="text-muted-foreground">{t.noShiftPlanned}</p>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  {member.completionRate > 0 ? (
-                    <>
-                      <p className="text-sm font-semibold text-foreground">
-                        <KpiValue value={`${numberFormatter(locale).format(member.completionRate)}%`} animateOnMount />
-                      </p>
-                      {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
-                          Reports' staff-load bar, this directory has no period selector,
-                          so there's no "retarget an already-mounted bar" case to support. */}
-                      <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className="bar-grow h-full bg-primary"
-                          style={{ width: `${Math.min(member.completionRate, 100)}%` }}
-                        />
+              );
+              const clockButton = (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 min-w-[76px] shrink-0 rounded-(--radius-tile) px-3 text-xs"
+                  onClick={() => toggleClock(member.id)}
+                  disabled={
+                    isPending ||
+                    clockingId === member.id ||
+                    (!member.isCheckedIn && !member.canClock)
+                  }
+                  title={!member.isCheckedIn ? member.clockDisabledReason : undefined}
+                >
+                  {clockingId === member.id ? m.common.saving : member.clockLabel}
+                </Button>
+              );
+
+              return (
+                <Fragment key={member.id}>
+                  {/* Below xl: one row with the name, role and today's shift under
+                      it, the status (from sm), and check-in; the row opens the profile. */}
+                  <div className="flex items-center gap-3 px-3.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] xl:hidden">
+                    <HoverPrefetchLink href={href} className="flex min-w-0 flex-1 items-center gap-3">
+                      {avatar}
+                      <div className="min-w-0">
+                        {nameLine}
+                        <p className="truncate text-xs text-muted-foreground">
+                          {roleLabel(member.role)} · {shift}
+                        </p>
                       </div>
-                    </>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 min-w-[76px] rounded-(--radius-tile) px-3 text-xs"
-                    onClick={() => toggleClock(member.id)}
-                    disabled={
-                      isPending ||
-                      clockingId === member.id ||
-                      (!member.isCheckedIn && !member.canClock)
-                    }
-                    title={!member.isCheckedIn ? member.clockDisabledReason : undefined}
-                  >
-                    {clockingId === member.id ? m.common.saving : member.clockLabel}
-                  </Button>
-                  <HoverPrefetchLink
-                    href={`/staff/${member.id}`}
+                    </HoverPrefetchLink>
+                    <div className="hidden w-32 shrink-0 sm:block">{status}</div>
+                    {clockButton}
+                  </div>
+                  <div
                     className={cn(
-                      buttonVariants({ variant: "solid", size: "sm" }),
-                      "h-8 rounded-(--radius-tile) px-3 text-xs"
+                      "hidden min-h-[54px] items-center gap-3 px-3.5 py-2 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] xl:grid",
+                      staffTableGrid
                     )}
-                    aria-label={fmt(t.open, { name: member.name })}
                   >
-                    {t.details}
-                    <ChevronRight className="size-4" />
-                  </HoverPrefetchLink>
-                </div>
-              </div>
-            ))
+                    <HoverPrefetchLink href={href} className="flex min-w-0 items-center gap-3">
+                      {avatar}
+                      <div className="min-w-0">{nameLine}</div>
+                    </HoverPrefetchLink>
+                    <div className="min-w-0">
+                      <span className="inline-flex max-w-full truncate rounded-md bg-primary/8 px-2.5 py-1 text-xs font-semibold text-primary">
+                        {roleLabel(member.role)}
+                      </span>
+                    </div>
+                    {status}
+                    <div className="min-w-0 text-sm">
+                      <p
+                        className={cn(
+                          "truncate",
+                          member.shiftLabel ? "font-medium text-foreground" : "text-muted-foreground"
+                        )}
+                      >
+                        {shift}
+                      </p>
+                    </div>
+                    <div className="hidden min-w-0 min-[87.5rem]:block">
+                      {member.completionRate > 0 ? (
+                        <>
+                          <p className="text-sm font-semibold text-foreground">
+                            <KpiValue value={`${numberFormatter(locale).format(member.completionRate)}%`} animateOnMount />
+                          </p>
+                          {/* Mount-once CSS entrance (.bar-grow), not framer-motion — unlike
+                              Reports' staff-load bar, this directory has no period selector,
+                              so there's no "retarget an already-mounted bar" case to support. */}
+                          <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
+                            <div
+                              className="bar-grow h-full bg-primary"
+                              style={{ width: `${Math.min(member.completionRate, 100)}%` }}
+                            />
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      {clockButton}
+                      <HoverPrefetchLink
+                        href={`/staff/${member.id}`}
+                        className={cn(
+                          buttonVariants({ variant: "solid", size: "sm" }),
+                          "h-8 rounded-(--radius-tile) px-3 text-xs"
+                        )}
+                        aria-label={fmt(t.open, { name: member.name })}
+                      >
+                        {t.details}
+                        <ChevronRight className="size-4" />
+                      </HoverPrefetchLink>
+                    </div>
+                  </div>
+                </Fragment>
+              );
+            })
           )}
         </WorkspaceTable>
       </div>

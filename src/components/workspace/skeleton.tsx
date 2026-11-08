@@ -40,7 +40,7 @@ export function DashboardPageSkeleton() {
       {/* Mirrors the dashboard's KPI row: five across from sm up, the fifth spanning on phones. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {Array.from({ length: 5 }).map((_, index) => (
-          <SkeletonBlock key={index} className={cn("h-[104px]", index === 4 && "max-sm:col-span-2")} />
+          <SkeletonBlock key={index} className={cn("h-[76px] sm:h-[104px]", index === 4 && "max-sm:col-span-2")} />
         ))}
       </div>
       <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
