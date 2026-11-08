@@ -123,10 +123,13 @@ export function OnboardingFlow({ initialState, businessName, ownerName, userId }
   const isLastStep = state.currentStep >= onboardingSteps.length;
   const ownerFirstName = firstDisplayName(state.owner.name || ownerName) || t.welcome.fallbackName;
 
+  // The start position can't depend on reduced motion (the server renders it
+  // without knowing the setting); reduced motion makes the step change
+  // instant instead.
   const stepVariants: Variants = {
-    initial: { opacity: 0, y: reduce ? 0 : 12 },
-    animate: { opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE } },
-    exit: { opacity: 0, y: reduce ? 0 : -6, transition: { duration: 0.16, ease: EASE } },
+    initial: { opacity: 0, y: 12 },
+    animate: { opacity: 1, y: 0, transition: reduce ? { duration: 0 } : { duration: 0.28, ease: EASE } },
+    exit: { opacity: 0, y: -6, transition: reduce ? { duration: 0 } : { duration: 0.16, ease: EASE } },
   };
 
   // Logo is upload-only, so the only display source is the signed URL resolved

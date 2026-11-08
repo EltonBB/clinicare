@@ -19,6 +19,7 @@ import { MonthGrid } from "@/components/workspace/month-grid";
 import { LazyMotionProvider } from "@/components/layout/motion-provider";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
+import { keepInViewport } from "@/hooks/keep-in-viewport";
 import { useDismissOnOutsideOrEscape } from "@/hooks/use-dismiss-on-outside-or-escape";
 import { useI18n, useServerText } from "@/i18n/client";
 import { dateText, fmt } from "@/i18n/format";
@@ -256,9 +257,10 @@ export function ReportsOverview({ view }: { view: ReportsViewModel }) {
                   </button>
                   {rangeOpen ? (
                     <div
+                      ref={keepInViewport}
                       role="dialog"
                       aria-label={t.customRangeDialog}
-                      className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[320px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-4 shadow-(--shadow-pop)"
+                      className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[320px] max-w-[calc(100vw-2rem)] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-4 shadow-(--shadow-pop)"
                     >
                       <RangeCalendar
                         from={fromInput}

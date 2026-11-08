@@ -1,11 +1,19 @@
 "use client";
 
-import { m, useReducedMotion } from "framer-motion";
+import { m } from "framer-motion";
 import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-/** Fade + rise into view once. Falls back to a plain div under reduced motion. */
+// Reduced motion is handled in CSS, not by rendering a plain div: the server
+// can't know the setting, so a JS branch rendered different markup in the
+// browser (a hydration mismatch). The starting state is overridden instead,
+// so the content shows at once, even before the page hydrates.
+const STILL = "motion-reduce:opacity-100! motion-reduce:transform-none!";
+
+/** Fade + rise into view once. Shown at once under reduced motion. */
 export function Reveal({
   children,
   className,
@@ -17,11 +25,9 @@ export function Reveal({
   delay?: number;
   y?: number;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <div className={className}>{children}</div>;
   return (
     <m.div
-      className={className}
+      className={cn(className, STILL)}
       initial={{ opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "0px 0px -12% 0px" }}
@@ -42,8 +48,6 @@ export function RevealGroup({
   className?: string;
   stagger?: number;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <div className={className}>{children}</div>;
   return (
     <m.div
       className={className}
@@ -66,11 +70,9 @@ export function RevealItem({
   className?: string;
   y?: number;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <div className={className}>{children}</div>;
   return (
     <m.div
-      className={className}
+      className={cn(className, STILL)}
       variants={{ hidden: { opacity: 0, y }, show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE } } }}
     >
       {children}

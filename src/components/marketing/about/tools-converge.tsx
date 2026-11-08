@@ -53,7 +53,7 @@ function FragmentCard({ f, i, progress, still }: { f: Fragment; i: number; progr
   const row = useTransform(t, [0.5, 1], [0, 1]);
 
   return (
-    <m.div className="absolute left-1/2 top-1/2" style={still ? { x: -CARD_W / 2, y: targetY } : { x, y, rotate }}>
+    <m.div className="absolute left-1/2 top-1/2" style={still ? { x: -CARD_W / 2, y: targetY, rotate: 0 } : { x, y, rotate }}>
       <div className="relative" style={{ width: CARD_W, height: ROW_H }}>
         {/* Scattered: a scrap from wherever it used to live. */}
         <m.div

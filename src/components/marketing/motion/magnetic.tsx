@@ -9,7 +9,9 @@ import { useMarketingScroll } from "./scroll-context";
  * Magnetic wrapper: the element leans toward the cursor while hovered, then
  * springs back on leave. Only this visual wrapper translates a few px — the
  * child (the actual link/button) keeps its real hit area, so clicks stay
- * accurate. Disabled on touch + reduced-motion (renders a plain inline span).
+ * accurate. Inert on touch + reduced motion: the same span renders on the
+ * server and in the browser (a plain span under reduced motion didn't match
+ * the server's markup), it just never moves.
  */
 export function Magnetic({
   children,
@@ -28,13 +30,9 @@ export function Magnetic({
   const sx = useSpring(x, { stiffness: 220, damping: 18, mass: 0.4 });
   const sy = useSpring(y, { stiffness: 220, damping: 18, mass: 0.4 });
 
-  if (reduce || coarse) {
-    return <span className={className}>{children}</span>;
-  }
-
   function handleMove(event: ReactPointerEvent<HTMLSpanElement>) {
     const el = ref.current;
-    if (!el) return;
+    if (!el || reduce || coarse) return;
     const rect = el.getBoundingClientRect();
     x.set((event.clientX - (rect.left + rect.width / 2)) * strength);
     y.set((event.clientY - (rect.top + rect.height / 2)) * strength);

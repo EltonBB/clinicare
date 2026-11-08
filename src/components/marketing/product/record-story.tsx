@@ -227,6 +227,10 @@ function StepItem({
  * The end of the section, kept quiet: one light panel with the takeaway on
  * the left and the five steps ticked off along a single line on the right.
  */
+// Under reduced motion every style gets a fixed, fully shown value, never
+// `undefined`: `still` turns on just after the page loads, and dropping a style
+// left the scroll animation's last value (opacity 0) on the element, so the
+// recap stayed invisible.
 function Recap({ labels, lead, rest, progress, still }: { labels: string[]; lead: string; rest: string; progress: MotionValue<number>; still: boolean }) {
   const opacity = useRange(progress, [0, 0.35], [0, 1]);
   const y = useRange(progress, [0, 0.5], [40, 0]);
@@ -235,7 +239,7 @@ function Recap({ labels, lead, rest, progress, still }: { labels: string[]; lead
   return (
     <m.div
       className="grid gap-10 rounded-(--radius-mkt-card) bg-[var(--brand-wash)]/60 px-6 py-10 sm:px-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-center lg:gap-16 lg:px-12"
-      style={still ? undefined : { opacity, y }}
+      style={still ? { opacity: 1, y: 0 } : { opacity, y }}
     >
       <p className="text-balance text-[clamp(1.6rem,2.4_*_var(--mkt-vw),2rem)] font-semibold leading-[1.15] tracking-[-0.03em] text-[var(--brand-ink)]">
         {lead} <span className="text-muted-foreground">{rest}</span>
@@ -243,7 +247,7 @@ function Recap({ labels, lead, rest, progress, still }: { labels: string[]; lead
 
       <ol className="relative grid grid-cols-5">
         <span aria-hidden className="absolute inset-x-[10%] top-3 h-px bg-border">
-          <m.span className="absolute inset-0 origin-left bg-primary" style={still ? undefined : { scaleX: line }} />
+          <m.span className="absolute inset-0 origin-left bg-primary" style={{ scaleX: still ? 1 : line }} />
         </span>
         {labels.map((label, i) => (
           <RecapStep key={label} label={label} index={i} progress={progress} still={still} />
@@ -261,11 +265,11 @@ function RecapStep({ label, index, progress, still }: { label: string; index: nu
   return (
     <li className="relative flex flex-col items-center text-center">
       <span className="relative flex size-6 items-center justify-center rounded-full bg-white ring-1 ring-border">
-        <m.span className="absolute inset-0 flex items-center justify-center rounded-full bg-primary text-white" style={still ? undefined : { scale: tick }}>
+        <m.span className="absolute inset-0 flex items-center justify-center rounded-full bg-primary text-white" style={{ scale: still ? 1 : tick }}>
           <Check className="size-3.5" strokeWidth={3} />
         </m.span>
       </span>
-      <m.span className="mt-3 text-sm font-medium text-[var(--brand-ink)]" style={still ? undefined : { opacity: text }}>
+      <m.span className="mt-3 text-sm font-medium text-[var(--brand-ink)]" style={{ opacity: still ? 1 : text }}>
         {label}
       </m.span>
     </li>
