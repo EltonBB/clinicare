@@ -789,11 +789,14 @@ export function SettingsWorkspace({
       <div
         className={cn(
           "grid gap-4",
-          "items-start md:items-stretch md:grid-cols-[232px_minmax(0,1fr)]"
+          "items-start md:grid-cols-[232px_minmax(0,1fr)]"
         )}
       >
+        {/* Sticky and sized to its own content, so Save stays in view while a
+            long section scrolls. Stretched to the section's height, it sat
+            below the bottom of the popup on a 1366x768 laptop. */}
         <div
-          className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card)"
+          className="flex flex-col rounded-(--radius-card) border border-border/80 bg-white p-2 shadow-(--shadow-card) md:sticky md:top-0"
         >
           <nav>
             {settingsNav.map((section) => {

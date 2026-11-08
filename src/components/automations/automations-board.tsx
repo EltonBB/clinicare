@@ -8,6 +8,7 @@ import { toggleAutomationAction, writeMessagesInAlbanianAction } from "@/app/(wo
 import { AutomationEditor } from "@/components/automations/automation-editor";
 import { Toggle } from "@/components/settings/settings-toggle";
 import { Button } from "@/components/ui/button";
+import { fillViewportRef } from "@/hooks/fill-viewport";
 import { useI18n, useServerText } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import type { AutomationKind } from "@/lib/automations";
@@ -105,12 +106,12 @@ export function AutomationsBoard({
           {notice}
         </p>
       ) : null}
+      {/* The grid fills the screen below the header (and the notice row, when
+          there is one), measured from where it starts. Capped so the cards
+          don't stretch into tall empty boxes on a big monitor: at most ~150px a row. */}
       <div
-        className={cn(
-          "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:min-h-[520px] lg:grid-cols-3 lg:grid-rows-4",
-          // The grid fills the screen below the header, less the notice row when there is one.
-          englishWording ? "lg:h-[calc(100vh-226px)]" : "lg:h-[calc(100vh-174px)]"
-        )}
+        ref={fillViewportRef}
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:h-[calc(100dvh_-_var(--fill-top,174px)_-_1rem)] lg:max-h-[636px] lg:min-h-[440px] lg:grid-cols-3 lg:grid-rows-4"
       >
         {cards.map((card) => {
           const on = isOn(card);

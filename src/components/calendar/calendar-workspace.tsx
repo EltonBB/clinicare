@@ -59,6 +59,7 @@ import type {
   CalendarViewModel,
 } from "@/lib/calendar";
 import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
+import { fillViewportRef } from "@/hooks/fill-viewport";
 import { useI18n, useServerText } from "@/i18n/client";
 import { dateRangeText, dateText, fmt } from "@/i18n/format";
 
@@ -102,10 +103,12 @@ const monthChipClasses: Record<CalendarAppointmentStatus, string> = {
   "no-show": "bg-violet-50 text-violet-800",
 };
 
-// Fills the viewport below the header + toolbar so the grid reads as the whole
-// page rather than a card floating above empty space (mirrors Inbox's own
-// lg:h-[calc(100vh-174px)] fill pattern, offset for Calendar's extra toolbar row).
-const calendarGridHeightClass = "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 lg:h-[calc(100vh-230px)]";
+// Fills the screen below the header + toolbar (from tablet width up) so the
+// grid reads as the whole page rather than a card floating above empty space.
+// `fillViewportRef` measures where the grid starts; below `lg` the fixed
+// bottom nav (the main area's 7rem bottom padding) is left clear.
+const calendarGridHeightClass =
+  "surface-card section-reveal step-enter flex flex-col overflow-clip p-0 md:h-[calc(100dvh_-_var(--fill-top,230px)_-_7rem)] md:min-h-[360px] lg:h-[calc(100dvh_-_var(--fill-top,230px)_-_1rem)]";
 
 // Appointments and blocks share one chronological list, not two stacked ones
 // — a 09:00 block must sit above a 10:00 appointment, not below every
@@ -251,11 +254,11 @@ function BlockPill({ block }: { block: CalendarScheduleBlock }) {
   );
 }
 
-// A week column stretches to the viewport (`lg` and up), so how many rows fit is
+// A week column stretches to the viewport (`md` and up), so how many rows fit is
 // measured; below that its height just follows its content, so there is nothing
 // to measure and it falls back to nine rows: up to nine entries, or eight plus
 // the "+N more" link (never a link standing in for a single hidden entry).
-const LG_MEDIA_QUERY = "(min-width: 1024px)";
+const FILL_MEDIA_QUERY = "(min-width: 768px)";
 const DAY_COLUMN_FALLBACK_SLOTS = 9;
 const DAY_COLUMN_PILL_HEIGHT = 40;
 
@@ -263,7 +266,7 @@ const DAY_COLUMN_PILL_HEIGHT = 40;
 // column, measured from the column's real box and its real pills so it holds at
 // any viewport height and text size.
 function measureDayColumnSlots(column: HTMLElement) {
-  if (!window.matchMedia(LG_MEDIA_QUERY).matches) {
+  if (!window.matchMedia(FILL_MEDIA_QUERY).matches) {
     return DAY_COLUMN_FALLBACK_SLOTS;
   }
 
@@ -335,7 +338,7 @@ function DayColumn({
     <div
       ref={columnRef}
       className={cn(
-        "@container flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 lg:h-full lg:max-h-none lg:min-h-0",
+        "@container flex max-h-[520px] min-h-[200px] flex-col gap-1.5 overflow-y-auto border-l border-t border-border/75 p-2.5 first:border-l-0 md:h-full md:max-h-none md:min-h-0",
         isEmpty && "justify-center",
         isToday ? "bg-[#f6f9ff]" : isSelectedColumn && "bg-[#f8fafd]"
       )}
@@ -397,8 +400,8 @@ function DayColumn({
   );
 }
 
-// Below `lg` a month cell just grows with its pills, so three is a fixed cap;
-// from `lg` the cells split the viewport evenly and as many pills as fill one show.
+// On phones a month cell just grows with its pills, so three is a fixed cap;
+// from `md` the cells split the screen evenly and as many pills as fill one show.
 const MONTH_FALLBACK_SLOTS = 3;
 const MONTH_PILL_HEIGHT = 25;
 
@@ -406,7 +409,7 @@ const MONTH_PILL_HEIGHT = 25;
 // the date row, so it takes no slot here. Measured from a real cell (they are all
 // the same height) and a real pill.
 function measureMonthSlots(grid: HTMLElement) {
-  if (!window.matchMedia(LG_MEDIA_QUERY).matches) {
+  if (!window.matchMedia(FILL_MEDIA_QUERY).matches) {
     return MONTH_FALLBACK_SLOTS;
   }
 
@@ -1014,7 +1017,7 @@ export function CalendarWorkspace({
             narrow widths, and the app shell clips horizontal overflow
             rather than scrolling it, so a non-wrapping cluster here just
             clipped part of the date or the CTA off-screen (Codex). */}
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3 max-sm:ml-0 max-sm:w-full max-sm:justify-start">
           {isLoadingMonths ? (
             <span role="status" className="text-sm text-muted-foreground">
               {t.loading}
@@ -1031,40 +1034,44 @@ export function CalendarWorkspace({
             onSelect={(day) => setActiveDate(day)}
           />
 
-          {canManageWaitlist ? (
-            <button
-              type="button"
-              onClick={() => setWaitlistOpen(true)}
-              className={cn(buttonVariants({ variant: "outline" }), "h-9 rounded-(--radius-card) px-3.5")}
-            >
-              <Clock className="size-4" />
-              {t.waitingList}
-            </button>
-          ) : null}
+          {/* On phones the two actions take their own row as equal halves,
+              instead of wrapping one at a time under the date. */}
+          <div className="flex items-center gap-3 max-sm:w-full">
+            {canManageWaitlist ? (
+              <button
+                type="button"
+                onClick={() => setWaitlistOpen(true)}
+                className={cn(buttonVariants({ variant: "outline" }), "h-9 rounded-(--radius-card) px-3.5 max-sm:flex-1")}
+              >
+                <Clock className="size-4" />
+                {t.waitingList}
+              </button>
+            ) : null}
 
-          {hasClients ? (
-            <Link
-              href={`/calendar/new?date=${selectedDateKey}`}
-              className={cn(
-                buttonVariants({ variant: "solid" }),
-                "h-9 rounded-(--radius-card) px-3.5"
-              )}
-            >
-              <Plus className="size-4" />
-              {t.newAppointment}
-            </Link>
-          ) : (
-            <Link
-              href="/clients/new?next=calendar"
-              className={cn(
-                buttonVariants({ variant: "solid" }),
-                "h-9 rounded-(--radius-card) px-3.5"
-              )}
-            >
-              <UsersRound className="size-4" />
-              {t.addClient}
-            </Link>
-          )}
+            {hasClients ? (
+              <Link
+                href={`/calendar/new?date=${selectedDateKey}`}
+                className={cn(
+                  buttonVariants({ variant: "solid" }),
+                  "h-9 rounded-(--radius-card) px-3.5 max-sm:flex-1"
+                )}
+              >
+                <Plus className="size-4" />
+                {t.newAppointment}
+              </Link>
+            ) : (
+              <Link
+                href="/clients/new?next=calendar"
+                className={cn(
+                  buttonVariants({ variant: "solid" }),
+                  "h-9 rounded-(--radius-card) px-3.5 max-sm:flex-1"
+                )}
+              >
+                <UsersRound className="size-4" />
+                {t.addClient}
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1108,7 +1115,7 @@ export function CalendarWorkspace({
               />
             </div>
           ) : view === "month" ? (
-            <div key={gridKey} className={calendarGridHeightClass}>
+            <div key={gridKey} ref={fillViewportRef} className={calendarGridHeightClass}>
               <div className="z-30 grid shrink-0 grid-cols-7 border-b border-border/80 bg-white text-xs font-semibold caps-label text-muted-foreground">
                 {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const).map((day) => m.common.weekdays[day].short).map((label) => (
                   <div key={label} className="px-4 py-3">
@@ -1116,8 +1123,8 @@ export function CalendarWorkspace({
                   </div>
                 ))}
               </div>
-              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              <div ref={monthGridRef} className="grid grid-cols-7 lg:h-full lg:auto-rows-fr">
+              <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+              <div ref={monthGridRef} className="grid grid-cols-7 md:h-full md:auto-rows-fr">
                 {currentMonth.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const items = appointmentsByDate.get(key) ?? [];
@@ -1217,9 +1224,9 @@ export function CalendarWorkspace({
               </div>
             </div>
           ) : (
-            <div key={gridKey} className={calendarGridHeightClass}>
-              <div className="min-h-0 overflow-x-auto lg:flex lg:flex-1 lg:flex-col">
-                <div className={cn("lg:flex lg:h-full lg:min-h-0 lg:flex-col", view === "week" && "min-w-[720px]")}>
+            <div key={gridKey} ref={fillViewportRef} className={calendarGridHeightClass}>
+              <div className="min-h-0 overflow-x-auto md:flex md:flex-1 md:flex-col">
+                <div className={cn("md:flex md:h-full md:min-h-0 md:flex-col", view === "week" && "min-w-[720px]")}>
               <div className={cn("grid shrink-0 border-b border-border/80 bg-white", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const isToday = isSameDay(day, todayDate);
@@ -1258,7 +1265,7 @@ export function CalendarWorkspace({
                 })}
               </div>
 
-              <div className={cn("grid lg:min-h-0 lg:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
+              <div className={cn("grid md:min-h-0 md:flex-1", view === "day" ? "grid-cols-1" : "grid-cols-7")}>
                 {(view === "day" ? [activeDate] : currentWeek).map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const items = appointmentsByDate.get(key) ?? [];

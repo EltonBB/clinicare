@@ -97,7 +97,7 @@ export function RecordFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg p-0 sm:max-w-lg">
-        <div className="flex max-h-[calc(100vh-2rem)] min-h-0 flex-col overflow-hidden">
+        <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col overflow-hidden">
           <DialogHeader className="shrink-0 gap-1 border-b border-border/70 px-5 pb-4 pt-5">
             <DialogTitle className="text-lg font-semibold text-foreground">
               {title}

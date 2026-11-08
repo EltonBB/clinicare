@@ -109,6 +109,7 @@ export default async function InboxPage({
       connection={buildWhatsAppConnectionSummary(whatsappConnection)}
       clientCount={clientCount}
       recommendedClientId={recentClient?.id}
+      openOnThread={Boolean(requestedConversationId ?? ensuredConversation)}
     />
     </WithMessages>
   );
