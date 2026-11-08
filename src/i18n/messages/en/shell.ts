@@ -54,7 +54,6 @@ export const shell = {
     unread: { one: "{count} unread message waiting for you", other: "{count} unread messages waiting for you" },
     remindersNeedAttention: "Reminders need your attention.",
     allClear: "All clear. Nothing needs your attention right now.",
-    empty: "No new notifications yet. Check back later — new messages and updates will show up here.",
     openInbox: "Open inbox",
     openStaffMessages: "Open staff messages",
     inboxItem: { one: "{count} unread message waiting in the inbox.", other: "{count} unread messages waiting in the inbox." },

@@ -53,7 +53,6 @@ export const shell: Translation<typeof en> = {
     unread: { one: "{count} mesazh i palexuar ju pret", other: "{count} mesazhe të palexuara ju presin" },
     remindersNeedAttention: "Kujtesat kërkojnë vëmendjen tuaj.",
     allClear: "Gjithçka në rregull. Asgjë nuk kërkon vëmendjen tuaj tani.",
-    empty: "Ende nuk ka njoftime të reja. Mesazhet dhe përditësimet e reja do të shfaqen këtu.",
     openInbox: "Hap mesazhet",
     openStaffMessages: "Hap mesazhet e stafit",
     inboxItem: { one: "{count} mesazh i palexuar në mesazhe.", other: "{count} mesazhe të palexuara në mesazhe." },

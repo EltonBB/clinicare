@@ -302,6 +302,8 @@ type WorkspaceFirstRunProps = {
   description?: string;
   actionHref?: string;
   actionLabel?: string;
+  /** e.g. "lg:hidden" when another pane carries the action on wide screens. */
+  actionClassName?: string;
   /** The real rows' grid template, so the ghost rows line up with the headers. */
   gridClassName?: string;
   cells?: WorkspaceGhostCell[];
@@ -332,6 +334,7 @@ export function WorkspaceFirstRun({
   description,
   actionHref,
   actionLabel,
+  actionClassName,
   gridClassName,
   cells = ["identity", "text", "wide", "pill", "action"],
   rows = 4,
@@ -363,7 +366,7 @@ export function WorkspaceFirstRun({
         <p className="text-[15px] font-semibold text-foreground">{title}</p>
         {description ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p> : null}
         {actionHref && actionLabel ? (
-          <Link href={actionHref} className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-(--radius-tile)")}>
+          <Link href={actionHref} className={cn(buttonVariants({ size: "sm" }), "mt-4 rounded-(--radius-tile)", actionClassName)}>
             {actionLabel}
           </Link>
         ) : null}
