@@ -59,7 +59,7 @@ export function ModuleOrbit() {
     <div ref={stage} className="flex w-full flex-col items-center [perspective:1200px]">
       <div
         ref={tilt}
-        className="relative aspect-square w-[min(100%,27rem,52vh)] transition-transform duration-700 ease-out-quint [transform-style:preserve-3d]"
+        className="relative aspect-square w-[min(100%,27rem,calc(100cqh_-_4.5rem))] transition-transform duration-700 ease-out-quint [transform-style:preserve-3d]"
         // Only a mouse leaving releases the hold; a tapped tile stays lit until blur.
         onPointerLeave={(e) => {
           if (e.pointerType === "mouse") setHolding(false);

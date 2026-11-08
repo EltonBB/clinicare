@@ -238,7 +238,7 @@ export function DayDial({ still }: { still: boolean }) {
       {/* Centre readout */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="w-[46%] text-center sm:w-[40%]">
-          <p className="text-[clamp(2.25rem,4.4vw,3.5rem)] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums">
+          <p className="text-[clamp(2.25rem,4.4_*_var(--mkt-vw),3.5rem)] font-semibold leading-none tracking-[-0.04em] text-[var(--brand-ink)] tabular-nums">
             {hovered ? hovered.from : fmt(now)}
           </p>
           <div className="mt-3 min-h-[4.5rem]">

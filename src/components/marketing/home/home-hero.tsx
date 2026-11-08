@@ -27,7 +27,7 @@ export function HomeHero() {
       </div>
       <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-12 px-4 pb-20 pt-16 sm:px-6 sm:pt-24 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.1fr_1fr] lg:gap-10 lg:px-8 lg:py-16">
         <div>
-          <h1 className="display-1 max-w-3xl text-balance text-[var(--brand-ink)] lg:text-[clamp(3.5rem,5vw+0.6rem,5.75rem)]">
+          <h1 className="display-1 max-w-3xl text-balance text-[var(--brand-ink)]">
             <WordReveal>
               {t.title} <Highlight>{t.highlight}</Highlight>
             </WordReveal>

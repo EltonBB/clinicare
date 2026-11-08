@@ -112,7 +112,7 @@ export function ClinicDay() {
                 <h2 className="display-3 max-w-md text-balance text-(--day-fg)">
                   {t.lead} <span className="text-(--day-muted)">{t.rest}</span>
                 </h2>
-                <m.p className="mt-12 text-[clamp(4.5rem,8vw,8rem)] font-semibold leading-none tracking-[-0.045em] text-(--day-accent) tabular-nums">
+                <m.p className="mt-12 text-[clamp(4.5rem,8_*_var(--mkt-vw),8rem)] font-semibold leading-none tracking-[-0.045em] text-(--day-accent) tabular-nums">
                   {time}
                 </m.p>
 

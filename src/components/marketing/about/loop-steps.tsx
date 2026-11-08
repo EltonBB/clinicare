@@ -125,7 +125,7 @@ export function LoopSteps() {
               <p className="mt-5 text-xl font-semibold text-[var(--brand-ink)]">{title}</p>
               <p className="mt-1.5 text-sm leading-6 text-muted-foreground">{copy}</p>
             </div>
-            <div className="mt-auto flex h-[7.25rem] flex-col justify-center border-t border-border/60 bg-[var(--brand-wash)]/35">
+            <div className="mt-auto flex min-h-[7.25rem] flex-col justify-center border-t border-border/60 bg-[var(--brand-wash)]/35">
               <Visual />
             </div>
           </li>
