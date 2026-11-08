@@ -164,9 +164,11 @@ export function StaffTab({ period }: { period: ReportPeriodView }) {
                   <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <motion.span
                       className="block h-full w-full origin-left bg-primary"
-                      initial={prefersReducedMotion ? false : { scaleX: 0 }}
+                      // Same initial on server and browser (see overview-tab's chart):
+                      // reduced motion makes the move instant instead.
+                      initial={{ scaleX: 0 }}
                       animate={{ scaleX: Math.min(loadShare, 100) / 100 }}
-                      transition={{ duration: durationEntrance, ease: easeOutExpo }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { duration: durationEntrance, ease: easeOutExpo }}
                     />
                     {avgLoadShare > 0 ? (
                       <span

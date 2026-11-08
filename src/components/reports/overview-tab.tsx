@@ -168,6 +168,8 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
   // SVG `pathLength` isn't a transform/layout property, so MotionConfig's
   // reducedMotion="user" (motion-provider.tsx) doesn't cover it — the trace-in
   // draw has to be gated here explicitly (Codex P2).
+  // The server doesn't know reduced motion, so `initial` matches on both sides
+  // (a browser-only `false` failed hydration); reduced motion makes the move instant.
   const prefersReducedMotion = useReducedMotion();
 
   useResetOnPeriodChange(period, () => {
@@ -188,6 +190,11 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
     [chartValues, chartPreviousValues]
   );
   const plotWidth = Math.max(chartWidth - PLOT_LEFT, 80);
+  // On a narrow chart (a phone) eight week labels collide, the last one most
+  // ("W7W8"): label every other point then, counted back from the last so the
+  // newest always keeps its label.
+  const labelEvery =
+    plotWidth / Math.max(chartPoints.length - 1, 1) < 44 ? 2 : 1;
   const linePath = useMemo(
     () => buildSmoothPath(chartValues, plotWidth, PLOT_HEIGHT, maxChartValue),
     [chartValues, plotWidth, maxChartValue]
@@ -328,9 +335,9 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     fill="var(--primary)"
                     fillOpacity="0.07"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
-                    initial={prefersReducedMotion ? false : { opacity: 0 }}
+                    initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ duration: 0.4, ease: "easeOut", delay: 0.2 }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.4, ease: "easeOut", delay: 0.2 }}
                   />
                   <path
                     d={previousLinePath}
@@ -350,9 +357,9 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
-                    initial={prefersReducedMotion ? false : { pathLength: 0 }}
+                    initial={{ pathLength: 0 }}
                     animate={{ pathLength: 1 }}
-                    transition={{ duration: 0.6, ease: "easeOut" }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.6, ease: "easeOut" }}
                   />
                   {/* Faded in rather than drawn with `pathLength` — Motion
                       synthesizes its own stroke-dasharray to animate that
@@ -368,9 +375,9 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                     strokeWidth="2"
                     strokeLinecap="round"
                     transform={`translate(${PLOT_LEFT} ${PLOT_TOP})`}
-                    initial={prefersReducedMotion ? false : { opacity: 0 }}
+                    initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ duration: 0.6, ease: "easeOut" }}
+                    transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.6, ease: "easeOut" }}
                   />
                   {period.chart.points.map((point, index) => {
                     const x = PLOT_LEFT + (index / Math.max(period.chart.points.length - 1, 1)) * plotWidth;
@@ -396,14 +403,16 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
                             <circle cx={x} cy={y} r={5} fill="var(--primary)" stroke="white" strokeWidth="2" />
                           </>
                         ) : null}
-                        <text
-                          x={x}
-                          y={LABEL_Y}
-                          textAnchor={index === period.chart.points.length - 1 ? "end" : "middle"}
-                          className={cn("text-[11px]", hovered ? "fill-foreground font-medium" : "fill-muted-foreground")}
-                        >
-                          {point.label}
-                        </text>
+                        {hovered || (period.chart.points.length - 1 - index) % labelEvery === 0 ? (
+                          <text
+                            x={x}
+                            y={LABEL_Y}
+                            textAnchor={index === period.chart.points.length - 1 ? "end" : "middle"}
+                            className={cn("text-[11px]", hovered ? "fill-foreground font-medium" : "fill-muted-foreground")}
+                          >
+                            {point.label}
+                          </text>
+                        ) : null}
                       </g>
                     );
                   })}
@@ -742,13 +751,13 @@ function DonutChart({
           strokeWidth={strokeWidth}
           strokeDasharray={dasharray}
           strokeDashoffset={dashoffset}
-          initial={prefersReducedMotion ? false : { opacity: 0 }}
+          initial={{ opacity: 0 }}
           animate={{
             opacity: hovered && hovered !== item.label ? 0.25 : 1,
             strokeWidth: hovered === item.label ? strokeWidth + 4 : strokeWidth,
           }}
           transition={{
-            duration: 0.35,
+            duration: prefersReducedMotion ? 0 : 0.35,
             ease: easeOutQuart,
             delay: hasMounted || prefersReducedMotion ? 0 : index * 0.08,
           }}
