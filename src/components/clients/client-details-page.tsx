@@ -595,6 +595,52 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
     }
   }
 
+  // Receipt link plus edit/delete, shared by the phone rows and the table.
+  function paymentActions(payment: (typeof client.payments)[number]) {
+    return (
+      <>
+        {payment.receiptUrl ? (
+          <a
+            href={payment.receiptUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
+          >
+            {t.receipt}
+          </a>
+        ) : null}
+        <RecordActions
+          onEdit={() =>
+            setDialog({
+              mode: "edit",
+              kind: "payment",
+              recordId: payment.id,
+              initialValues: {
+                amount: payment.amountInput,
+                status: payment.status,
+                paidAt: payment.paidAtInput,
+                paymentMethod: payment.paymentMethod,
+                invoiceNumber: payment.invoiceNumber,
+                receiptNumber: payment.receiptNumber,
+                description: payment.description,
+                receiptUrl: payment.receiptUrl,
+                billingNote: payment.billingNote,
+              },
+            })
+          }
+          onDelete={() =>
+            setDialog({
+              mode: "delete",
+              kind: "payment",
+              recordId: payment.id,
+              label: fmt(t.entryLabel, { amount: payment.amountDisplay }),
+            })
+          }
+        />
+      </>
+    );
+  }
+
   function downloadPaymentStatement() {
     const csv = buildPaymentStatementCsv(client.payments, m.clients);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -751,7 +797,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
       >
         <TabsList
           variant="line"
-          className="w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border/80 p-0"
+          // Five tabs don't fit a phone: the strip scrolls, and the faded right
+          // edge says so (the end padding lets the last tab scroll clear of it).
+          className="w-full justify-start gap-4 overflow-x-auto rounded-none border-b border-border/80 p-0 max-sm:pr-8 max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)]"
         >
           {(["overview", "appointments", "medical", "documents", "payments"] as const).map((tab) => (
             <TabsTrigger key={tab} className="flex-none px-0 pb-3" value={tab}>
@@ -885,7 +933,23 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
         <TabsContent value="appointments" className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           {client.appointments.length > 0 ? (
             <WorkspaceCard title={t.appointments}>
-              <div className="overflow-x-auto">
+              {/* Phones: one row per visit (date and status, service, notes)
+                  instead of four columns squeezed into ~300px. */}
+              <ul className="space-y-1 sm:hidden">
+                {client.appointments.map((appointment) => (
+                  <li key={appointment.id} className="rounded-(--radius-tile) px-1 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="min-w-0 truncate font-medium text-foreground">{appointment.date}</p>
+                      <StatusBadge status={appointmentStatusKey(appointment.status)} />
+                    </div>
+                    <p className="mt-0.5 truncate text-foreground">{appointment.title}</p>
+                    {appointment.notes ? (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{appointment.notes}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden overflow-x-auto sm:block">
                 <table className="w-full text-sm">
                   <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                     <tr>
@@ -1000,8 +1064,9 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                         <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                           <tr>
                             <th className="px-3 py-2.5 text-left">{t.documentColumns.name}</th>
-                            <th className="px-3 py-2.5 text-left">{t.documentColumns.category}</th>
-                            <th className="px-3 py-2.5 text-left">{t.documentColumns.uploadedOn}</th>
+                            {/* Phones keep the name and actions; the date moves under the name. */}
+                            <th className="hidden px-3 py-2.5 text-left sm:table-cell">{t.documentColumns.category}</th>
+                            <th className="hidden px-3 py-2.5 text-left sm:table-cell">{t.documentColumns.uploadedOn}</th>
                             <th className="px-3 py-2.5 text-right">{t.documentColumns.actions}</th>
                           </tr>
                         </thead>
@@ -1020,13 +1085,14 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                                 {document.fileSize ? (
                                   <p className="text-xs text-muted-foreground">{document.fileSize}</p>
                                 ) : null}
+                                <p className="text-xs text-muted-foreground sm:hidden">{document.createdAt}</p>
                               </td>
-                              <td className="px-3 py-2.5">
+                              <td className="hidden px-3 py-2.5 sm:table-cell">
                                 <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
                                   {storedLabel(m.clients.documentCategories, document.category || document.fileType)}
                                 </span>
                               </td>
-                              <td className="px-3 py-2.5 text-muted-foreground">{document.createdAt}</td>
+                              <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">{document.createdAt}</td>
                               <td className="px-3 py-2.5">
                                 <div
                                   className="flex items-center justify-end gap-1.5"
@@ -1174,7 +1240,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
             />
           ) : (
             <div className="space-y-3">
-              <section className="surface-card grid gap-3 p-3.5 md:grid-cols-4">
+              <section className="surface-card grid grid-cols-2 gap-3 p-3.5 md:grid-cols-4">
                 <PaymentMetric label={t.totalBilled} value={client.paymentStats.totalBilledDisplay} helper={plural(t.ledgerEntries, client.paymentStats.totalCount, locale)} />
                 <PaymentMetric label={t.totalPaid} value={client.paymentStats.totalPaidDisplay} helper={plural(t.paidEntries, client.paymentStats.totalPaidCount, locale)} tone="good" />
                 <PaymentMetric label={t.outstanding} value={client.paymentStats.unpaidBalanceDisplay} helper={t.openBalance} tone={client.paymentStats.unpaidBalanceCents > 0 ? "danger" : "default"} />
@@ -1207,7 +1273,29 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                   </div>
                 }
               >
-                <div className="overflow-x-auto">
+                {/* Phones: one row per entry (date and amount, then what it was
+                    for, its status and actions). Six columns cut Status and the
+                    edit/delete actions off the card's right edge. */}
+                <ul className="space-y-1 sm:hidden">
+                  {client.payments.map((payment) => (
+                    <li key={payment.id} className="rounded-(--radius-tile) px-1 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="min-w-0 truncate font-medium text-foreground">{payment.paidAt || payment.createdAt}</p>
+                        <p className="shrink-0 font-medium tabular-nums text-foreground">{payment.amountDisplay}</p>
+                      </div>
+                      <div className="mt-0.5 flex items-center justify-between gap-3">
+                        <p className="min-w-0 truncate text-xs text-muted-foreground">
+                          {[payment.description, payment.invoiceNumber].filter(Boolean).join(" · ")}
+                        </p>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <StatusBadge status={payment.status.toLowerCase()} />
+                          {paymentActions(payment)}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="hidden overflow-x-auto sm:block">
                   <table className="w-full text-sm">
                     <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                       <tr>
@@ -1229,44 +1317,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                           <td className="px-3 py-2.5"><StatusBadge status={payment.status.toLowerCase()} /></td>
                           <td className="px-3 py-2.5">
                             <div className="flex items-center justify-end gap-1.5">
-                              {payment.receiptUrl ? (
-                                <a
-                                  href={payment.receiptUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-sm font-semibold text-primary transition-colors duration-(--duration-base) hover:text-foreground"
-                                >
-                                  {t.receipt}
-                                </a>
-                              ) : null}
-                              <RecordActions
-                                onEdit={() =>
-                                  setDialog({
-                                    mode: "edit",
-                                    kind: "payment",
-                                    recordId: payment.id,
-                                    initialValues: {
-                                      amount: payment.amountInput,
-                                      status: payment.status,
-                                      paidAt: payment.paidAtInput,
-                                      paymentMethod: payment.paymentMethod,
-                                      invoiceNumber: payment.invoiceNumber,
-                                      receiptNumber: payment.receiptNumber,
-                                      description: payment.description,
-                                      receiptUrl: payment.receiptUrl,
-                                      billingNote: payment.billingNote,
-                                    },
-                                  })
-                                }
-                                onDelete={() =>
-                                  setDialog({
-                                    mode: "delete",
-                                    kind: "payment",
-                                    recordId: payment.id,
-                                    label: fmt(t.entryLabel, { amount: payment.amountDisplay }),
-                                  })
-                                }
-                              />
+                              {paymentActions(payment)}
                             </div>
                           </td>
                         </tr>
@@ -1383,7 +1434,9 @@ function PaymentMetric({
       </p>
       <p
         className={cn(
-          "mt-2 text-2xl font-semibold text-foreground",
+          // A size down on phones, where the tiles sit two by two and a date
+          // ("Oct 8, 2026") wrapped onto two lines at text-2xl.
+          "mt-2 truncate text-xl font-semibold text-foreground sm:text-2xl",
           tone === "good" && "text-emerald-700",
           tone === "danger" && "text-destructive"
         )}

@@ -5,6 +5,7 @@ import { SendHorizontal } from "lucide-react";
 
 import { markStaffThreadReadAction, sendStaffMessageAction } from "@/app/(workspace)/staff/actions";
 import { Button } from "@/components/ui/button";
+import { fillViewportRef } from "@/hooks/fill-viewport";
 import { useI18n, useServerText } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import { cn, firstDisplayName } from "@/lib/utils";
@@ -26,7 +27,7 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
   const [error, setError] = useState("");
   const [unreadCount, setUnreadCount] = useState(initial.unreadForAdmin);
   const [isPending, startTransition] = useTransition();
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const receiptVersion = useRef(0);
 
   useEffect(() => {
@@ -51,7 +52,10 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
   }, []);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
+    // Scroll only the message list: scrollIntoView also scrolled the page,
+    // which opened a phone below the staff member's name.
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messages.length]);
 
   function markAllRead() {
@@ -98,7 +102,12 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
   }
 
   return (
-    <section className="surface-card flex h-[540px] flex-col p-0">
+    <section
+      ref={fillViewportRef}
+      // 540px, but never past the bottom of the screen from tablet width up, so
+      // the message box stays on screen on a short laptop (1366x657).
+      className="surface-card flex h-[540px] flex-col p-0 md:max-h-[calc(100dvh_-_var(--fill-top,240px)_-_7rem)] md:min-h-[360px] lg:max-h-[calc(100dvh_-_var(--fill-top,240px)_-_1rem)]"
+    >
       <div className="shrink-0 border-b border-border/70 px-4 py-3">
         <h2 className="text-[15px] font-semibold leading-5 text-foreground">
           {fmt(t.title, { name: staffName })}
@@ -111,7 +120,7 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
+      <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <p className="m-auto max-w-xs text-center text-sm text-muted-foreground">
             {fmt(t.empty, { name: firstDisplayName(staffName) })}
@@ -144,7 +153,6 @@ export function StaffMessagesTab({ staffId, staffName, initial, onUnreadCountCha
             )
           )
         )}
-        <div ref={endRef} />
       </div>
 
       <div className="shrink-0 border-t border-border/70 p-3">

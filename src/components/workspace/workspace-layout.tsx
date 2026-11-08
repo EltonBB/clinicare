@@ -218,7 +218,9 @@ export function WorkspaceCard({
   return (
     <section className={cn("surface-card", fill && "h-full", compact ? "p-3" : "p-3.5", className)}>
       {title || description || action ? (
-        <div className="mb-2.5 flex min-h-6 items-start justify-between gap-3">
+        <div className="mb-2.5 flex min-h-6 flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          {/* Wraps: on a narrow card a wide action (two buttons) drops under
+              the title instead of squeezing it to one word per line. */}
           <div className="min-w-0">
             {title ? <h2 className="text-[15px] font-semibold leading-5 text-foreground">{title}</h2> : null}
             {description ? (
