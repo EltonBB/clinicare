@@ -60,6 +60,7 @@ import type {
 } from "@/lib/calendar";
 import { HoverPrefetchLink } from "@/components/workspace/hover-prefetch-link";
 import { fillViewportRef } from "@/hooks/fill-viewport";
+import { keepInViewport } from "@/hooks/keep-in-viewport";
 import { useI18n, useServerText } from "@/i18n/client";
 import { dateRangeText, dateText, fmt } from "@/i18n/format";
 
@@ -469,9 +470,10 @@ function DatePickerPopover({
       </button>
       {open ? (
         <div
+          ref={keepInViewport}
           role="dialog"
           aria-label={t.chooseDate}
-          className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
+          className="state-pop absolute right-0 top-[calc(100%+8px)] z-50 w-[284px] max-w-[calc(100vw-2rem)] origin-top-right rounded-(--radius-card) border border-border/80 bg-white p-3 shadow-(--shadow-pop)"
         >
           <MonthGrid
             monthCursor={monthCursor}

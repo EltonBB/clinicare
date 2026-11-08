@@ -211,8 +211,9 @@ function Card({ lit, label, children, className }: { lit: boolean; label: string
     <motion.section
       aria-label={label}
       initial={false}
-      animate={{ opacity: lit ? 1 : 0.42, scale: lit || still ? 1 : 0.985 }}
-      transition={{ duration: 0.4, ease: EASE }}
+      // Same target on server and browser; reduced motion only makes it instant.
+      animate={{ opacity: lit ? 1 : 0.42, scale: lit ? 1 : 0.985 }}
+      transition={still ? { duration: 0 } : { duration: 0.4, ease: EASE }}
       className={cn(
         "rounded-(--radius-panel) border p-3.5 transition-[background-color,border-color] duration-(--duration-slow)",
         lit ? "border-white/15 bg-white/[0.075]" : "border-white/[0.07] bg-white/[0.03]",

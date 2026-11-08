@@ -13,6 +13,7 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { useI18n } from "@/i18n/client";
+import { dateText } from "@/i18n/format";
 import { cn } from "@/lib/utils";
 
 
@@ -51,7 +52,7 @@ export function MonthGrid({
   getDayState: (day: Date) => MonthGridDayState;
   onSelectDay: (day: Date) => void;
 }) {
-  const { m } = useI18n();
+  const { m, locale } = useI18n();
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(monthCursor), { weekStartsOn: 1 }),
     end: endOfWeek(endOfMonth(monthCursor), { weekStartsOn: 1 }),
@@ -61,7 +62,8 @@ export function MonthGrid({
     <div>
       <div className="flex items-center justify-between px-1 pb-2.5">
         <span className="text-sm font-semibold text-foreground">
-          {format(monthCursor, "MMMM yyyy")}
+          {/* In the workspace language: date-fns' format() printed "November" in Albanian too. */}
+          {dateText(locale, monthCursor, { month: "long", year: "numeric" })}
         </span>
         <span className="flex items-center gap-1">
           <button
