@@ -260,7 +260,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
 
   return (
     <motion.div key={period.key} variants={fadeIn} initial="initial" animate="animate" className="space-y-3">
-      <motion.div variants={staggerChildren} initial="initial" animate="animate" className="grid gap-3 md:grid-cols-4">
+      <motion.div variants={staggerChildren} initial="initial" animate="animate" className="grid grid-cols-1 gap-3 md:grid-cols-4">
         {(
           [
             { key: "appointments", kpi: appointmentsKpi },
@@ -287,7 +287,7 @@ export function OverviewTab({ period }: { period: ReportPeriodView }) {
         </div>
       ) : null}
 
-      <div className="grid items-stretch gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-2">
         <section className="surface-card flex flex-col p-3.5">
           <div className="flex items-start justify-between gap-3 px-1">
             <div>
@@ -835,7 +835,7 @@ function KpiCard({
           onToggle && "cursor-pointer transition-transform duration-(--duration-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 active:scale-[0.98]"
         )}
       >
-        <div className="flex flex-1 flex-col p-3.5">
+        <div className="flex min-w-0 flex-1 flex-col p-3.5">
           <p className="truncate text-sm font-medium whitespace-nowrap text-muted-foreground">{kpi.label}</p>
           <div className="mt-auto pt-2.5">
             <p className="text-[1.6rem] font-semibold leading-8 tracking-tight text-foreground">
@@ -855,9 +855,12 @@ function KpiCard({
                   placeholder AGENTS.md rule 2 forbids (Codex). */}
               {kpi.value ? <KpiValue value={kpi.value} animateOnMount /> : null}
             </p>
-            <div className="mt-1 flex items-center gap-1.5 whitespace-nowrap">
+            {/* Wraps: in a quarter-width tile (768–1280px) the Albanian caption
+                ("krahasuar me javën e kaluar") ran past the tile and the screen
+                edge. The pill stays whole; the caption drops under it. */}
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
               {kpi.delta ? (
-                <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", deltaPillStyles[kpi.trend])}>
+                <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold", deltaPillStyles[kpi.trend])}>
                   <TrendIcon trend={kpi.trend} />
                   {kpi.delta}
                 </span>

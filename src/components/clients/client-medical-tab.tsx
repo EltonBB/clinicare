@@ -202,7 +202,7 @@ export function ClientMedicalTab({
               {t.edit}
             </button>
           }
-          contentClassName="grid gap-3 sm:grid-cols-2"
+          contentClassName="grid grid-cols-1 gap-3 sm:grid-cols-2"
         >
           {filledBackground.map((field) => (
             <div key={field.key}>
@@ -239,7 +239,7 @@ export function ClientMedicalTab({
           {t.addRecord}
         </Button>
       </div>
-      <div className="grid items-stretch gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-2">
         {sections.map((section, index) => (
           <div
             key={section.key}
