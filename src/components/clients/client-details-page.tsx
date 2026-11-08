@@ -808,11 +808,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           ))}
         </TabsList>
 
-        <TabsContent value="overview" className="grid items-start gap-3">
+        <TabsContent value="overview" className="grid grid-cols-1 items-start gap-3">
           {/* Wrapping flex, not an auto-fit grid: a card left alone on the last
               row (Health at tablet widths) stretches across it instead of
-              leaving an empty cell beside it. */}
-          <div className="flex flex-wrap gap-3 *:flex-[1_1_280px]">
+              leaving an empty cell beside it. `min-w-0` lets a card shrink to a
+              phone's width; it grew to fit a long address and ran off screen. */}
+          <div className="flex flex-wrap gap-3 *:min-w-0 *:flex-[1_1_280px]">
             <WorkspaceCard title={t.nextAppointment}>
               {nextAppointment ? (
                 <div className="flex items-start justify-between gap-3">
@@ -930,7 +931,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           </WorkspaceCard>
         </TabsContent>
 
-        <TabsContent value="appointments" className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <TabsContent value="appointments" className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           {client.appointments.length > 0 ? (
             <WorkspaceCard title={t.appointments}>
               {/* Phones: one row per visit (date and status, service, notes)
@@ -1050,7 +1051,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
           ) : (
             <div
               className={cn(
-                "grid items-start gap-3",
+                "grid grid-cols-1 items-start gap-3",
                 selectedDocument && "xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"
               )}
             >
@@ -1064,9 +1065,12 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                         <thead className="bg-[#f8fafc] text-[10px] font-semibold caps-label text-muted-foreground">
                           <tr>
                             <th className="px-3 py-2.5 text-left">{t.documentColumns.name}</th>
-                            {/* Phones keep the name and actions; the date moves under the name. */}
-                            <th className="hidden px-3 py-2.5 text-left sm:table-cell">{t.documentColumns.category}</th>
-                            <th className="hidden px-3 py-2.5 text-left sm:table-cell">{t.documentColumns.uploadedOn}</th>
+                            {/* Phones keep the name and actions; the date moves under the name.
+                                Category and date never wrap (beside the Selected document rail
+                                on a laptop, "Image / Scan" and "Nov 8, 2026" broke onto two
+                                lines); a long file name wraps instead. */}
+                            <th className="hidden whitespace-nowrap px-3 py-2.5 text-left sm:table-cell">{t.documentColumns.category}</th>
+                            <th className="hidden whitespace-nowrap px-3 py-2.5 text-left sm:table-cell">{t.documentColumns.uploadedOn}</th>
                             <th className="px-3 py-2.5 text-right">{t.documentColumns.actions}</th>
                           </tr>
                         </thead>
@@ -1081,18 +1085,18 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                               )}
                             >
                               <td className="px-3 py-2.5">
-                                <p className="font-semibold text-foreground">{document.fileName}</p>
+                                <p className="font-semibold text-foreground [overflow-wrap:anywhere]">{document.fileName}</p>
                                 {document.fileSize ? (
                                   <p className="text-xs text-muted-foreground">{document.fileSize}</p>
                                 ) : null}
                                 <p className="text-xs text-muted-foreground sm:hidden">{document.createdAt}</p>
                               </td>
                               <td className="hidden px-3 py-2.5 sm:table-cell">
-                                <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                                <span className="whitespace-nowrap rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
                                   {storedLabel(m.clients.documentCategories, document.category || document.fileType)}
                                 </span>
                               </td>
-                              <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">{document.createdAt}</td>
+                              <td className="hidden whitespace-nowrap px-3 py-2.5 text-muted-foreground sm:table-cell">{document.createdAt}</td>
                               <td className="px-3 py-2.5">
                                 <div
                                   className="flex items-center justify-end gap-1.5"
@@ -1142,7 +1146,7 @@ export function ClientDetailsPage({ initialClient }: ClientDetailsPageProps) {
                 ) : null}
 
                 {client.gallery.length > 0 ? (
-                  <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {client.gallery.map((item) => (
                       <figure key={item.id} className="overflow-hidden rounded-(--radius-card) border border-border/80 bg-white">
                         {item.imageUrl ? (

@@ -211,9 +211,12 @@ export function StaffDetailsPage({
 
         <TabsContent
           value="overview"
-          className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"
+          // grid-cols-1 (minmax(0,1fr)) keeps the column at the screen's width:
+          // an auto column grew to fit a Today row's full text and pushed the
+          // card past a phone's edge.
+          className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"
         >
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <WorkspaceCard
               title={t.today}
               action={
@@ -285,7 +288,7 @@ export function StaffDetailsPage({
             </WorkspaceCard>
           </div>
 
-          <div className="grid gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <WorkspaceCard title={t.profile}>
               <dl className="space-y-2.5">
                 <OverviewLine
@@ -316,7 +319,7 @@ export function StaffDetailsPage({
               actionLabel={t.planShifts}
             />
           ) : (
-            <div className="grid items-start gap-3 xl:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
               <WorkspaceCard
                 title={t.plannedShifts}
                 action={
