@@ -704,7 +704,13 @@ export function InboxWorkspace({
             and under a banner; below lg the fixed bottom nav is left clear. */}
         <div
           ref={fillViewportRef}
-          className="surface-card h-[calc(100dvh_-_var(--fill-top,174px)_-_7rem)] min-h-[420px] overflow-hidden p-0 lg:h-[calc(100dvh_-_var(--fill-top,174px)_-_1rem)] lg:min-h-[440px]"
+          className={cn(
+            "surface-card h-[calc(100dvh_-_var(--fill-top,174px)_-_7rem)] min-h-[420px] overflow-hidden p-0 lg:h-[calc(100dvh_-_var(--fill-top,174px)_-_1rem)] lg:min-h-[440px]",
+            // No chats yet: no thread or composer to keep on screen, so on
+            // phones the card grows with the first-run list instead of
+            // squeezing it into a scroll box.
+            conversations.length === 0 && "max-lg:h-auto"
+          )}
         >
           {/* grid-rows-[minmax(0,1fr)]: the card's height is fixed, but a
               grid's single implicit row is content-sized, so both panes grew to
@@ -803,13 +809,17 @@ export function InboxWorkspace({
                 ))}
                 {conversations.length === 0 ? (
                   // First run: nothing has arrived yet, so there is nothing to
-                  // search or filter. The thread pane carries the one action.
+                  // search or filter. Side by side, the thread pane carries the
+                  // one action; below lg that pane is hidden, so it is here.
                   <WorkspaceFirstRun
                     cells={["identity"]}
                     rows={5}
                     className="pt-2"
                     title={t.firstRunTitle}
                     description={t.firstRunCopy}
+                    actionHref={hasClients ? bookingHref : "/clients/new?next=calendar"}
+                    actionLabel={hasClients ? t.bookAppointment : t.addClient}
+                    actionClassName="lg:hidden"
                   />
                 ) : filteredConversations.length === 0 ? (
                   <div className="px-4 py-6">
@@ -827,8 +837,7 @@ export function InboxWorkspace({
             <section
               className={cn(
                 "flex min-h-0 min-w-0 flex-col bg-white/92",
-                // With no chats yet the pane carries the first-run action, so it stays.
-                !(threadOpenOnSmallScreens && activeConversation) && conversations.length > 0 && "max-lg:hidden"
+                !(threadOpenOnSmallScreens && activeConversation) && "max-lg:hidden"
               )}
             >
               {activeConversation ? (

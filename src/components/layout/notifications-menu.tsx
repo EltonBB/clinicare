@@ -79,7 +79,7 @@ export function NotificationsMenu({
         sideOffset={10}
         className="w-[340px] rounded-(--radius-panel) border border-border/80 bg-white p-0 shadow-(--shadow-pop)"
       >
-        <div className="border-b border-border/70 px-4 py-3.5">
+        <div className="px-4 pb-1.5 pt-3.5">
           <p className="text-sm font-semibold text-foreground">{t.title}</p>
           <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
             {hasUpdates
@@ -90,47 +90,47 @@ export function NotificationsMenu({
           </p>
         </div>
 
-        <div className="space-y-0.5 px-2 py-2">
-          {warning ? (
-            // A menu item (not a plain button) so choosing it closes the menu
-            // before the settings dialog opens over it.
-            <DropdownMenuItem
-              onClick={onOpenWhatsAppSettings}
-              className="items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-amber-50 focus:bg-amber-50"
-            >
-              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-foreground">{warning.title}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{warning.detail}</span>
-              </span>
-            </DropdownMenuItem>
-          ) : null}
-          {hasUpdates ? (
-            items.map((item) => (
-              <HoverPrefetchLink
-                key={item.id}
-                href={item.href}
-                className="flex items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+        {/* Nothing pending: the header already says "All clear", so there is
+            no second empty message (and no box) below it. */}
+        {warning || hasUpdates ? (
+          <div className="space-y-0.5 px-2 py-2">
+            {warning ? (
+              // A menu item (not a plain button) so choosing it closes the menu
+              // before the settings dialog opens over it.
+              <DropdownMenuItem
+                onClick={onOpenWhatsAppSettings}
+                className="items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-amber-50 focus:bg-amber-50"
               >
-                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {item.title}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                    {item.detail}
-                  </span>
+                  <span className="block text-sm font-medium text-foreground">{warning.title}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{warning.detail}</span>
                 </span>
-              </HoverPrefetchLink>
-            ))
-          ) : warning ? null : (
-            <div className="rounded-(--radius-card) border border-border/75 bg-[#fbfcfe] px-3 py-3 text-xs leading-5 text-muted-foreground">
-              {t.empty}
-            </div>
-          )}
-        </div>
+              </DropdownMenuItem>
+            ) : null}
+            {hasUpdates ? (
+              items.map((item) => (
+                <HoverPrefetchLink
+                  key={item.id}
+                  href={item.href}
+                  className="flex items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc]"
+                >
+                  <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {item.title}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                      {item.detail}
+                    </span>
+                  </span>
+                </HoverPrefetchLink>
+              ))
+            ) : null}
+          </div>
+        ) : null}
 
-        <div className="border-t border-border/70 px-4 py-2.5">
+        <div className="px-4 pb-3 pt-1.5">
           <Link
             href={footerHref}
             className={cn(
