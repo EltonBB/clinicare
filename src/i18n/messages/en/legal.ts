@@ -238,7 +238,7 @@ export const legal = {
       {
         title: "3. A 14-day refund on your first payment",
         body: [
-          "If Vela isn't right for you, you can ask for a full refund within 14 days of your first payment after a free trial, and within 14 days of the first payment of a yearly plan.",
+          "If Vela isn't right for you, you can ask for a full refund within 14 days of your first payment on any plan: the first charge after Basic's free trial, the first Pro payment, or the first payment of a yearly plan.",
         ],
       },
       {

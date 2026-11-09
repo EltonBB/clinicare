@@ -238,7 +238,7 @@ export const legal: Translation<typeof en> = {
       {
         title: "3. Rimbursim 14-ditor për pagesën e parë",
         body: [
-          "Nëse Vela nuk është e përshtatshme për ju, mund të kërkoni rimbursim të plotë brenda 14 ditëve nga pagesa juaj e parë pas provës falas, si dhe brenda 14 ditëve nga pagesa e parë e një plani vjetor.",
+          "Nëse Vela nuk është e përshtatshme për ju, mund të kërkoni rimbursim të plotë brenda 14 ditëve nga pagesa juaj e parë në çdo plan: tarifimi i parë pas provës falas të Basic, pagesa e parë e Pro ose pagesa e parë e një plani vjetor.",
         ],
       },
       {
