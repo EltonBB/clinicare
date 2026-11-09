@@ -26,7 +26,7 @@ import {
   setPaddleSubscriptionBusiness,
   updatePaddleAddress,
 } from "@/lib/paddle/paddle-api";
-import { paddleConfig } from "@/lib/paddle/paddle-config";
+import { paddleConfig, type PaddleConfig } from "@/lib/paddle/paddle-config";
 import { subscriptionChangedAt } from "@/lib/paddle/subscription-snapshot";
 import { applySubscriptionSnapshot } from "@/lib/paddle/subscription-sync";
 import { prisma } from "@/lib/prisma";
@@ -406,34 +406,58 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
 
   const subscriptionId = business.paddleSubscriptionId;
   const proPrice = config.prices.PRO[parsed.data.interval].noTrial;
+  const businessId = business.id;
+  let subscription;
   try {
-    let subscription;
-    if (path.kind === "end_trial") {
+    // The trial route only while Paddle itself says the trial runs: the saved
+    // status can lag (a webhook still on its way, an earlier attempt that
+    // charged but couldn't record it), and re-running it on an active
+    // subscription would undo a paid upgrade.
+    const trialing = path.kind === "end_trial" && (await getPaddleSubscription(config, subscriptionId)).status === "trialing";
+    if (trialing) {
       await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: true });
       try {
         subscription = await activatePaddleSubscription(config, subscriptionId);
       } catch (error) {
-        const basicTrial = config.prices.BASIC[business.billingInterval ?? "MONTH"].trial;
-        await changePaddleSubscriptionPrice(config, subscriptionId, basicTrial, { trialing: true }).catch((revertError) =>
-          logger.error("Couldn't put a trial back on Basic after a failed upgrade.", revertError, { businessId: business.id })
-        );
+        await restoreBasicTrial(config, subscriptionId, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
         throw error;
       }
     } else {
       subscription = await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: false });
     }
+  } catch (error) {
+    logger.error("Couldn't upgrade the subscription to Pro.", error, { businessId, path: path.kind });
+    return { ok: false, error: UPGRADE_FAILED };
+  }
+
+  // Paddle has charged: from here a failure is bookkeeping the webhook repeats,
+  // never "didn't go through".
+  try {
     await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
     if (business.proTrialEndsAt && business.proTrialEndsAt > new Date()) {
-      await prisma.business.update({ where: { id: business.id }, data: { proTrialEndsAt: new Date() } });
+      await prisma.business.update({ where: { id: businessId }, data: { proTrialEndsAt: new Date() } });
     }
   } catch (error) {
-    logger.error("Couldn't upgrade the subscription to Pro.", error, { businessId: business.id, path: path.kind });
-    return { ok: false, error: UPGRADE_FAILED };
+    logger.error("Couldn't record a paid Pro upgrade; the webhook will.", error, { businessId });
   }
 
   // The plan, Pro features and the banner render on every workspace page.
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/**
+ * After a failed trial activation, puts the item back on Basic's trial price,
+ * but only while Paddle still says the trial runs: an activation that timed out
+ * on our side may have charged, and must not be undone.
+ */
+async function restoreBasicTrial(config: PaddleConfig, subscriptionId: string, basicTrialPrice: string, businessId: string) {
+  try {
+    if ((await getPaddleSubscription(config, subscriptionId)).status !== "trialing") return;
+    await changePaddleSubscriptionPrice(config, subscriptionId, basicTrialPrice, { trialing: true });
+  } catch (error) {
+    logger.error("Couldn't put a trial back on Basic after a failed upgrade.", error, { businessId });
+  }
 }
 
 /** Ends the Pro trial early and goes back to Basic; nothing changes in billing. */

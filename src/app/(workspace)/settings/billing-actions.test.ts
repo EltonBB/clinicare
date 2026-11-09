@@ -243,6 +243,7 @@ describe("upgradeToProAction", () => {
 
   it("ends Basic's free trial with one Pro charge: the item moves to Pro, then the trial is activated", async () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing" });
     mocks.activatePaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active" });
     expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledTimes(1);
@@ -256,6 +257,7 @@ describe("upgradeToProAction", () => {
 
   it("puts a trial back on Basic when the Pro charge is declined, so it never runs as a free Pro trial", async () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing" });
     mocks.activatePaddleSubscription.mockRejectedValue(new Error("declined"));
     expect(await upgradeToProAction({ interval: "YEAR" })).toEqual({
       ok: false,
@@ -264,6 +266,29 @@ describe("upgradeToProAction", () => {
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenNthCalledWith(1, CONFIG, "sub_1", "pri_py", { trialing: true });
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenNthCalledWith(2, CONFIG, "sub_1", "pri_bm_t", { trialing: true });
     expect(mocks.applySubscriptionSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("never undoes an activation that charged although our request timed out", async () => {
+    as({ ...BASIC, subscriptionStatus: "TRIALING" });
+    mocks.getPaddleSubscription.mockResolvedValueOnce({ id: "sub_1", status: "trialing" }).mockResolvedValueOnce({ id: "sub_1", status: "active" });
+    mocks.activatePaddleSubscription.mockRejectedValue(new Error("timeout"));
+    expect(await upgradeToProAction({ interval: "MONTH" })).toMatchObject({ ok: false });
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the paid route when Paddle has already ended the trial the saved status still shows", async () => {
+    as({ ...BASIC, subscriptionStatus: "TRIALING" });
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active" });
+    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
+    expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm", { trialing: false });
+  });
+
+  it("reports a charged upgrade as done even when recording it fails (the webhook repeats it)", async () => {
+    as(BASIC);
+    mocks.applySubscriptionSnapshot.mockRejectedValue(new Error("db"));
+    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
   });
 
   it("ends a running owner-offered Pro trial once the clinic pays for Pro", async () => {

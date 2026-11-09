@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { upgradeToProAction } from "@/app/(workspace)/settings/billing-actions";
@@ -44,13 +45,17 @@ export function UpgradeFlow({
   const pro = localizedPlans(m.common.plans).find((plan) => plan.key === "pro")!;
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const router = useRouter();
 
   // On success the action revalidates, so this page re-renders as "You're on Vela Pro".
   function pay() {
     setError("");
     startTransition(async () => {
       const result = await upgradeToProAction({ interval });
-      if (!result.ok) setError(result.error);
+      if (result.ok) return;
+      setError(result.error);
+      // Re-ask Paddle: the amount may differ on a retry.
+      router.refresh();
     });
   }
 
