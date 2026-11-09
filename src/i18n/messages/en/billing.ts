@@ -3,7 +3,7 @@ export const billing = {
   checkout: {
     meta: {
       title: "Checkout | Vela",
-      description: "Choose your Vela plan and start your free trial.",
+      description: "Choose your Vela plan. Basic starts with a free trial.",
       successTitle: "Setting up your plan | Vela",
     },
     backToPricing: "Back to pricing",
@@ -42,7 +42,8 @@ export const billing = {
     },
     createAccount: "Create your account",
     setUpClinic: "Set up your clinic",
-    trialStarts: "Your {days}-day free trial starts once your clinic is set up.",
+    trialStarts: "Basic's {days}-day free trial starts once your clinic is set up.",
+    paidFromStart: "Pro is billed from the day your clinic is set up.",
     cardSoon: "Card payment opens soon",
     untilThen: "Until then we switch your plan on with you.",
     talkToUs: "Talk to us",

@@ -68,7 +68,7 @@ export const legal = {
         body: [
           "{mor} Paddle handles payment, invoices, and sales tax, and its buyer terms also apply to your purchase.",
           "Vela is offered as Basic and Pro plans, billed monthly or yearly. The price, currency, and billing period are shown before you pay, and prices include VAT or the sales tax that applies where you are.",
-          "Every plan starts with a 14-day free trial, once per clinic. A payment card is required to start it, and nothing is charged during the trial. Unless you cancel before the trial ends, your subscription begins and the card is charged automatically. You will be reminded by email before the trial ends.",
+          "The Basic plan starts with a 14-day free trial, once per clinic; the Pro plan is billed from the day it starts. A payment card is required to start it, and nothing is charged during the trial. Unless you cancel before the trial ends, your subscription begins and the card is charged automatically. You will be reminded by email before the trial ends.",
           "Subscriptions renew automatically at the end of each billing period until cancelled. You can cancel any time in Settings › Billing; cancellation takes effect at the end of the current period or trial, and you keep full access until then.",
           "You can change plan or billing period in Settings › Billing, and a change takes effect immediately. A move to a higher plan is charged for the rest of the current period, and a move to a lower plan is credited to your next bill. Switching between monthly and yearly starts a new billing period that day: you pay for it then, less the unused part of the old one. During a free trial, nothing is charged until the trial ends.",
           "If a payment fails, it is retried for a period of time and you can update your card in Settings › Billing. If payment is not completed, the subscription ends.",
@@ -233,7 +233,7 @@ export const legal = {
       },
       {
         title: "2. Free trials",
-        body: ["Every plan starts with a 14-day free trial. Nothing is charged during the trial, and if you cancel before it ends you pay nothing."],
+        body: ["The Basic plan starts with a 14-day free trial; the Pro plan is billed from the day it starts. Nothing is charged during the trial, and if you cancel before it ends you pay nothing."],
       },
       {
         title: "3. A 14-day refund on your first payment",

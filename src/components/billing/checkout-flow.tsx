@@ -17,7 +17,7 @@ import {
 import { useI18n } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import type { Messages } from "@/i18n/messages";
-import { checkoutPriceId, TRIAL_DAYS } from "@/lib/checkout-state";
+import { checkoutPriceId, startsWithTrial, TRIAL_DAYS } from "@/lib/checkout-state";
 import type { PaidInterval, PaidPlan, PriceTable } from "@/lib/paddle/paddle-config";
 import { localizedPlans, type PublicPlan } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
@@ -70,12 +70,14 @@ export function CheckoutFlow({
   const t = m.billing.checkout;
   const publicPlans = localizedPlans(m.common.plans);
   const plan = publicPlans.find((item) => item.key === planKey) ?? publicPlans[1];
-  const trial = stage.kind === "subscribe" ? stage.trialAvailable : true;
+  // A new clinic may start Basic on the free trial; Pro is paid from day one.
+  const eligible = stage.kind === "subscribe" ? stage.trialAvailable : true;
+  const trial = startsWithTrial(paidPlan(plan), eligible);
   const previewIds = prices
     ? publicPlans.map((item) => prices[paidPlan(item)][interval].noTrial)
     : [];
   const localized = useLocalizedPrices(paddle, previewIds);
-  const priceId = prices && stage.kind === "subscribe" ? checkoutPriceId(prices, paidPlan(plan), interval, trial) : null;
+  const priceId = prices && stage.kind === "subscribe" ? checkoutPriceId(prices, paidPlan(plan), interval, eligible) : null;
 
   function choose(nextPlan: PublicPlan["key"], nextInterval: PaidInterval) {
     setPlanKey(nextPlan);
@@ -85,7 +87,7 @@ export function CheckoutFlow({
   }
 
   const step = stage.kind === "sign_up" ? 0 : stage.kind === "onboarding" ? 1 : 2;
-  const showSteps = trial && !locked;
+  const showSteps = eligible && !locked;
   const lines = locked
     ? [t.panel.lockedLead, t.panel.lockedTail]
     : trial
@@ -129,7 +131,7 @@ export function CheckoutFlow({
       )}
 
       <h1 className="text-[2.5rem] font-semibold leading-[1.05] tracking-[-0.03em] text-[var(--brand-ink)]">
-        {headline(stage, locked, clinicName, t)}
+        {headline(stage, locked, trial, clinicName, t)}
       </h1>
 
       <div className="mt-8 flex flex-wrap gap-2" role="group" aria-label={t.billingPeriod}>
@@ -200,6 +202,7 @@ export function CheckoutFlow({
           locked={locked}
           paddle={paddle}
           priceId={priceId}
+          trial={trial}
           email={email}
           businessId={businessId}
           onCheckout={setCheckout}
@@ -209,7 +212,7 @@ export function CheckoutFlow({
   );
 }
 
-function headline(stage: FlowStage, locked: boolean, clinicName: string, t: Copy) {
+function headline(stage: FlowStage, locked: boolean, trial: boolean, clinicName: string, t: Copy) {
   const h = t.headline;
   if (stage.kind === "sign_up") {
     return (
@@ -234,7 +237,7 @@ function headline(stage: FlowStage, locked: boolean, clinicName: string, t: Copy
   }
   return (
     <>
-      {stage.trialAvailable ? h.startTrial : h.choose}
+      {trial ? h.startTrial : h.choose}
       <span className="text-muted-foreground">{clinicName ? fmt(h.forClinic, { clinic: clinicName }) : "."}</span>
     </>
   );
@@ -245,6 +248,7 @@ function Action({
   locked,
   paddle,
   priceId,
+  trial,
   email,
   businessId,
   onCheckout,
@@ -253,12 +257,13 @@ function Action({
   locked: boolean;
   paddle: PaddleClientConfig | null;
   priceId: string | null;
+  trial: boolean;
   email: string;
   businessId: string;
   onCheckout: (data: PaddleCheckoutData) => void;
 }) {
   const t = useI18n().m.billing.checkout;
-  const trialNote = fmt(t.trialStarts, { days: TRIAL_DAYS });
+  const trialNote = trial ? fmt(t.trialStarts, { days: TRIAL_DAYS }) : t.paidFromStart;
   if (stage.kind === "sign_up") {
     return (
       <>

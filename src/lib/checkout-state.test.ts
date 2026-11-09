@@ -52,10 +52,15 @@ describe("checkoutStage", () => {
 });
 
 describe("checkoutPriceId", () => {
-  it("picks the trial price only while the trial is available", () => {
-    expect(checkoutPriceId(PRICES, "PRO", "YEAR", true)).toBe("pri_py_t");
-    expect(checkoutPriceId(PRICES, "PRO", "YEAR", false)).toBe("pri_py");
+  it("picks Basic's trial price only while the trial is available", () => {
     expect(checkoutPriceId(PRICES, "BASIC", "MONTH", true)).toBe("pri_bm_t");
+    expect(checkoutPriceId(PRICES, "BASIC", "MONTH", false)).toBe("pri_bm");
+  });
+
+  it("never starts Pro on a trial: it is paid from day one", () => {
+    expect(checkoutPriceId(PRICES, "PRO", "YEAR", true)).toBe("pri_py");
+    expect(checkoutPriceId(PRICES, "PRO", "MONTH", true)).toBe("pri_pm");
+    expect(checkoutPriceId(PRICES, "PRO", "YEAR", false)).toBe("pri_py");
   });
 });
 

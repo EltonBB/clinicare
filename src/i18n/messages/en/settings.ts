@@ -112,7 +112,7 @@ export const settings = {
     },
     notes: {
       free: "Your clinic uses Vela free of charge.",
-      noPlan: "Choose a plan to start. Every plan begins with a 14-day free trial.",
+      noPlan: "Choose a plan to start. Basic begins with a 14-day free trial.",
       ended: "Your plan has ended, so the workspace is read-only.",
       keptUntil: "Your records are kept until {date}.",
       renews: "Renews on {date}, billed {interval}.",

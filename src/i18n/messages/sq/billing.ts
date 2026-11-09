@@ -5,7 +5,7 @@ export const billing: Translation<typeof en> = {
   checkout: {
     meta: {
       title: "Pagesa | Vela",
-      description: "Zgjidhni planin tuaj të Vela dhe filloni provën falas.",
+      description: "Zgjidhni planin tuaj të Vela. Basic fillon me një provë falas.",
       successTitle: "Po aktivizojmë planin tuaj | Vela",
     },
     backToPricing: "Kthehu te çmimet",
@@ -44,7 +44,8 @@ export const billing: Translation<typeof en> = {
     },
     createAccount: "Krijoni llogarinë",
     setUpClinic: "Konfiguroni klinikën",
-    trialStarts: "Prova juaj falas {days}-ditore fillon sapo të konfigurohet klinika.",
+    trialStarts: "Prova falas {days}-ditore e Basic fillon sapo të konfigurohet klinika.",
+    paidFromStart: "Pro faturohet që nga dita kur konfigurohet klinika.",
     cardSoon: "Pagesa me kartë hapet së shpejti",
     untilThen: "Deri atëherë e aktivizojmë planin bashkë me ju.",
     talkToUs: "Flisni me ne",

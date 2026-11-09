@@ -113,7 +113,7 @@ export const onboarding: Translation<typeof en> = {
     eyebrow: "Konfigurimi përfundoi",
     ready: "{clinic} është gati",
     firstSteps: "Hapat e parë",
-    trial: { title: "Filloni provën falas", detail: "{days} ditë falas, anuloni kur të doni para mbarimit" },
+    trial: { title: "Zgjidhni planin", detail: "Basic fillon me {days} ditë falas" },
     book: { title: "Caktoni terminin e parë", detail: "Shfaqet menjëherë në kalendar" },
     patient: { title: "Shtoni një pacient", detail: "Kartela e tij nis me vizitën e parë" },
     team: { title: "Shtoni ekipin", detail: "Që vizitat të ndahen mes jush" },
