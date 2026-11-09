@@ -9,7 +9,7 @@ import { Note } from "@/components/billing/checkout-flow";
 import { CheckoutShell } from "@/components/billing/checkout-shell";
 import { OrderSummary } from "@/components/billing/order-summary";
 import type { PaddleClientConfig } from "@/components/billing/use-paddle";
-import { useI18n } from "@/i18n/client";
+import { useI18n, useServerText } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import type { UpgradeQuote } from "@/lib/billing-upgrade";
 import type { PaidInterval } from "@/lib/paddle/paddle-config";
@@ -46,6 +46,7 @@ export function UpgradeFlow({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const router = useRouter();
+  const serverText = useServerText();
 
   // On success the action revalidates, so this page re-renders as "You're on Vela Pro".
   function pay() {
@@ -130,7 +131,7 @@ export function UpgradeFlow({
         )}
         {error ? (
           <p role="alert" className="mt-3 text-sm text-destructive">
-            {error}
+            {serverText(error)}
           </p>
         ) : null}
         <Note>{endsTrial ? t.noteTrial : t.noteChange}</Note>

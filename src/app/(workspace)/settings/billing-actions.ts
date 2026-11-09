@@ -415,8 +415,10 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
     // subscription would undo a paid upgrade.
     const trialing = path.kind === "end_trial" && (await getPaddleSubscription(config, subscriptionId)).status === "trialing";
     if (trialing) {
-      await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: true });
+      // Both steps inside the guard: a price change that timed out on our side
+      // may still have moved the trial onto Pro, and must not be left there.
       try {
+        await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: true });
         subscription = await activatePaddleSubscription(config, subscriptionId);
       } catch (error) {
         await restoreBasicTrial(config, subscriptionId, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);

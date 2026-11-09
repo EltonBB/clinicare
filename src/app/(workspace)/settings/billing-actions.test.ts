@@ -268,6 +268,15 @@ describe("upgradeToProAction", () => {
     expect(mocks.applySubscriptionSnapshot).not.toHaveBeenCalled();
   });
 
+  it("puts a trial back on Basic when moving it to Pro times out (it may have applied)", async () => {
+    as({ ...BASIC, subscriptionStatus: "TRIALING" });
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing" });
+    mocks.changePaddleSubscriptionPrice.mockRejectedValueOnce(new Error("timeout"));
+    expect(await upgradeToProAction({ interval: "MONTH" })).toMatchObject({ ok: false });
+    expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenLastCalledWith(CONFIG, "sub_1", "pri_bm_t", { trialing: true });
+  });
+
   it("never undoes an activation that charged although our request timed out", async () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
     mocks.getPaddleSubscription.mockResolvedValueOnce({ id: "sub_1", status: "trialing" }).mockResolvedValueOnce({ id: "sub_1", status: "active" });
