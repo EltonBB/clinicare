@@ -56,7 +56,9 @@ export function buildBillingHistory(
       id: transaction.id,
       date: formatZonedFullDate(new Date(transaction.billed_at ?? transaction.created_at), timeZone, locale),
       amount: formatMinorAmount(minor, transaction.currency_code, locale),
-      status: transaction.status === "past_due" ? "Payment failed" : minor === 0 ? "Free trial" : "Paid",
+      // Only the checkout that started a trial is a "Free trial" at €0; a plan
+      // change account credit covered in full is an ordinary (€0) charge.
+      status: transaction.status === "past_due" ? "Payment failed" : minor === 0 && transaction.origin === "web" ? "Free trial" : "Paid",
     });
   }
 

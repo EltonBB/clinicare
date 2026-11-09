@@ -6,9 +6,11 @@ import { z } from "zod";
 import { getLocale } from "@/i18n/server";
 import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { buildBillingHistory, type BillingHistory } from "@/lib/billing-history";
+import { upgradePath } from "@/lib/billing-upgrade";
 import { getAuthedBusiness } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import {
+  activatePaddleSubscription,
   changePaddleSubscriptionPrice,
   getCardUpdateTransactionId,
   getPaddleAddress,
@@ -142,7 +144,7 @@ export async function saveBillingDetailsAction(input: z.input<typeof detailsSche
   return { ok: true };
 }
 
-const PRO_AFTER_TRIAL = "Pro is paid from day one, so it starts once your free trial ends.";
+const UPGRADE_AT_CHECKOUT = "Upgrade to Pro from checkout, where you see what's due today.";
 
 const changeSchema = z.object({ plan: z.enum(["BASIC", "PRO"]), interval: z.enum(["MONTH", "YEAR"]) });
 
@@ -172,13 +174,14 @@ export async function changeBillingPlanAction(input: z.input<typeof changeSchema
     return { ok: false, error: "Your last payment didn't go through. Update your card first." };
   }
 
-  // Keep the trial: a trialing subscription moves to the new plan's trial price.
-  // Pro is paid from day one (owner decision, 2026-11-09), so a clinic still on
-  // Basic's free trial can't move to Pro's trial price.
-  const trialing = business.subscriptionStatus === "TRIALING";
-  if (trialing && parsed.data.plan === "PRO" && business.plan !== "PRO") {
-    return { ok: false, error: PRO_AFTER_TRIAL };
+  // Basic → Pro has one path, Upgrade → checkout → Pay (upgradeToProAction),
+  // which shows the amount first and ends a free trial (Pro is paid from day one).
+  if (parsed.data.plan === "PRO" && (business.subscribedPlan ?? business.plan) === "BASIC") {
+    return { ok: false, error: UPGRADE_AT_CHECKOUT };
   }
+
+  // Keep the trial: a trialing subscription moves to the new plan's trial price.
+  const trialing = business.subscriptionStatus === "TRIALING";
   const pair = config.prices[parsed.data.plan][parsed.data.interval];
   const priceId = trialing ? pair.trial : pair.noTrial;
 
@@ -364,6 +367,71 @@ export async function keepProAction(): Promise<BillingActionResult> {
     logger.error("Couldn't move the subscription to Pro.", error, { businessId: business.id });
     return { ok: false, error: "We couldn't switch you to Pro. Please try again." };
   }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+const UPGRADE_FAILED = "The upgrade didn't go through. Check your card in Settings › Billing and try again.";
+
+/**
+ * Upgrade → checkout → Pay (owner decision, 2026-11-09): moves the clinic to
+ * Pro now. A clinic paying for Basic is charged the prorated difference to its
+ * card on file; Paddle only applies that change once the charge succeeds
+ * (`prevent_change`), so a declined card leaves the plan as it was.
+ *
+ * A clinic on Basic's free trial pays Pro in full today (Pro is paid from day
+ * one), as one charge: Paddle only lets a trialing subscription change price
+ * without billing, so the item moves to Pro first and activating then ends the
+ * trial and charges it. If that charge fails, the item goes back to Basic's
+ * trial price, so a declined card never leaves a clinic on a free Pro trial.
+ *
+ * An owner-offered Pro trial that is running ends here: the clinic now pays for Pro.
+ */
+const upgradeSchema = z.object({ interval: z.enum(["MONTH", "YEAR"]) });
+
+export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): Promise<BillingActionResult> {
+  const context = await getAuthedBusiness(SESSION_EXPIRED);
+  if ("error" in context) return { ok: false, error: context.error };
+  const parsed = upgradeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That plan isn't available." };
+  const { business } = context;
+  const config = paddleConfig();
+  if (!config || !business.paddleSubscriptionId) return { ok: false, error: BILLING_UNAVAILABLE };
+
+  const path = upgradePath(business);
+  if (path.kind === "already_pro") return { ok: false, error: "Your clinic is already on Pro." };
+  if (path.kind === "resume_first") return { ok: false, error: "Your plan is set to end. Resume it first." };
+  if (path.kind === "card_first") return { ok: false, error: "Your last payment didn't go through. Update your card first." };
+  if (path.kind !== "change" && path.kind !== "end_trial") return { ok: false, error: "That plan isn't available." };
+
+  const subscriptionId = business.paddleSubscriptionId;
+  const proPrice = config.prices.PRO[parsed.data.interval].noTrial;
+  try {
+    let subscription;
+    if (path.kind === "end_trial") {
+      await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: true });
+      try {
+        subscription = await activatePaddleSubscription(config, subscriptionId);
+      } catch (error) {
+        const basicTrial = config.prices.BASIC[business.billingInterval ?? "MONTH"].trial;
+        await changePaddleSubscriptionPrice(config, subscriptionId, basicTrial, { trialing: true }).catch((revertError) =>
+          logger.error("Couldn't put a trial back on Basic after a failed upgrade.", revertError, { businessId: business.id })
+        );
+        throw error;
+      }
+    } else {
+      subscription = await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: false });
+    }
+    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
+    if (business.proTrialEndsAt && business.proTrialEndsAt > new Date()) {
+      await prisma.business.update({ where: { id: business.id }, data: { proTrialEndsAt: new Date() } });
+    }
+  } catch (error) {
+    logger.error("Couldn't upgrade the subscription to Pro.", error, { businessId: business.id, path: path.kind });
+    return { ok: false, error: UPGRADE_FAILED };
+  }
+
+  // The plan, Pro features and the banner render on every workspace page.
   revalidatePath("/", "layout");
   return { ok: true };
 }

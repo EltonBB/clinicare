@@ -55,8 +55,18 @@ describe("buildBillingSummary", () => {
       "Pro, billed monthly",
       "Pro, billed yearly",
     ]);
+    // Basic → Pro opens the upgrade checkout (Upgrade → checkout → Pay); the rest switch in place.
+    expect(result.changeOptions.map((option) => option.upgrade)).toEqual([false, true, true]);
     expect(result.changeOptions.find((option) => option.label === "Pro, billed monthly")?.effect).toBe(
-      "You pay the difference for the rest of this period now."
+      "You see what's due today before you pay, and Pro starts right away."
+    );
+  });
+
+  it("keeps a Pro clinic's switches in place: a move to Basic is credited", () => {
+    const pro = summary({ plan: "PRO", subscribedPlan: "PRO" });
+    expect(pro.changeOptions.every((option) => !option.upgrade)).toBe(true);
+    expect(pro.changeOptions.find((option) => option.label === "Basic, billed monthly")?.effect).toBe(
+      "The unused part is credited to your next bill."
     );
   });
 
@@ -84,7 +94,13 @@ describe("buildBillingSummary", () => {
   it("says nothing is charged when switching during the trial", () => {
     const trial = summary({ subscriptionStatus: "TRIALING", trialEndsAt: new Date("2026-11-09T12:00:00Z") });
     expect(trial).toMatchObject({ statusLabel: "Free trial", note: "Free until November 9, 2026, then billed monthly." });
-    expect(trial.changeOptions.every((option) => option.effect === "Nothing is charged before your trial ends.")).toBe(true);
+    expect(
+      trial.changeOptions.filter((option) => !option.upgrade).every((option) => option.effect === "Nothing is charged before your trial ends.")
+    ).toBe(true);
+    // Pro is paid from day one: moving there ends the trial, at checkout.
+    expect(trial.changeOptions.find((option) => option.upgrade)?.effect).toBe(
+      "Pro is paid from day one: your free trial ends and you see what's due today before you pay."
+    );
   });
 
   it("asks for a new card while a payment is failing", () => {

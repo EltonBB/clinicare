@@ -78,6 +78,8 @@ const NOT_SHOWN = new Set([
   "Couldn't resume the plan.",
   "Couldn't start a card update.",
   "Couldn't move the subscription to Pro.",
+  "Couldn't upgrade the subscription to Pro.",
+  "Couldn't put a trial back on Basic after a failed upgrade.",
   "Failed to refresh staff device session.",
   "Failed to record the staff's own cancellation-sent notification.",
   "Failed to post cancellation notice to the admin thread.",

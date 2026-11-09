@@ -129,6 +129,8 @@ export const settings: Translation<typeof en> = {
       newPeriod: "Sot fillon një periudhë e re faturimi. Pjesa e mbetur e kësaj periudhe llogaritet në të.",
       payDifference: "Paguani tani diferencën për pjesën e mbetur të kësaj periudhe.",
       credited: "Pjesa e papërdorur kreditohet në faturën tuaj të radhës.",
+      upgrade: "Shihni sa paguani sot para se të paguani, dhe Pro fillon menjëherë.",
+      upgradeFromTrial: "Pro paguhet që nga dita e parë: prova juaj falas mbaron dhe shihni sa paguani sot para se të paguani.",
     },
 
     renewPlan: "Rinovo planin",
@@ -154,6 +156,7 @@ export const settings: Translation<typeof en> = {
     plan: "Plani",
     current: "Aktual",
     switch: "Ndrysho",
+    upgrade: "Kalo në Pro",
     switched: "Tani jeni në {plan}.",
     payment: "Pagesa",
     card: "Karta",

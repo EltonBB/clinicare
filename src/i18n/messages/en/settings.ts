@@ -129,6 +129,8 @@ export const settings = {
       newPeriod: "Starts a new billing period today. What's left of this one goes toward it.",
       payDifference: "You pay the difference for the rest of this period now.",
       credited: "The unused part is credited to your next bill.",
+      upgrade: "You see what's due today before you pay, and Pro starts right away.",
+      upgradeFromTrial: "Pro is paid from day one: your free trial ends and you see what's due today before you pay.",
     },
 
     renewPlan: "Renew plan",
@@ -154,6 +156,7 @@ export const settings = {
     plan: "Plan",
     current: "Current",
     switch: "Switch",
+    upgrade: "Upgrade to Pro",
     switched: "You're now on {plan}.",
     payment: "Payment",
     card: "Card",
