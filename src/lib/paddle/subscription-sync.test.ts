@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger";
 import { PaddleApiError } from "./paddle-api";
 import type { PaddleConfig } from "./paddle-config";
 import type { PaddleSubscription } from "./subscription-snapshot";
+import { freeUpgradeStamp } from "./free-upgrade";
 import { applySubscriptionSnapshot } from "./subscription-sync";
 
 const CONFIG: PaddleConfig = {
@@ -231,6 +232,42 @@ describe("applySubscriptionSnapshot", () => {
     expect(await applySubscriptionSnapshot(CONFIG, SUB, OCCURRED)).toBe("unmatched");
     expect(mocks.updateMany).not.toHaveBeenCalled();
     expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
+  });
+
+  it("makes a free clinic a paying one when its own owner paid from checkout (the server's stamp)", async () => {
+    const paid = {
+      ...SUB,
+      items: [{ price: { id: "pri_pm" }, trial_dates: null }],
+      custom_data: { businessId: "biz_1", ...freeUpgradeStamp("s", "biz_1") },
+    };
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...CLINIC, billingMode: "COMPLIMENTARY" });
+
+    expect(await applySubscriptionSnapshot(CONFIG, paid, OCCURRED)).toBe("applied");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ billingMode: "COMPLIMENTARY" }),
+        data: expect.objectContaining({ billingMode: "SUBSCRIPTION", plan: "PRO", subscriptionStatus: "ACTIVE" }),
+      })
+    );
+  });
+
+  it("refuses a stamp signed for another clinic, a forged one, or a stamped trial", async () => {
+    const forged = [
+      { custom_data: { businessId: "biz_1", ...freeUpgradeStamp("s", "biz_2") } },
+      { custom_data: { businessId: "biz_1", ...freeUpgradeStamp("not-the-secret", "biz_1") } },
+      {
+        status: "trialing",
+        items: [{ price: { id: "pri_bm_t" }, trial_dates: { starts_at: "2026-10-26T12:00:00Z", ends_at: "2026-11-09T12:00:00Z" } }],
+        custom_data: { businessId: "biz_1", ...freeUpgradeStamp("s", "biz_1") },
+      },
+    ];
+    for (const overrides of forged) {
+      mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...CLINIC, billingMode: "COMPLIMENTARY" });
+      expect(await applySubscriptionSnapshot(CONFIG, { ...SUB, ...overrides }, OCCURRED)).toBe("unmatched");
+    }
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledTimes(3);
   });
 
   it("leaves a free clinic's old, ended subscription alone", async () => {

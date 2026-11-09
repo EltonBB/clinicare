@@ -13,6 +13,7 @@ import { workspaceAccess } from "@/lib/billing-access";
 import { upgradePath, upgradeQuote } from "@/lib/billing-upgrade";
 import { getCurrentBusiness } from "@/lib/business";
 import { checkoutStage, trialEndLabel } from "@/lib/checkout-state";
+import { freeUpgradeStamp } from "@/lib/paddle/free-upgrade";
 import { paddleConfig, type PaidInterval } from "@/lib/paddle/paddle-config";
 import { getPublicPlan, localizedPlans, publicPlanKeyFromBusinessPlan } from "@/lib/public-plans";
 
@@ -65,6 +66,29 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
         </WithMessages>
       );
     }
+  }
+
+  // A clinic the owner made free on Basic buys a plan like everyone else (paid
+  // from day one) and becomes a paying clinic; the stamp proves to the webhook
+  // sync that its own owner chose to pay (lib/paddle/free-upgrade.ts).
+  if (stage.kind === "free_account" && business && business.plan === "BASIC" && config && first(params?.plan) !== "basic") {
+    return (
+      <WithMessages namespaces={["billing"]}>
+        <CheckoutFlow
+          stage={{ kind: "subscribe", trialAvailable: false }}
+          locked={false}
+          paddle={paddle}
+          prices={config.prices}
+          initialPlan={getPublicPlan(params?.plan ?? "pro").key}
+          initialInterval={requested ?? "MONTH"}
+          email={user?.email ?? ""}
+          businessId={business.id}
+          clinicName={business.name}
+          trialEndsOn={trialEndLabel(new Date(), undefined, locale)}
+          freeUpgrade={freeUpgradeStamp(config.webhookSecret, business.id)}
+        />
+      </WithMessages>
+    );
   }
 
   // A clinic with a plan running sees that plan; choosing another happens in Settings › Billing.

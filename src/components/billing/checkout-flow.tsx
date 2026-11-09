@@ -18,6 +18,7 @@ import { useI18n } from "@/i18n/client";
 import { fmt } from "@/i18n/format";
 import type { Messages } from "@/i18n/messages";
 import { checkoutPriceId, startsWithTrial, TRIAL_DAYS } from "@/lib/checkout-state";
+import type { FreeUpgradeStamp } from "@/lib/paddle/free-upgrade";
 import type { PaidInterval, PaidPlan, PriceTable } from "@/lib/paddle/paddle-config";
 import { localizedPlans, type PublicPlan } from "@/lib/public-plans";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function CheckoutFlow({
   businessId,
   clinicName,
   trialEndsOn,
+  freeUpgrade,
 }: {
   stage: FlowStage;
   locked: boolean;
@@ -62,6 +64,8 @@ export function CheckoutFlow({
   businessId: string;
   clinicName: string;
   trialEndsOn: string;
+  /** A free clinic choosing to pay: the server's stamp, passed to Paddle as custom data. */
+  freeUpgrade?: FreeUpgradeStamp;
 }) {
   const [planKey, setPlanKey] = useState(initialPlan);
   const [interval, setBillingInterval] = useState(initialInterval);
@@ -205,6 +209,7 @@ export function CheckoutFlow({
           trial={trial}
           email={email}
           businessId={businessId}
+          freeUpgrade={freeUpgrade}
           onCheckout={setCheckout}
         />
       </div>
@@ -251,6 +256,7 @@ function Action({
   trial,
   email,
   businessId,
+  freeUpgrade,
   onCheckout,
 }: {
   stage: FlowStage;
@@ -260,6 +266,7 @@ function Action({
   trial: boolean;
   email: string;
   businessId: string;
+  freeUpgrade?: FreeUpgradeStamp;
   onCheckout: (data: PaddleCheckoutData) => void;
 }) {
   const t = useI18n().m.billing.checkout;
@@ -299,7 +306,14 @@ function Action({
   return (
     <>
       <p className="text-sm font-semibold text-foreground">{t.paymentDetails}</p>
-      <InlineCheckout paddle={paddle} priceId={priceId} email={email} businessId={businessId} onCheckout={onCheckout} />
+      <InlineCheckout
+        paddle={paddle}
+        priceId={priceId}
+        email={email}
+        businessId={businessId}
+        freeUpgrade={freeUpgrade}
+        onCheckout={onCheckout}
+      />
       {locked ? (
         <Link
           href="/dashboard"
@@ -321,12 +335,14 @@ function InlineCheckout({
   priceId,
   email,
   businessId,
+  freeUpgrade,
   onCheckout,
 }: {
   paddle: PaddleClientConfig;
   priceId: string;
   email: string;
   businessId: string;
+  freeUpgrade?: FreeUpgradeStamp;
   onCheckout: (data: PaddleCheckoutData) => void;
 }) {
   const t = useI18n().m.billing.checkout;
@@ -357,7 +373,7 @@ function InlineCheckout({
       paddle.Checkout.open({
         items: [{ priceId, quantity: 1 }],
         ...(email ? { customer: { email } } : {}),
-        customData: { businessId },
+        customData: { businessId, ...freeUpgrade },
         settings: {
           displayMode: "inline",
           frameTarget: FRAME_CLASS,
@@ -374,7 +390,7 @@ function InlineCheckout({
       paddle.Checkout.updateItems([{ priceId, quantity: 1 }]);
     }
     openedWith.current = priceId;
-  }, [paddle, priceId, email, businessId]);
+  }, [paddle, priceId, email, businessId, freeUpgrade]);
 
   useEffect(
     () => () => {

@@ -2,6 +2,7 @@ import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
+import { hasValidFreeUpgradeStamp } from "./free-upgrade";
 import { cancelPaddleSubscription, PaddleApiError } from "./paddle-api";
 import { priceLookup, type PaddleConfig } from "./paddle-config";
 import { type PaddleSubscription, subscriptionSnapshotUpdate } from "./subscription-snapshot";
@@ -115,12 +116,21 @@ export async function applySubscriptionSnapshot(
     }
   }
 
-  // Free accounts are the owner's call (/owner), never Paddle's.
-  if (business.billingMode === "COMPLIMENTARY") {
-    return refuseSubscription(config, subscription, business.id, "free_account");
+  // Free accounts are the owner's call (/owner), never Paddle's, with one
+  // exception: the clinic's own owner chose to pay from checkout, proven by the
+  // server-signed stamp only that page adds (free-upgrade.ts). Then it becomes
+  // an ordinary paying clinic, on a plan paid from day one.
+  let billingMode = business.billingMode;
+  if (billingMode === "COMPLIMENTARY") {
+    const paidFromDayOne = subscription.status !== "trialing" && !subscription.items.some((item) => item.trial_dates);
+    const chosenByOwner = hasValidFreeUpgradeStamp(config.webhookSecret, business.id, subscription.custom_data);
+    if (business.paddleSubscriptionId === subscription.id || !paidFromDayOne || !chosenByOwner) {
+      return refuseSubscription(config, subscription, business.id, "free_account");
+    }
+    billingMode = "SUBSCRIPTION";
   }
 
-  const update = subscriptionSnapshotUpdate(subscription, occurredAt, prices, business);
+  const update = subscriptionSnapshotUpdate(subscription, occurredAt, prices, { ...business, billingMode });
   if (update.kind === "unmatched") {
     logger.warn("Paddle subscription not applied.", {
       businessId: business.id,
