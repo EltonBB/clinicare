@@ -26,7 +26,8 @@ import {
   setPaddleSubscriptionBusiness,
   updatePaddleAddress,
 } from "@/lib/paddle/paddle-api";
-import { paddleConfig, type PaddleConfig } from "@/lib/paddle/paddle-config";
+import { paddleConfig, priceLookup, type PaddleConfig } from "@/lib/paddle/paddle-config";
+import type { PaddleSubscription } from "@/lib/paddle/subscription-snapshot";
 import { subscriptionChangedAt } from "@/lib/paddle/subscription-snapshot";
 import { applySubscriptionSnapshot } from "@/lib/paddle/subscription-sync";
 import { prisma } from "@/lib/prisma";
@@ -346,31 +347,10 @@ export async function startProTrialAction(): Promise<BillingActionResult> {
   return { ok: true };
 }
 
-/** Keeps Pro after the trial: the subscription moves to the Pro price now (prorated). */
-export async function keepProAction(): Promise<BillingActionResult> {
-  const context = await getAuthedBusiness(SESSION_EXPIRED);
-  if ("error" in context) return { ok: false, error: context.error };
-  const { business } = context;
-  const config = paddleConfig();
-  if (!config || !business.paddleSubscriptionId) return { ok: false, error: BILLING_UNAVAILABLE };
-  if (proTrialState(business).kind !== "active") return { ok: false, error: "Your Pro trial has already ended." };
-
-  try {
-    const priceId = config.prices.PRO[business.billingInterval ?? "MONTH"].noTrial;
-    // A Pro trial is only offered on a paying (not trialing) subscription.
-    const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId, {
-      trialing: false,
-    });
-    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
-    await prisma.business.update({ where: { id: business.id }, data: { proTrialEndsAt: new Date() } });
-  } catch (error) {
-    logger.error("Couldn't move the subscription to Pro.", error, { businessId: business.id });
-    return { ok: false, error: "We couldn't switch you to Pro. Please try again." };
-  }
-  revalidatePath("/", "layout");
-  return { ok: true };
-}
-
+// pg_try_advisory_xact_lock namespace for the upgrade, distinct from the
+// financial (726342) and scheduling locks.
+const UPGRADE_LOCK_NAMESPACE = 726343;
+const UPGRADE_BUSY = "An upgrade is already in progress. Wait a moment, then refresh this page.";
 const UPGRADE_FAILED = "The upgrade didn't go through. Check your card in Settings › Billing and try again.";
 
 /**
@@ -407,26 +387,25 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
   const subscriptionId = business.paddleSubscriptionId;
   const proPrice = config.prices.PRO[parsed.data.interval].noTrial;
   const businessId = business.id;
-  let subscription;
+  const prices = priceLookup(config.prices);
+  let subscription: PaddleSubscription;
   try {
-    // The trial route only while Paddle itself says the trial runs: the saved
-    // status can lag (a webhook still on its way, an earlier attempt that
-    // charged but couldn't record it), and re-running it on an active
-    // subscription would undo a paid upgrade.
-    const trialing = path.kind === "end_trial" && (await getPaddleSubscription(config, subscriptionId)).status === "trialing";
-    if (trialing) {
-      // Both steps inside the guard: a price change that timed out on our side
-      // may still have moved the trial onto Pro, and must not be left there.
-      try {
-        await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: true });
-        subscription = await activatePaddleSubscription(config, subscriptionId);
-      } catch (error) {
-        await restoreBasicTrial(config, subscriptionId, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
-        throw error;
-      }
-    } else {
-      subscription = await changePaddleSubscriptionPrice(config, subscriptionId, proPrice, { trialing: false });
-    }
+    const outcome = await prisma.$transaction(
+      async (tx) => {
+        // One upgrade per subscription at a time (two tabs, monthly and yearly):
+        // otherwise one request's activation could charge the other's price.
+        const [{ locked }] = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(${UPGRADE_LOCK_NAMESPACE}, hashtext(${subscriptionId})) AS locked`;
+        if (!locked) return "busy" as const;
+        // Read Paddle under the lock: the saved status can lag (a webhook on its
+        // way, an earlier attempt that charged but couldn't record it).
+        const live = await getPaddleSubscription(config, subscriptionId);
+        if (live.items.some((item) => prices.get(item.price.id)?.plan === "PRO") && live.status !== "trialing") return live;
+        return chargeForPro(config, live, proPrice, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
+      },
+      { maxWait: 5_000, timeout: 60_000 }
+    );
+    if (outcome === "busy") return { ok: false, error: UPGRADE_BUSY };
+    subscription = outcome;
   } catch (error) {
     logger.error("Couldn't upgrade the subscription to Pro.", error, { businessId, path: path.kind });
     return { ok: false, error: UPGRADE_FAILED };
@@ -446,6 +425,33 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
   // The plan, Pro features and the banner render on every workspace page.
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/**
+ * Charges for Pro on the live subscription. Paying Basic: a prorated change
+ * (Paddle applies it only once the charge succeeds). On Basic's free trial:
+ * Paddle only lets a trialing subscription change price without billing, so
+ * the item moves to Pro, then activating ends the trial with one charge; any
+ * failure in either step restores Basic's trial price (only while Paddle still
+ * says trialing, since a request that timed out on our side may have applied).
+ */
+async function chargeForPro(
+  config: PaddleConfig,
+  live: PaddleSubscription,
+  proPrice: string,
+  basicTrialPrice: string,
+  businessId: string
+): Promise<PaddleSubscription> {
+  if (live.status !== "trialing") {
+    return changePaddleSubscriptionPrice(config, live.id, proPrice, { trialing: false });
+  }
+  try {
+    await changePaddleSubscriptionPrice(config, live.id, proPrice, { trialing: true });
+    return await activatePaddleSubscription(config, live.id);
+  } catch (error) {
+    await restoreBasicTrial(config, live.id, basicTrialPrice, businessId);
+    throw error;
+  }
 }
 
 /**

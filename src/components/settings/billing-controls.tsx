@@ -11,7 +11,6 @@ import {
   endProTrialAction,
   getBillingDetailsAction,
   getBillingHistoryAction,
-  keepProAction,
   resumePlanAction,
   saveBillingDetailsAction,
   startCardUpdateAction,
@@ -221,15 +220,10 @@ function ProTrial({ billing, pending, run }: { billing: BillingSummary; pending:
           </Button>
         ) : (
           <>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => run(keepProAction, t.onPro)}
-              disabled={pending || !billing.canManage}
-              className="h-9 rounded-(--radius-card)"
-            >
+            {/* Keeping Pro is a purchase: Upgrade → checkout → Pay, like every upgrade. */}
+            <Link href="/checkout?plan=pro" className={cn(buttonVariants({ size: "sm" }), "h-9 rounded-(--radius-card)")}>
               {t.keepPro}
-            </Button>
+            </Link>
             <Button
               type="button"
               variant="ghost"

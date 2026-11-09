@@ -148,7 +148,6 @@ export const settings: Translation<typeof en> = {
     startTrial: "Fillo provën",
     trialStarted: "Prova juaj e Pro filloi.",
     keepPro: "Mbaj Pro",
-    onPro: "Tani jeni në Pro.",
     backToBasic: "Kthehu në Basic",
     onBasic: "U kthyet në Basic.",
     monthly: "Mujore",

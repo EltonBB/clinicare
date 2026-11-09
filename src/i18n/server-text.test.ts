@@ -77,7 +77,6 @@ const NOT_SHOWN = new Set([
   "Couldn't schedule the plan's end.",
   "Couldn't resume the plan.",
   "Couldn't start a card update.",
-  "Couldn't move the subscription to Pro.",
   "Couldn't upgrade the subscription to Pro.",
   "Couldn't put a trial back on Basic after a failed upgrade.",
   "Couldn't record a paid Pro upgrade; the webhook will.",

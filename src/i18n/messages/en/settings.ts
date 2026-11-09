@@ -148,7 +148,6 @@ export const settings = {
     startTrial: "Start trial",
     trialStarted: "Your Pro trial has started.",
     keepPro: "Keep Pro",
-    onPro: "You're on Pro now.",
     backToBasic: "Back to Basic",
     onBasic: "You're back on Basic.",
     monthly: "Monthly",
