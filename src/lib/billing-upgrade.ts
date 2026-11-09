@@ -89,9 +89,13 @@ export async function upgradeQuote(
     if (!Number.isFinite(recurringMinor)) return null;
     const money = (minor: number) => formatMinorAmount(minor, preview.currency_code, locale);
     if (trialing) {
+      // One period on, clamped to the month's last day (Jan 31 → Feb 28, not Mar 3).
+      const months = interval === "YEAR" ? 12 : 1;
+      const lastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + months + 1, 0)).getUTCDate();
       const next = new Date(now);
-      if (interval === "YEAR") next.setUTCFullYear(next.getUTCFullYear() + 1);
-      else next.setUTCMonth(next.getUTCMonth() + 1);
+      next.setUTCDate(1);
+      next.setUTCMonth(next.getUTCMonth() + months);
+      next.setUTCDate(Math.min(now.getUTCDate(), lastDay));
       return {
         dueToday: money(recurringMinor),
         nothingDue: false,

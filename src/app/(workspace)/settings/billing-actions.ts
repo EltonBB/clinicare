@@ -452,11 +452,16 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
  * on our side may have charged, and must not be undone.
  */
 async function restoreBasicTrial(config: PaddleConfig, subscriptionId: string, basicTrialPrice: string, businessId: string) {
-  try {
-    if ((await getPaddleSubscription(config, subscriptionId)).status !== "trialing") return;
-    await changePaddleSubscriptionPrice(config, subscriptionId, basicTrialPrice, { trialing: true });
-  } catch (error) {
-    logger.error("Couldn't put a trial back on Basic after a failed upgrade.", error, { businessId });
+  // Tried twice: if both fail the trial runs on Pro until it ends, so the error
+  // (reported to Sentry) is for a person to put it back by hand.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      if ((await getPaddleSubscription(config, subscriptionId)).status !== "trialing") return;
+      await changePaddleSubscriptionPrice(config, subscriptionId, basicTrialPrice, { trialing: true });
+      return;
+    } catch (error) {
+      if (attempt === 2) logger.error("Couldn't put a trial back on Basic after a failed upgrade.", error, { businessId, subscriptionId });
+    }
   }
 }
 

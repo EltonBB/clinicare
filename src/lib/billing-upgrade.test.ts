@@ -119,3 +119,17 @@ describe("upgradeQuote", () => {
     expect(await quote("change")).toBeNull();
   });
 });
+
+describe("upgradeQuote dates", () => {
+  it("clamps the next charge to the month's last day when a trial ends on the 31st", async () => {
+    preview.mockResolvedValueOnce({
+      currency_code: "EUR",
+      next_billed_at: null,
+      immediate_transaction: null,
+      recurring_transaction_details: { totals: { total: "8000" } },
+    });
+    const config = { prices: { PRO: { MONTH: { noTrial: "pri_pm" } } } } as unknown as PaddleConfig;
+    const result = await upgradeQuote(config, "sub_1", { kind: "end_trial" }, "MONTH", "en", "UTC", new Date("2027-01-31T12:00:00Z"));
+    expect(result?.nextOn).toBe("February 28, 2027");
+  });
+});
