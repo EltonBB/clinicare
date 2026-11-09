@@ -21,13 +21,14 @@ const BUSINESS_SELECT = {
 // Paddle statuses that are, or can become, billable again.
 const LIVE_PADDLE_STATUSES = new Set(["trialing", "active", "past_due", "paused"]);
 
-type RefusalReason = "free_account" | "another_live_subscription" | "trial_already_used";
+type RefusalReason = "free_account" | "another_live_subscription" | "trial_already_used" | "pro_trial";
 
 /**
  * A subscription the app won't attach to its clinic is cancelled in Paddle at
  * once, so nobody is charged for a plan that unlocks nothing: a second
  * checkout from another tab, a checkout for a clinic the owner has made free,
- * or a second free trial (the trial price picked in the browser). Logged by id
+ * a second free trial, or a free trial on Pro, which is paid from day one (both
+ * the trial price picked in the browser). Logged by id
  * only; a cancel that fails is an error a person follows up.
  */
 async function refuseSubscription(
@@ -64,8 +65,8 @@ async function refuseSubscription(
  *
  * The clinic id reaches Paddle from the browser, so it is never trusted to
  * change more than a paying clinic's own billing: a free clinic is left as it
- * is, and a clinic is never taken over by a second live subscription or given
- * a second free trial (see {@link refuseSubscription}).
+ * is, and a clinic is never taken over by a second live subscription, given a
+ * second free trial, or started on Pro with a trial (see {@link refuseSubscription}).
  *
  * The write also only lands while the clinic is as it was read, so two
  * checkouts' webhooks racing can't both attach: the loser reads again once
@@ -77,6 +78,7 @@ export async function applySubscriptionSnapshot(
   occurredAt: Date,
   retried = false
 ): Promise<SyncOutcome> {
+  const prices = priceLookup(config.prices);
   let business = await prisma.business.findUnique({
     where: { paddleSubscriptionId: subscription.id },
     select: BUSINESS_SELECT,
@@ -101,6 +103,12 @@ export async function applySubscriptionSnapshot(
       return refuseSubscription(config, subscription, business.id, "another_live_subscription");
     }
     const hasTrial = subscription.status === "trialing" || subscription.items.some((item) => item.trial_dates);
+    // Only Basic starts with a free trial (owner decision, 2026-11-09). A new
+    // subscription trialing on Pro can only come from a tampered checkout; one
+    // already attached (a clinic trialing before the rule) is left as it is.
+    if (hasTrial && subscription.items.some((item) => prices.get(item.price.id)?.plan === "PRO")) {
+      return refuseSubscription(config, subscription, business.id, "pro_trial");
+    }
     // Its own earlier webhook may have attached it (and marked the trial used) since.
     if (hasTrial && business.trialUsedAt && business.paddleSubscriptionId !== subscription.id) {
       return refuseSubscription(config, subscription, business.id, "trial_already_used");
@@ -112,7 +120,7 @@ export async function applySubscriptionSnapshot(
     return refuseSubscription(config, subscription, business.id, "free_account");
   }
 
-  const update = subscriptionSnapshotUpdate(subscription, occurredAt, priceLookup(config.prices), business);
+  const update = subscriptionSnapshotUpdate(subscription, occurredAt, prices, business);
   if (update.kind === "unmatched") {
     logger.warn("Paddle subscription not applied.", {
       businessId: business.id,

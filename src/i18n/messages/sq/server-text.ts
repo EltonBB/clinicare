@@ -214,6 +214,7 @@ export const serverText: Record<string, string> = {
   "Choose a plan to start a new subscription instead.": "Zgjidhni një plan për të nisur një abonim të ri.",
   "Your plan is set to end. Resume it first.": "Plani juaj do të përfundojë. Rifillojeni së pari.",
   "Your last payment didn't go through. Update your card first.": "Pagesa juaj e fundit nuk kaloi. Përditësoni së pari kartën.",
+  "Pro is paid from day one, so it starts once your free trial ends.": "Pro paguhet që nga dita e parë, ndaj fillon sapo të mbarojë prova juaj falas.",
   "We couldn't change your plan. Please try again.": "Nuk mundëm ta ndryshonim planin. Ju lutemi provoni përsëri.",
   "We couldn't load your invoices right now.": "Nuk mundëm t'i ngarkonim faturat tani.",
   "That invoice isn't available.": "Kjo faturë nuk është e disponueshme.",
