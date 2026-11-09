@@ -68,7 +68,7 @@ export const legal: Translation<typeof en> = {
         body: [
           "{mor} Paddle merret me pagesën, faturat dhe tatimin mbi shitjet, dhe kushtet e tij për blerësit vlejnë gjithashtu për blerjen tuaj.",
           "Vela ofrohet me planet Basic dhe Pro, me faturim mujor ose vjetor. Çmimi, monedha dhe periudha e faturimit shfaqen para se të paguani, dhe çmimet përfshijnë TVSH-në ose tatimin mbi shitjet që vlen aty ku jeni.",
-          "Çdo plan fillon me një provë falas 14-ditore, një herë për klinikë. Për ta nisur kërkohet një kartë pagese dhe gjatë provës nuk tarifohet asgjë. Nëse nuk anuloni para se të mbarojë prova, abonimi juaj fillon dhe karta tarifohet automatikisht. Para se të mbarojë prova, do t'ju kujtojmë me email.",
+          "Plani Basic fillon me një provë falas 14-ditore, një herë për klinikë; plani Pro faturohet që nga dita kur fillon. Për ta nisur kërkohet një kartë pagese dhe gjatë provës nuk tarifohet asgjë. Nëse nuk anuloni para se të mbarojë prova, abonimi juaj fillon dhe karta tarifohet automatikisht. Para se të mbarojë prova, do t'ju kujtojmë me email.",
           "Abonimet rinovohen automatikisht në fund të çdo periudhe faturimi derisa të anulohen. Mund të anuloni në çdo kohë te Cilësimet › Faturimi; anulimi hyn në fuqi në fund të periudhës ose të provës aktuale dhe deri atëherë e ruani qasjen e plotë.",
           "Mund ta ndryshoni planin ose periudhën e faturimit te Cilësimet › Faturimi, dhe ndryshimi hyn në fuqi menjëherë. Kalimi në një plan më të lartë tarifohet për pjesën e mbetur të periudhës aktuale, ndërsa kalimi në një plan më të ulët kreditohet në faturën tuaj të ardhshme. Kalimi mes faturimit mujor dhe vjetor nis një periudhë të re faturimi po atë ditë: e paguani atëherë, duke zbritur pjesën e papërdorur të periudhës së vjetër. Gjatë provës falas nuk tarifohet asgjë deri në mbarimin e saj.",
           "Nëse një pagesë dështon, ajo provohet përsëri për një kohë dhe mund ta përditësoni kartën te Cilësimet › Faturimi. Nëse pagesa nuk kryhet, abonimi përfundon.",
@@ -233,12 +233,12 @@ export const legal: Translation<typeof en> = {
       },
       {
         title: "2. Provat falas",
-        body: ["Çdo plan fillon me një provë falas 14-ditore. Gjatë provës nuk tarifohet asgjë dhe nëse anuloni para se të mbarojë, nuk paguani asgjë."],
+        body: ["Plani Basic fillon me një provë falas 14-ditore; plani Pro faturohet që nga dita kur fillon. Gjatë provës nuk tarifohet asgjë dhe nëse anuloni para se të mbarojë, nuk paguani asgjë."],
       },
       {
         title: "3. Rimbursim 14-ditor për pagesën e parë",
         body: [
-          "Nëse Vela nuk është e përshtatshme për ju, mund të kërkoni rimbursim të plotë brenda 14 ditëve nga pagesa juaj e parë pas provës falas, si dhe brenda 14 ditëve nga pagesa e parë e një plani vjetor.",
+          "Nëse Vela nuk është e përshtatshme për ju, mund të kërkoni rimbursim të plotë brenda 14 ditëve nga pagesa juaj e parë në çdo plan: tarifimi i parë pas provës falas të Basic, pagesa e parë e Pro ose pagesa e parë e një plani vjetor.",
         ],
       },
       {

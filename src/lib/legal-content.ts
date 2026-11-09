@@ -4,7 +4,7 @@ import type { Messages } from "@/i18n/messages";
 import { SUPPORT_EMAIL } from "./public-contact";
 
 /** The day the policies last changed (their words live in the `legal` dictionaries). */
-export const legalLastUpdatedOn = new Date("2026-10-29T12:00:00Z");
+export const legalLastUpdatedOn = new Date("2026-11-09T12:00:00Z");
 
 /**
  * Who provides Vela: Paddle's domain review and GDPR both require the legal

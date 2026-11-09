@@ -112,7 +112,7 @@ export const settings: Translation<typeof en> = {
     },
     notes: {
       free: "Klinika juaj e përdor Vela-n falas.",
-      noPlan: "Zgjidhni një plan për të filluar. Çdo plan fillon me një provë falas 14-ditore.",
+      noPlan: "Zgjidhni një plan për të filluar. Basic fillon me një provë falas 14-ditore.",
       ended: "Plani juaj ka përfunduar, prandaj hapësira e punës është vetëm për lexim.",
       keptUntil: "Të dhënat tuaja ruhen deri më {date}.",
       renews: "Rinovohet më {date}, me faturim {interval}.",

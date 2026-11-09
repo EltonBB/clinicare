@@ -174,10 +174,25 @@ describe("changeBillingPlanAction", () => {
     expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, subscription, new Date("2026-10-29T10:00:00Z"));
   });
 
-  it("keeps a trial going by moving to the new plan's trial price, billing nothing now", async () => {
-    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, subscriptionStatus: "TRIALING" }, user: { id: "u" } });
-    await changeBillingPlanAction({ plan: "PRO", interval: "MONTH" });
-    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm_t", { trialing: true });
+  it("keeps Basic's trial going on a period change, billing nothing now", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, plan: "BASIC", subscriptionStatus: "TRIALING" }, user: { id: "u" } });
+    await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" });
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_by_t", { trialing: true });
+  });
+
+  it("never moves a clinic on Basic's free trial to Pro's trial price: Pro is paid from day one", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, plan: "BASIC", subscriptionStatus: "TRIALING" }, user: { id: "u" } });
+    expect(await changeBillingPlanAction({ plan: "PRO", interval: "MONTH" })).toEqual({
+      ok: false,
+      error: "Pro is paid from day one, so it starts once your free trial ends.",
+    });
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
+  });
+
+  it("lets a clinic already trialing on Pro (before the rule) change its billing period", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, plan: "PRO", subscriptionStatus: "TRIALING" }, user: { id: "u" } });
+    await changeBillingPlanAction({ plan: "PRO", interval: "YEAR" });
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_py_t", { trialing: true });
   });
 
   it("refuses a clinic with no live subscription, one set to end, a failing payment, or a free one", async () => {

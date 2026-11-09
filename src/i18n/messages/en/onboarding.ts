@@ -113,7 +113,7 @@ export const onboarding = {
     eyebrow: "Setup complete",
     ready: "{clinic} is ready",
     firstSteps: "First steps",
-    trial: { title: "Start your free trial", detail: "{days} days free, cancel any time before" },
+    trial: { title: "Choose your plan", detail: "Basic starts with {days} days free" },
     book: { title: "Book your first appointment", detail: "It lands straight on the calendar" },
     patient: { title: "Add a patient", detail: "Their record starts with the first visit" },
     team: { title: "Add your team", detail: "So visits can be shared out" },

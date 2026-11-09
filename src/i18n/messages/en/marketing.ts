@@ -35,7 +35,7 @@ export const marketing = {
   header: {
     nav: { product: "Product", pricing: "Pricing", about: "About", contact: "Contact" },
     logIn: "Log in",
-    startFree: "Start free",
+    startFree: "Start free trial",
     openMenu: "Open menu",
     closeMenu: "Close menu",
   },
@@ -52,7 +52,7 @@ export const marketing = {
     refund: "Refund",
     tagline: "The calm operating system for clinics.",
     privacyLine: "Privacy-conscious by design.",
-    startFree: "Start free",
+    startFree: "Start free trial",
     talkToUs: "Talk to us",
     cta: {
       lead: "Give the day back",
@@ -71,7 +71,7 @@ export const marketing = {
       title: "The clinic day,",
       highlight: "run calmly.",
       lede: "Appointments, patients, staff, and messages in one quiet workspace.",
-      startFree: "Start free",
+      startFree: "Start free trial",
       seeProduct: "See the product",
       cue: "Scroll through a clinic day, 08:00 to 18:00",
     },
@@ -198,7 +198,9 @@ export const marketing = {
     adds: "Adds",
     trial: "{days}-day free trial",
     startTrial: "Start free trial",
-    vat: "Prices include VAT. Cancel any time during the trial and you pay nothing.",
+    paidFromStart: "Billed from day one",
+    choosePro: "Choose Pro",
+    vat: "Prices include VAT. Cancel during Basic's trial and you pay nothing.",
   },
   testimonials: {
     lead: "What clinics say",
@@ -227,7 +229,7 @@ export const marketing = {
     heroSr: "One workspace for scheduling, patient records, staff, messages, payments, and reports.",
     heroLead: "One workspace for",
     lede: "Six modules built together, so a booking, a message, and a payment all land on the same patient record.",
-    startFree: "Start free",
+    startFree: "Start free trial",
     viewPricing: "View pricing",
     showcase: {
       lead: "Every surface, all day.",
@@ -317,7 +319,7 @@ export const marketing = {
     faqLead: "Pricing, answered.",
     faqRest: "Anything else? Just ask.",
     faqs: [
-      { q: "How does the free trial work?", a: "Every plan starts with 14 days free. You add a card when you start, and nothing is charged during the trial. If you don't cancel before it ends, your plan begins and you're billed. We email you before that happens." },
+      { q: "How does the free trial work?", a: "Basic starts with 14 days free; Pro is billed from day one. You add a card when you start, and nothing is charged during the trial. If you don't cancel before it ends, your plan begins and you're billed. We email you before that happens." },
       { q: "What's the difference between Basic and Pro?", a: "Basic covers daily operations: scheduling, records, documents, payments, and inbox. Pro adds reports with AI-assisted insights, staff utilization, no-show tracking, and priority support." },
       { q: "Can I switch plans or pay yearly?", a: "Yes. Switch between Basic and Pro, or monthly and yearly, any time in Settings. Yearly costs less than twelve monthly payments. A move up is charged for the rest of the period; a move down is credited to your next bill. Switching between monthly and yearly starts a new period that day, less the unused part of the old one." },
       { q: "Which currency will I pay in?", a: "Prices show in your own currency, based on where you are, and already include VAT. What you see is what you pay." },

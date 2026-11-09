@@ -81,6 +81,8 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
       <div className="grid overflow-hidden rounded-(--radius-mkt-card) border border-border/70 bg-white md:grid-cols-2">
         {halves.map(({ plan, points, lead }, i) => {
           const price = priceOf(plan, interval);
+          // Only Basic starts with the free trial; Pro is billed from day one.
+          const trial = plan.key === "basic";
           return (
             <Link
               key={plan.key}
@@ -97,7 +99,9 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
                 </span>
                 <span className="text-sm text-muted-foreground">{interval === "YEAR" ? m.common.plans.perYear : plan.cadence}</span>
               </p>
-              <p className="mt-2 text-sm font-medium text-primary">{fmt(t.trial, { days: TRIAL_DAYS })}</p>
+              <p className="mt-2 text-sm font-medium text-primary">
+                {trial ? fmt(t.trial, { days: TRIAL_DAYS }) : t.paidFromStart}
+              </p>
               <p className="mt-4 max-w-sm text-[15px] leading-7 text-muted-foreground">{plan.description}</p>
 
               <p className="mt-8 text-xs font-semibold text-muted-foreground">{lead}</p>
@@ -110,7 +114,7 @@ export function PlanStripInteractive({ pricing }: { pricing: PlanPricing }) {
               </ul>
 
               <span className="mt-auto inline-flex items-center gap-2 pt-8 text-sm font-semibold text-[var(--brand-ink)] transition-colors duration-(--duration-base) group-hover/plan:text-primary">
-                {t.startTrial}
+                {trial ? t.startTrial : t.choosePro}
                 <ArrowRight className="size-4 transition-transform duration-(--duration-base) ease-out-quint group-hover/plan:translate-x-1" />
               </span>
             </Link>

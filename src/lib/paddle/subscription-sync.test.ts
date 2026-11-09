@@ -183,6 +183,31 @@ describe("applySubscriptionSnapshot", () => {
     expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
   });
 
+  it("refuses a new subscription that starts Pro on a free trial: Pro is paid from day one", async () => {
+    for (const price of ["pri_pm_t", "pri_py_t"]) {
+      const trial = {
+        ...SUB,
+        status: "trialing",
+        items: [{ price: { id: price }, trial_dates: { starts_at: "2026-10-26T12:00:00Z", ends_at: "2026-11-09T12:00:00Z" } }],
+      };
+      mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(CLINIC);
+      expect(await applySubscriptionSnapshot(CONFIG, trial, OCCURRED)).toBe("unmatched");
+    }
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.cancelPaddleSubscription).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts a new clinic's first trial on Basic", async () => {
+    const trial = {
+      ...SUB,
+      status: "trialing",
+      items: [{ price: { id: "pri_bm_t" }, trial_dates: { starts_at: "2026-10-26T12:00:00Z", ends_at: "2026-11-09T12:00:00Z" } }],
+    };
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(CLINIC);
+    expect(await applySubscriptionSnapshot(CONFIG, trial, OCCURRED)).toBe("applied");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
+  });
+
   it("keeps a trial moving between plans on the clinic's own subscription", async () => {
     const trial = {
       ...SUB,

@@ -9,7 +9,7 @@ export const auth = {
     facts: [
       ["Reminders", "A name and a time. Never clinical detail."],
       ["Records", "Visits, files, and payments on one profile."],
-      ["Plans", "Start free. Upgrade when you need more."],
+      ["Plans", "Start with a free Basic trial. Upgrade when you need more."],
     ],
   },
   fields: {
@@ -43,7 +43,7 @@ export const auth = {
     lede: "Start with an email and password. Clinic details come after you confirm your email.",
     submit: "Create account",
     pending: "Creating account...",
-    trialNote: "Then set up your clinic and start your {days}-day free trial.",
+    trialNote: "Then set up your clinic and choose a plan. Basic starts with a {days}-day free trial.",
     haveAccount: "Already have an account?",
     logIn: "Log in",
   },

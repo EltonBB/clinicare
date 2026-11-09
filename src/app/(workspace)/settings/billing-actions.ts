@@ -142,6 +142,8 @@ export async function saveBillingDetailsAction(input: z.input<typeof detailsSche
   return { ok: true };
 }
 
+const PRO_AFTER_TRIAL = "Pro is paid from day one, so it starts once your free trial ends.";
+
 const changeSchema = z.object({ plan: z.enum(["BASIC", "PRO"]), interval: z.enum(["MONTH", "YEAR"]) });
 
 /**
@@ -171,7 +173,12 @@ export async function changeBillingPlanAction(input: z.input<typeof changeSchema
   }
 
   // Keep the trial: a trialing subscription moves to the new plan's trial price.
+  // Pro is paid from day one (owner decision, 2026-11-09), so a clinic still on
+  // Basic's free trial can't move to Pro's trial price.
   const trialing = business.subscriptionStatus === "TRIALING";
+  if (trialing && parsed.data.plan === "PRO" && business.plan !== "PRO") {
+    return { ok: false, error: PRO_AFTER_TRIAL };
+  }
   const pair = config.prices[parsed.data.plan][parsed.data.interval];
   const priceId = trialing ? pair.trial : pair.noTrial;
 

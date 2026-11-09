@@ -125,8 +125,8 @@ an app email channel that doesn't exist yet; the lock screen carries the date in
 
 Paddle requires a refund window of 14–90 days, no "all sales are final"-style
 conditions, and refund requests made through Paddle (paddle.net). The policy becomes:
-a full refund within **14 days of the first payment** after a trial and of the first
-payment of a yearly plan; later renewals are not refundable except where the law
+a full refund within **14 days of the first payment on any plan** (after Basic's trial,
+Pro's first payment, or a yearly plan; widened 2026-11-09 when Pro lost its trial); later renewals are not refundable except where the law
 requires it; duplicate or mistaken charges are always refunded. Paddle's own buyer
 terms apply on top (EU/UK consumers' statutory rights).
 

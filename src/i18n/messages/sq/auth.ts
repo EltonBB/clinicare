@@ -11,7 +11,7 @@ export const auth: Translation<typeof en> = {
     facts: [
       ["Kujtesat", "Një emër dhe një orë. Kurrë detaje klinike."],
       ["Kartelat", "Vizitat, skedarët dhe pagesat në një profil."],
-      ["Planet", "Filloni falas. Kaloni më lart kur ju duhet më shumë."],
+      ["Planet", "Filloni me provën falas të Basic. Kaloni më lart kur ju duhet më shumë."],
     ],
   },
   fields: {
@@ -45,7 +45,7 @@ export const auth: Translation<typeof en> = {
     lede: "Filloni me një email dhe një fjalëkalim. Të dhënat e klinikës vijnë pasi të konfirmoni email-in.",
     submit: "Krijo llogarinë",
     pending: "Duke krijuar llogarinë...",
-    trialNote: "Pastaj konfiguroni klinikën dhe filloni provën falas {days}-ditore.",
+    trialNote: "Pastaj konfiguroni klinikën dhe zgjidhni një plan. Basic fillon me një provë falas {days}-ditore.",
     haveAccount: "Keni tashmë një llogari?",
     logIn: "Hyni",
   },

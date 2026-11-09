@@ -38,7 +38,7 @@ export const marketing: Translation<typeof en> = {
   header: {
     nav: { product: "Produkti", pricing: "Çmimet", about: "Rreth nesh", contact: "Kontakti" },
     logIn: "Hyr",
-    startFree: "Fillo falas",
+    startFree: "Fillo provën falas",
     openMenu: "Hap menynë",
     closeMenu: "Mbyll menynë",
   },
@@ -55,7 +55,7 @@ export const marketing: Translation<typeof en> = {
     refund: "Rimbursimi",
     tagline: "Sistemi i qetë operativ për klinika.",
     privacyLine: "Ndërtuar me kujdes për privatësinë.",
-    startFree: "Fillo falas",
+    startFree: "Fillo provën falas",
     talkToUs: "Flisni me ne",
     cta: {
       lead: "Ktheuani ditën",
@@ -74,7 +74,7 @@ export const marketing: Translation<typeof en> = {
       title: "Dita në klinikë,",
       highlight: "e drejtuar me qetësi.",
       lede: "Termine, pacientë, staf dhe mesazhe në një hapësirë pune të qetë.",
-      startFree: "Fillo falas",
+      startFree: "Fillo provën falas",
       seeProduct: "Shihni produktin",
       cue: "Kaloni nëpër një ditë në klinikë, nga 08:00 deri në 18:00",
     },
@@ -201,7 +201,9 @@ export const marketing: Translation<typeof en> = {
     adds: "Shton",
     trial: "Provë falas {days}-ditore",
     startTrial: "Fillo provën falas",
-    vat: "Çmimet përfshijnë TVSH-në. Anuloni në çdo kohë gjatë provës dhe nuk paguani asgjë.",
+    paidFromStart: "Faturohet që nga dita e parë",
+    choosePro: "Zgjidhni Pro",
+    vat: "Çmimet përfshijnë TVSH-në. Anuloni gjatë provës së Basic dhe nuk paguani asgjë.",
   },
   testimonials: {
     lead: "Çfarë thonë klinikat",
@@ -229,7 +231,7 @@ export const marketing: Translation<typeof en> = {
     heroSr: "Një hapësirë pune për oraret, kartelat e pacientëve, stafin, mesazhet, pagesat dhe raportet.",
     heroLead: "Një hapësirë pune për",
     lede: "Gjashtë module të ndërtuara bashkë, që një termin, një mesazh dhe një pagesë të shkojnë te e njëjta kartelë pacienti.",
-    startFree: "Fillo falas",
+    startFree: "Fillo provën falas",
     viewPricing: "Shihni çmimet",
     showcase: {
       lead: "Çdo pjesë, gjatë gjithë ditës.",
@@ -319,7 +321,7 @@ export const marketing: Translation<typeof en> = {
     faqLead: "Çmimet, të sqaruara.",
     faqRest: "Diçka tjetër? Thjesht pyesni.",
     faqs: [
-      { q: "Si funksionon prova falas?", a: "Çdo plan fillon me 14 ditë falas. Shtoni një kartë kur filloni dhe gjatë provës nuk tarifohet asgjë. Nëse nuk anuloni para se të mbarojë, plani juaj fillon dhe faturoheni. Ju njoftojmë me email para se të ndodhë kjo." },
+      { q: "Si funksionon prova falas?", a: "Basic fillon me 14 ditë falas; Pro faturohet që nga dita e parë. Shtoni një kartë kur filloni dhe gjatë provës nuk tarifohet asgjë. Nëse nuk anuloni para se të mbarojë, plani juaj fillon dhe faturoheni. Ju njoftojmë me email para se të ndodhë kjo." },
       { q: "Cili është ndryshimi mes Basic dhe Pro?", a: "Basic mbulon punën e përditshme: oraret, kartelat, dokumentet, pagesat dhe mesazhet. Pro shton raporte me vlerësime me ndihmën e AI, shfrytëzimin e stafit, ndjekjen e mosparaqitjeve dhe mbështetje me përparësi." },
       { q: "A mund ta ndryshoj planin ose të paguaj për vit?", a: "Po. Kaloni mes Basic dhe Pro, ose mes pagesës mujore dhe vjetore, në çdo kohë nga Cilësimet. Pagesa vjetore kushton më pak se dymbëdhjetë pagesa mujore. Kalimi në një plan më të lartë tarifohet për pjesën e mbetur të periudhës; kalimi në një më të ulët kreditohet në faturën e ardhshme. Kalimi mes pagesës mujore dhe vjetore nis një periudhë të re po atë ditë, duke zbritur pjesën e papërdorur të së vjetrës." },
       { q: "Në cilën monedhë do të paguaj?", a: "Çmimet shfaqen në monedhën tuaj, sipas vendndodhjes, dhe e përfshijnë tashmë TVSH-në. Ajo që shihni është ajo që paguani." },

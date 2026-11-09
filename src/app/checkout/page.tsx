@@ -105,7 +105,8 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
       locked={locked}
       paddle={paddle}
       prices={config?.prices ?? null}
-      initialPlan={getPublicPlan(params?.plan).key}
+      // No plan in the link (setup's "Start your free trial"): Basic, the plan with the trial.
+      initialPlan={params?.plan ? getPublicPlan(params.plan).key : "basic"}
       initialInterval={requested ?? "MONTH"}
       email={user?.email ?? ""}
       businessId={business?.id ?? ""}
