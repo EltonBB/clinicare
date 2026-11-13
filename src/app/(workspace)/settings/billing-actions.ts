@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getLocale } from "@/i18n/server";
 import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { buildBillingHistory, type BillingHistory } from "@/lib/billing-history";
-import { upgradePath } from "@/lib/billing-upgrade";
+import { sameAmounts, upgradeAmounts, upgradePath } from "@/lib/billing-upgrade";
 import { getAuthedBusiness } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import {
@@ -146,6 +146,30 @@ export async function saveBillingDetailsAction(input: z.input<typeof detailsSche
 }
 
 const UPGRADE_AT_CHECKOUT = "Upgrade to Pro from checkout, where you see what's due today.";
+const SUBSCRIPTION_BUSY = "Another change to your plan is in progress. Wait a moment, then refresh this page.";
+const PLAN_CHANGED_ELSEWHERE = "Your plan has just changed. Refresh this page to see it.";
+
+// pg_try_advisory_xact_lock namespace for every change to a clinic's Paddle
+// subscription (upgrade, plan change, cancel, resume), distinct from the
+// financial (726342) and scheduling locks.
+const SUBSCRIPTION_LOCK_NAMESPACE = 726343;
+
+/**
+ * Runs one change to a Paddle subscription at a time: two tabs (or Upgrade and
+ * a Settings plan change) can't interleave their Paddle calls, which could
+ * otherwise charge one request's price under the other's success. Returns
+ * "busy" without running when another change holds the lock.
+ */
+async function withSubscriptionLock<T>(subscriptionId: string, run: () => Promise<T>): Promise<T | "busy"> {
+  return prisma.$transaction(
+    async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(${SUBSCRIPTION_LOCK_NAMESPACE}, hashtext(${subscriptionId})) AS locked`;
+      if (!locked) return "busy" as const;
+      return run();
+    },
+    { maxWait: 5_000, timeout: 60_000 }
+  );
+}
 
 const changeSchema = z.object({ plan: z.enum(["BASIC", "PRO"]), interval: z.enum(["MONTH", "YEAR"]) });
 
@@ -181,17 +205,47 @@ export async function changeBillingPlanAction(input: z.input<typeof changeSchema
     return { ok: false, error: UPGRADE_AT_CHECKOUT };
   }
 
-  // Keep the trial: a trialing subscription moves to the new plan's trial price.
-  const trialing = business.subscriptionStatus === "TRIALING";
+  const subscriptionId = business.paddleSubscriptionId;
+  const savedPlan = business.subscribedPlan ?? business.plan;
+  const prices = priceLookup(config.prices);
   const pair = config.prices[parsed.data.plan][parsed.data.interval];
-  const priceId = trialing ? pair.trial : pair.noTrial;
 
+  let result: { kind: "changed" | "changed_elsewhere"; subscription: PaddleSubscription };
   try {
-    const subscription = await changePaddleSubscriptionPrice(config, business.paddleSubscriptionId, priceId, { trialing });
-    await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
+    const outcome = await withSubscriptionLock(subscriptionId, async () => {
+      // Read Paddle under the lock: an upgrade in another tab may have just moved
+      // the subscription to Pro or ended its trial while this page still showed
+      // the old plan, and a Basic price written now would undo the paid upgrade.
+      const live = await getPaddleSubscription(config, subscriptionId);
+      const livePlan = live.items.map((item) => prices.get(item.price.id)?.plan).find(Boolean);
+      const changed =
+        (livePlan !== undefined && livePlan !== savedPlan) ||
+        live.scheduled_change?.action === "cancel" ||
+        (live.status !== "active" && live.status !== "trialing");
+      if (changed) return { kind: "changed_elsewhere" as const, subscription: live };
+      // Keep the trial: a trialing subscription moves to the new plan's trial price.
+      const trialing = live.status === "trialing";
+      const subscription = await changePaddleSubscriptionPrice(config, subscriptionId, trialing ? pair.trial : pair.noTrial, { trialing });
+      return { kind: "changed" as const, subscription };
+    });
+    if (outcome === "busy") return { ok: false, error: SUBSCRIPTION_BUSY };
+    result = outcome;
   } catch (error) {
     logger.error("Couldn't change the subscription's plan.", error, { businessId: business.id });
     return { ok: false, error: "We couldn't change your plan. Please try again." };
+  }
+
+  // Record what Paddle has now (after a change elsewhere, the refresh then shows
+  // it without waiting for the webhook). Paddle has already acted, so a failure
+  // here is bookkeeping the webhook repeats, never "couldn't change your plan".
+  try {
+    await applySubscriptionSnapshot(config, result.subscription, subscriptionChangedAt(result.subscription, new Date()));
+  } catch (error) {
+    logger.error("Couldn't record a plan change; the webhook will.", error, { businessId: business.id });
+  }
+  if (result.kind === "changed_elsewhere") {
+    revalidatePath("/", "layout");
+    return { ok: false, error: PLAN_CHANGED_ELSEWHERE };
   }
 
   // Plan name, Pro features and the banner render on every workspace page.
@@ -269,7 +323,8 @@ export async function cancelPlanAction(): Promise<BillingActionResult> {
   if (business.cancelAt && business.cancelAt > new Date()) return { ok: true };
 
   try {
-    const subscription = await schedulePaddleCancel(config, live.subscriptionId);
+    const subscription = await withSubscriptionLock(live.subscriptionId, () => schedulePaddleCancel(config, live.subscriptionId));
+    if (subscription === "busy") return { ok: false, error: SUBSCRIPTION_BUSY };
     await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
   } catch (error) {
     logger.error("Couldn't schedule the plan's end.", error, { businessId: business.id });
@@ -291,7 +346,8 @@ export async function resumePlanAction(): Promise<BillingActionResult> {
   if (!business.cancelAt || business.cancelAt <= new Date()) return { ok: true };
 
   try {
-    const subscription = await resumePaddleSubscription(config, live.subscriptionId);
+    const subscription = await withSubscriptionLock(live.subscriptionId, () => resumePaddleSubscription(config, live.subscriptionId));
+    if (subscription === "busy") return { ok: false, error: SUBSCRIPTION_BUSY };
     await applySubscriptionSnapshot(config, subscription, subscriptionChangedAt(subscription, new Date()));
   } catch (error) {
     logger.error("Couldn't resume the plan.", error, { businessId: business.id });
@@ -347,9 +403,6 @@ export async function startProTrialAction(): Promise<BillingActionResult> {
   return { ok: true };
 }
 
-// pg_try_advisory_xact_lock namespace for the upgrade, distinct from the
-// financial (726342) and scheduling locks.
-const UPGRADE_LOCK_NAMESPACE = 726343;
 const UPGRADE_BUSY = "An upgrade is already in progress. Wait a moment, then refresh this page.";
 const UPGRADE_FAILED = "The upgrade didn't go through. Check your card in Settings › Billing and try again.";
 
@@ -367,7 +420,17 @@ const UPGRADE_FAILED = "The upgrade didn't go through. Check your card in Settin
  *
  * An owner-offered Pro trial that is running ends here: the clinic now pays for Pro.
  */
-const upgradeSchema = z.object({ interval: z.enum(["MONTH", "YEAR"]) });
+const upgradeSchema = z.object({
+  interval: z.enum(["MONTH", "YEAR"]),
+  // The quote the clinic saw on checkout; the charge happens only while Paddle still says exactly this.
+  approved: z.object({
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    // Only compared, never charged from: Paddle's own figures decide what is charged.
+    dueMinor: z.number().int(),
+    recurringMinor: z.number().int(),
+  }),
+});
+const QUOTE_CHANGED = "The amount due has changed. Check the new amount, then pay.";
 
 export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): Promise<BillingActionResult> {
   const context = await getAuthedBusiness(SESSION_EXPIRED);
@@ -390,22 +453,35 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
   const prices = priceLookup(config.prices);
   let subscription: PaddleSubscription;
   try {
-    const outcome = await prisma.$transaction(
-      async (tx) => {
-        // One upgrade per subscription at a time (two tabs, monthly and yearly):
-        // otherwise one request's activation could charge the other's price.
-        const [{ locked }] = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(${UPGRADE_LOCK_NAMESPACE}, hashtext(${subscriptionId})) AS locked`;
-        if (!locked) return "busy" as const;
-        // Read Paddle under the lock: the saved status can lag (a webhook on its
-        // way, an earlier attempt that charged but couldn't record it).
-        const live = await getPaddleSubscription(config, subscriptionId);
-        if (live.items.some((item) => prices.get(item.price.id)?.plan === "PRO") && live.status !== "trialing") return live;
-        return chargeForPro(config, live, proPrice, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
-      },
-      { maxWait: 5_000, timeout: 60_000 }
-    );
+    // One change per subscription at a time (two tabs, monthly and yearly, or a
+    // Settings plan change): otherwise one request's activation could charge
+    // the other's price.
+    const outcome = await withSubscriptionLock(subscriptionId, async () => {
+      // Read Paddle under the lock: the saved status can lag (a webhook on its
+      // way, an earlier attempt that charged but couldn't record it).
+      const live = await getPaddleSubscription(config, subscriptionId);
+      if (live.items.some((item) => prices.get(item.price.id)?.plan === "PRO") && live.status !== "trialing") {
+        return { kind: "charged" as const, subscription: live };
+      }
+      // Charge only the amount the clinic saw: a renewal using up account credit
+      // (or a trial Paddle has already ended) since checkout rendered changes it.
+      const now = await upgradeAmounts(config, subscriptionId, live.status === "trialing", parsed.data.interval);
+      if (!now || !sameAmounts(now, parsed.data.approved)) return { kind: "quote_changed" as const, subscription: live };
+      const charged = await chargeForPro(config, live, proPrice, businessId);
+      return { kind: "charged" as const, subscription: charged };
+    });
     if (outcome === "busy") return { ok: false, error: UPGRADE_BUSY };
-    subscription = outcome;
+    if (outcome.kind === "quote_changed") {
+      // Record what Paddle has (e.g. a trial it has ended), so the refreshed checkout quotes the right path.
+      try {
+        await applySubscriptionSnapshot(config, outcome.subscription, subscriptionChangedAt(outcome.subscription, new Date()));
+      } catch (error) {
+        logger.error("Couldn't record the subscription after a changed quote.", error, { businessId });
+      }
+      revalidatePath("/", "layout");
+      return { ok: false, error: QUOTE_CHANGED };
+    }
+    subscription = outcome.subscription;
   } catch (error) {
     logger.error("Couldn't upgrade the subscription to Pro.", error, { businessId, path: path.kind });
     return { ok: false, error: UPGRADE_FAILED };
@@ -432,30 +508,34 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
  * (Paddle applies it only once the charge succeeds). On Basic's free trial:
  * Paddle only lets a trialing subscription change price without billing, so
  * the item moves to Pro, then activating ends the trial with one charge; any
- * failure in either step restores Basic's trial price (only while Paddle still
- * says trialing, since a request that timed out on our side may have applied).
+ * failure in either step puts back the exact price Paddle had (only while
+ * Paddle still says trialing, since a request that timed out on our side may
+ * have applied). The price comes from `live`, read under the lock, never from
+ * the saved interval, which can lag a period change made in another tab.
  */
 async function chargeForPro(
   config: PaddleConfig,
   live: PaddleSubscription,
   proPrice: string,
-  basicTrialPrice: string,
   businessId: string
 ): Promise<PaddleSubscription> {
   if (live.status !== "trialing") {
     return changePaddleSubscriptionPrice(config, live.id, proPrice, { trialing: false });
   }
+  // A declined card must change nothing, so know what to put back before touching it.
+  const originalPrice = live.items[0]?.price.id;
+  if (!originalPrice) throw new Error("The trialing subscription has no item to restore.");
   try {
     await changePaddleSubscriptionPrice(config, live.id, proPrice, { trialing: true });
     return await activatePaddleSubscription(config, live.id);
   } catch (error) {
-    await restoreBasicTrial(config, live.id, basicTrialPrice, businessId);
+    await restoreBasicTrial(config, live.id, originalPrice, businessId);
     throw error;
   }
 }
 
 /**
- * After a failed trial activation, puts the item back on Basic's trial price,
+ * After a failed trial activation, puts the item back on the price it had,
  * but only while Paddle still says the trial runs: an activation that timed out
  * on our side may have charged, and must not be undone.
  */
