@@ -50,9 +50,11 @@ export function UpgradeFlow({
 
   // On success the action revalidates, so this page re-renders as "You're on Vela Pro".
   function pay() {
+    if (!quote) return;
     setError("");
     startTransition(async () => {
-      const result = await upgradeToProAction({ interval });
+      // The amounts on screen: the server charges only while Paddle still says exactly these.
+      const result = await upgradeToProAction({ interval, approved: quote.approved });
       if (result.ok) return;
       setError(result.error);
       // Re-ask Paddle: the amount may differ on a retry.

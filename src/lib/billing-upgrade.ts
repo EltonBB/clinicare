@@ -61,7 +61,41 @@ export type UpgradeQuote = {
   recurring: string;
   /** When the next Pro charge falls. */
   nextOn: string;
+  /** The amounts above as Paddle states them: what the clinic approves by paying. */
+  approved: ApprovedAmounts;
 };
+
+/** A quote's amounts in Paddle's minor units, compared exactly before charging. */
+export type ApprovedAmounts = { currency: string; dueMinor: number; recurringMinor: number };
+
+/**
+ * Paddle's amounts for moving this subscription to Pro now. Ending a trial
+ * charges Pro's full price today, so what is due is the recurring price. Null
+ * when Paddle's answer lacks a total; throws when Paddle can't be reached.
+ */
+export async function upgradeAmounts(
+  config: PaddleConfig,
+  subscriptionId: string,
+  trialing: boolean,
+  interval: PaidInterval
+): Promise<(ApprovedAmounts & { nextBilledAt: string | null }) | null> {
+  const preview = await previewPaddleSubscriptionChange(config, subscriptionId, config.prices.PRO[interval].noTrial, {
+    trialing,
+  });
+  // The price itself: the recurring grand total has any account credit taken off.
+  const recurringMinor = Number(preview.recurring_transaction_details?.totals.total);
+  if (!Number.isFinite(recurringMinor)) return null;
+  const currency = preview.currency_code;
+  if (trialing) return { currency, dueMinor: recurringMinor, recurringMinor, nextBilledAt: null };
+  const dueMinor = Number(preview.immediate_transaction?.details.totals.grand_total ?? 0);
+  if (!Number.isFinite(dueMinor) || !preview.next_billed_at) return null;
+  return { currency, dueMinor, recurringMinor, nextBilledAt: preview.next_billed_at };
+}
+
+/** Whether Paddle's amounts now are exactly the ones the clinic saw and approved. */
+export function sameAmounts(now: ApprovedAmounts, approved: ApprovedAmounts): boolean {
+  return now.currency === approved.currency && now.dueMinor === approved.dueMinor && now.recurringMinor === approved.recurringMinor;
+}
 
 /**
  * Asks Paddle what the upgrade costs (its own proration, tax and currency;
@@ -81,13 +115,11 @@ export async function upgradeQuote(
 ): Promise<UpgradeQuote | null> {
   const trialing = path.kind === "end_trial";
   try {
-    const preview = await previewPaddleSubscriptionChange(config, subscriptionId, config.prices.PRO[interval].noTrial, {
-      trialing,
-    });
-    // The price itself: the recurring grand total has any account credit taken off.
-    const recurringMinor = Number(preview.recurring_transaction_details?.totals.total);
-    if (!Number.isFinite(recurringMinor)) return null;
-    const money = (minor: number) => formatMinorAmount(minor, preview.currency_code, locale);
+    const amounts = await upgradeAmounts(config, subscriptionId, trialing, interval);
+    if (!amounts) return null;
+    const { currency, dueMinor, recurringMinor, nextBilledAt } = amounts;
+    const approved = { currency, dueMinor, recurringMinor };
+    const money = (minor: number) => formatMinorAmount(minor, currency, locale);
     if (trialing) {
       // One period on, clamped to the month's last day (Jan 31 → Feb 28, not Mar 3).
       const months = interval === "YEAR" ? 12 : 1;
@@ -101,15 +133,16 @@ export async function upgradeQuote(
         nothingDue: false,
         recurring: money(recurringMinor),
         nextOn: formatZonedFullDate(next, timeZone, locale),
+        approved,
       };
     }
-    const dueMinor = Number(preview.immediate_transaction?.details.totals.grand_total ?? 0);
-    if (!Number.isFinite(dueMinor) || !preview.next_billed_at) return null;
+    if (!nextBilledAt) return null;
     return {
       dueToday: money(dueMinor),
       nothingDue: dueMinor === 0,
       recurring: money(recurringMinor),
-      nextOn: formatZonedFullDate(new Date(preview.next_billed_at), timeZone, locale),
+      nextOn: formatZonedFullDate(new Date(nextBilledAt), timeZone, locale),
+      approved,
     };
   } catch (error) {
     logger.warn("Couldn't preview the Pro upgrade.", { subscriptionId, error: error instanceof Error ? error.message : "unknown" });

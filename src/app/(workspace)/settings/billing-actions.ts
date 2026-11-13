@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getLocale } from "@/i18n/server";
 import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
 import { buildBillingHistory, type BillingHistory } from "@/lib/billing-history";
-import { upgradePath } from "@/lib/billing-upgrade";
+import { sameAmounts, upgradeAmounts, upgradePath } from "@/lib/billing-upgrade";
 import { getAuthedBusiness } from "@/lib/business";
 import { logger } from "@/lib/logger";
 import {
@@ -420,7 +420,17 @@ const UPGRADE_FAILED = "The upgrade didn't go through. Check your card in Settin
  *
  * An owner-offered Pro trial that is running ends here: the clinic now pays for Pro.
  */
-const upgradeSchema = z.object({ interval: z.enum(["MONTH", "YEAR"]) });
+const upgradeSchema = z.object({
+  interval: z.enum(["MONTH", "YEAR"]),
+  // The quote the clinic saw on checkout; the charge happens only while Paddle still says exactly this.
+  approved: z.object({
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    // Only compared, never charged from: Paddle's own figures decide what is charged.
+    dueMinor: z.number().int(),
+    recurringMinor: z.number().int(),
+  }),
+});
+const QUOTE_CHANGED = "The amount due has changed. Check the new amount, then pay.";
 
 export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): Promise<BillingActionResult> {
   const context = await getAuthedBusiness(SESSION_EXPIRED);
@@ -450,11 +460,28 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
       // Read Paddle under the lock: the saved status can lag (a webhook on its
       // way, an earlier attempt that charged but couldn't record it).
       const live = await getPaddleSubscription(config, subscriptionId);
-      if (live.items.some((item) => prices.get(item.price.id)?.plan === "PRO") && live.status !== "trialing") return live;
-      return chargeForPro(config, live, proPrice, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
+      if (live.items.some((item) => prices.get(item.price.id)?.plan === "PRO") && live.status !== "trialing") {
+        return { kind: "charged" as const, subscription: live };
+      }
+      // Charge only the amount the clinic saw: a renewal using up account credit
+      // (or a trial Paddle has already ended) since checkout rendered changes it.
+      const now = await upgradeAmounts(config, subscriptionId, live.status === "trialing", parsed.data.interval);
+      if (!now || !sameAmounts(now, parsed.data.approved)) return { kind: "quote_changed" as const, subscription: live };
+      const charged = await chargeForPro(config, live, proPrice, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
+      return { kind: "charged" as const, subscription: charged };
     });
     if (outcome === "busy") return { ok: false, error: UPGRADE_BUSY };
-    subscription = outcome;
+    if (outcome.kind === "quote_changed") {
+      // Record what Paddle has (e.g. a trial it has ended), so the refreshed checkout quotes the right path.
+      try {
+        await applySubscriptionSnapshot(config, outcome.subscription, subscriptionChangedAt(outcome.subscription, new Date()));
+      } catch (error) {
+        logger.error("Couldn't record the subscription after a changed quote.", error, { businessId });
+      }
+      revalidatePath("/", "layout");
+      return { ok: false, error: QUOTE_CHANGED };
+    }
+    subscription = outcome.subscription;
   } catch (error) {
     logger.error("Couldn't upgrade the subscription to Pro.", error, { businessId, path: path.kind });
     return { ok: false, error: UPGRADE_FAILED };

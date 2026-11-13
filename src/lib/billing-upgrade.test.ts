@@ -82,6 +82,7 @@ describe("upgradeQuote", () => {
       nothingDue: true,
       recurring: "€80.00",
       nextOn: "December 9, 2026",
+      approved: { currency: "EUR", dueMinor: 0, recurringMinor: 8000 },
     });
     expect(preview).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm", { trialing: false });
   });
@@ -108,6 +109,7 @@ describe("upgradeQuote", () => {
       nothingDue: false,
       recurring: "€850.00",
       nextOn: "November 9, 2027",
+      approved: { currency: "EUR", dueMinor: 85000, recurringMinor: 85000 },
     });
     expect(preview).toHaveBeenLastCalledWith(CONFIG, "sub_1", "pri_py", { trialing: true });
   });

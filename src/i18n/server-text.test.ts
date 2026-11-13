@@ -81,6 +81,7 @@ const NOT_SHOWN = new Set([
   "Couldn't put a trial back on Basic after a failed upgrade.",
   "Couldn't record a paid Pro upgrade; the webhook will.",
   "Couldn't record a plan change; the webhook will.",
+  "Couldn't record the subscription after a changed quote.",
   "Failed to refresh staff device session.",
   "Failed to record the staff's own cancellation-sent notification.",
   "Failed to post cancellation notice to the admin thread.",

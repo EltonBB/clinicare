@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getCardUpdateTransactionId: vi.fn(),
   subscriptionLockFree: vi.fn(() => true),
   locksTaken: [] as unknown[][],
+  upgradeAmounts: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -41,6 +42,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/business", () => ({ getAuthedBusiness: mocks.getAuthedBusiness }));
+// Paddle's fresh quote under the lock; the real path and comparison logic stay.
+vi.mock("@/lib/billing-upgrade", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing-upgrade")>()),
+  upgradeAmounts: mocks.upgradeAmounts,
+}));
 vi.mock("@/lib/paddle/paddle-config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/paddle/paddle-config")>()),
   paddleConfig: mocks.paddleConfig,
@@ -105,6 +111,9 @@ const PAYING = {
 };
 
 /** Paddle's live subscription, as read under the lock: active, nothing scheduled. */
+/** The quote the clinic saw on checkout, and (by default) what Paddle still says. */
+const APPROVED = { currency: "EUR", dueMinor: 4500, recurringMinor: 8000 };
+
 const LIVE = { id: "sub_1", status: "active", items: [], address_id: "add_1", business_id: null, scheduled_change: null };
 
 beforeEach(() => {
@@ -112,6 +121,7 @@ beforeEach(() => {
   mocks.paddleConfig.mockReturnValue(CONFIG);
   mocks.getAuthedBusiness.mockResolvedValue({ business: PAYING, user: { id: "u" } });
   mocks.getPaddleSubscription.mockResolvedValue(LIVE);
+  mocks.upgradeAmounts.mockResolvedValue({ ...APPROVED, nextBilledAt: "2026-12-01T00:00:00Z" });
   mocks.changePaddleSubscriptionPrice.mockResolvedValue({ id: "sub_1" });
   mocks.applySubscriptionSnapshot.mockResolvedValue("applied");
 });
@@ -255,7 +265,7 @@ describe("changeBillingPlanAction", () => {
       business: { ...PAYING, plan: "BASIC", subscribedPlan: "BASIC", billingInterval: "MONTH", proTrialEndsAt: null },
       user: { id: "u" },
     });
-    await upgradeToProAction({ interval: "MONTH" });
+    await upgradeToProAction({ interval: "MONTH", approved: APPROVED });
     expect(mocks.locksTaken).toHaveLength(2);
     expect(mocks.locksTaken[0]).toEqual(mocks.locksTaken[1]);
     expect(mocks.locksTaken[0]).toContain("sub_1");
@@ -321,7 +331,7 @@ describe("upgradeToProAction", () => {
 
   it("moves a clinic paying for Basic to Pro, charging the prorated difference now", async () => {
     as(BASIC);
-    expect(await upgradeToProAction({ interval: "YEAR" })).toEqual({ ok: true });
+    expect(await upgradeToProAction({ interval: "YEAR", approved: APPROVED })).toEqual({ ok: true });
     expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_py", { trialing: false });
     expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledTimes(1);
@@ -332,7 +342,7 @@ describe("upgradeToProAction", () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
     mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing", items: [] });
     mocks.activatePaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active", items: [] });
-    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toEqual({ ok: true });
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledTimes(1);
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm", { trialing: true });
     expect(mocks.activatePaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_1");
@@ -342,11 +352,46 @@ describe("upgradeToProAction", () => {
     expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, { id: "sub_1", status: "active", items: [] }, expect.any(Date));
   });
 
+  it("charges nothing when Paddle's amount has changed since checkout showed it (credit used by a renewal)", async () => {
+    as(BASIC);
+    for (const now of [
+      { ...APPROVED, dueMinor: 4600 },
+      { ...APPROVED, recurringMinor: 8500 },
+      { ...APPROVED, currency: "USD" },
+      null,
+    ]) {
+      mocks.upgradeAmounts.mockResolvedValueOnce(now && { ...now, nextBilledAt: "2026-12-01T00:00:00Z" });
+      expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toEqual({
+        ok: false,
+        error: "The amount due has changed. Check the new amount, then pay.",
+      });
+    }
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
+    expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
+    // Paddle's state is recorded so the refreshed checkout quotes the right path.
+    expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, LIVE, expect.any(Date));
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("asks Paddle for the quote of the trial state Paddle reports, not the saved one", async () => {
+    as({ ...BASIC, subscriptionStatus: "TRIALING" });
+    mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing", items: [] });
+    mocks.activatePaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active", items: [] });
+    await upgradeToProAction({ interval: "YEAR", approved: APPROVED });
+    expect(mocks.upgradeAmounts).toHaveBeenCalledWith(CONFIG, "sub_1", true, "YEAR");
+  });
+
+  it("refuses a payment that doesn't say which amount the clinic approved", async () => {
+    as(BASIC);
+    expect(await upgradeToProAction({ interval: "MONTH" } as never)).toMatchObject({ ok: false });
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
+  });
+
   it("puts a trial back on Basic when the Pro charge is declined, so it never runs as a free Pro trial", async () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
     mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing", items: [] });
     mocks.activatePaddleSubscription.mockRejectedValue(new Error("declined"));
-    expect(await upgradeToProAction({ interval: "YEAR" })).toEqual({
+    expect(await upgradeToProAction({ interval: "YEAR", approved: APPROVED })).toEqual({
       ok: false,
       error: "The upgrade didn't go through. Check your card in Settings › Billing and try again.",
     });
@@ -359,7 +404,7 @@ describe("upgradeToProAction", () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
     mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "trialing", items: [] });
     mocks.changePaddleSubscriptionPrice.mockRejectedValueOnce(new Error("timeout"));
-    expect(await upgradeToProAction({ interval: "MONTH" })).toMatchObject({ ok: false });
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toMatchObject({ ok: false });
     expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenLastCalledWith(CONFIG, "sub_1", "pri_bm_t", { trialing: true });
   });
@@ -368,14 +413,14 @@ describe("upgradeToProAction", () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
     mocks.getPaddleSubscription.mockResolvedValueOnce({ id: "sub_1", status: "trialing", items: [] }).mockResolvedValueOnce({ id: "sub_1", status: "active", items: [] });
     mocks.activatePaddleSubscription.mockRejectedValue(new Error("timeout"));
-    expect(await upgradeToProAction({ interval: "MONTH" })).toMatchObject({ ok: false });
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toMatchObject({ ok: false });
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledTimes(1);
   });
 
   it("takes the paid route when Paddle has already ended the trial the saved status still shows", async () => {
     as({ ...BASIC, subscriptionStatus: "TRIALING" });
     mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active", items: [] });
-    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toEqual({ ok: true });
     expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_pm", { trialing: false });
   });
@@ -383,14 +428,14 @@ describe("upgradeToProAction", () => {
   it("reports a charged upgrade as done even when recording it fails (the webhook repeats it)", async () => {
     as(BASIC);
     mocks.applySubscriptionSnapshot.mockRejectedValue(new Error("db"));
-    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toEqual({ ok: true });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
   });
 
   it("runs one upgrade per subscription at a time (two tabs): the second is told to wait", async () => {
     as(BASIC);
     mocks.subscriptionLockFree.mockReturnValueOnce(false);
-    expect(await upgradeToProAction({ interval: "YEAR" })).toEqual({
+    expect(await upgradeToProAction({ interval: "YEAR", approved: APPROVED })).toEqual({
       ok: false,
       error: "An upgrade is already in progress. Wait a moment, then refresh this page.",
     });
@@ -400,21 +445,21 @@ describe("upgradeToProAction", () => {
   it("charges nothing when another tab has already moved the subscription to Pro", async () => {
     as(BASIC);
     mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active", items: [{ price: { id: "pri_pm" }, trial_dates: null }] });
-    expect(await upgradeToProAction({ interval: "YEAR" })).toEqual({ ok: true });
+    expect(await upgradeToProAction({ interval: "YEAR", approved: APPROVED })).toEqual({ ok: true });
     expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
     expect(mocks.applySubscriptionSnapshot).toHaveBeenCalled();
   });
 
   it("ends a running owner-offered Pro trial once the clinic pays for Pro", async () => {
     as({ ...BASIC, plan: "PRO", proTrialEndsAt: new Date(Date.now() + 86_400_000) });
-    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({ ok: true });
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toEqual({ ok: true });
     expect(mocks.businessUpdate).toHaveBeenCalledWith({ where: { id: "biz_1" }, data: { proTrialEndsAt: expect.any(Date) } });
   });
 
   it("says plainly when the payment doesn't go through, and changes nothing else", async () => {
     as(BASIC);
     mocks.changePaddleSubscriptionPrice.mockRejectedValue(new Error("declined"));
-    expect(await upgradeToProAction({ interval: "MONTH" })).toEqual({
+    expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toEqual({
       ok: false,
       error: "The upgrade didn't go through. Check your card in Settings › Billing and try again.",
     });
@@ -429,10 +474,10 @@ describe("upgradeToProAction", () => {
       { ...BASIC, subscriptionStatus: "PAST_DUE" },
     ]) {
       as(business);
-      expect(await upgradeToProAction({ interval: "MONTH" })).toMatchObject({ ok: false });
+      expect(await upgradeToProAction({ interval: "MONTH", approved: APPROVED })).toMatchObject({ ok: false });
     }
     as(BASIC);
-    expect(await upgradeToProAction({ interval: "WEEK" as "MONTH" })).toMatchObject({ ok: false });
+    expect(await upgradeToProAction({ interval: "WEEK" as "MONTH", approved: APPROVED })).toMatchObject({ ok: false });
     expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
     expect(mocks.activatePaddleSubscription).not.toHaveBeenCalled();
   });
