@@ -69,6 +69,46 @@ export function changePaddleSubscriptionPrice(
 }
 
 /**
+ * What a plan change would charge, from Paddle's own maths (amounts in the
+ * currency's minor unit). `grand_total` is what is actually charged, after any
+ * credit on the account; `total` is the price itself.
+ */
+export type PaddleChangePreview = {
+  currency_code: string;
+  next_billed_at: string | null;
+  immediate_transaction: { details: { totals: { grand_total: string } } } | null;
+  recurring_transaction_details: { totals: { total: string } } | null;
+};
+
+/**
+ * Previews {@link changePaddleSubscriptionPrice}, changing nothing: the prorated
+ * amount charged now and the new recurring price. A trialing subscription only
+ * previews with nothing billed (Paddle's rule), which still gives the price.
+ */
+export function previewPaddleSubscriptionChange(
+  config: PaddleConfig,
+  subscriptionId: string,
+  priceId: string,
+  { trialing }: { trialing: boolean }
+): Promise<PaddleChangePreview> {
+  return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}/preview`, {
+    method: "PATCH",
+    body: {
+      items: [{ price_id: priceId, quantity: 1 }],
+      proration_billing_mode: trialing ? "do_not_bill" : "prorated_immediately",
+    },
+  });
+}
+
+/**
+ * Ends a subscription's free trial now: Paddle charges the card on file at once
+ * and the billing period starts today.
+ */
+export function activatePaddleSubscription(config: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
+  return paddleRequest(config, `/subscriptions/${encodeURIComponent(subscriptionId)}/activate`, { method: "POST" });
+}
+
+/**
  * Cancels a subscription at once, before anything (more) is charged. Only for
  * one the app refuses to attach to a clinic (subscription-sync.ts).
  */

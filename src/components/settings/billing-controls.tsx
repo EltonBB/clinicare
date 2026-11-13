@@ -11,7 +11,6 @@ import {
   endProTrialAction,
   getBillingDetailsAction,
   getBillingHistoryAction,
-  keepProAction,
   resumePlanAction,
   saveBillingDetailsAction,
   startCardUpdateAction,
@@ -125,6 +124,10 @@ export function BillingControls({
           >
             {t.resume}
           </Button>
+        ) : billing.changeOptions.some((option) => option.upgrade) ? (
+          <Link href="/checkout?plan=pro" className={cn(buttonVariants({ size: "sm" }), "h-9 rounded-(--radius-card)")}>
+            {t.upgrade}
+          </Link>
         ) : null}
       </div>
 
@@ -217,15 +220,10 @@ function ProTrial({ billing, pending, run }: { billing: BillingSummary; pending:
           </Button>
         ) : (
           <>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => run(keepProAction, t.onPro)}
-              disabled={pending || !billing.canManage}
-              className="h-9 rounded-(--radius-card)"
-            >
+            {/* Keeping Pro is a purchase: Upgrade → checkout → Pay, like every upgrade. */}
+            <Link href="/checkout?plan=pro" className={cn(buttonVariants({ size: "sm" }), "h-9 rounded-(--radius-card)")}>
               {t.keepPro}
-            </Button>
+            </Link>
             <Button
               type="button"
               variant="ghost"
@@ -313,20 +311,29 @@ function ChangePlan({ billing, pending, run }: { billing: BillingSummary; pendin
       {option ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-(--radius-card) bg-[#fafbfd] px-3 py-2.5">
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">{option.effect}</p>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() =>
-              run(
-                () => changeBillingPlanAction({ plan: option.plan, interval: option.interval }),
-                fmt(t.switched, { plan: option.label })
-              )
-            }
-            disabled={pending}
-            className={smallButton}
-          >
-            {t.switch}
-          </Button>
+          {option.upgrade ? (
+            <Link
+              href={`/checkout?plan=pro&interval=${option.interval === "YEAR" ? "year" : "month"}`}
+              className={cn(buttonVariants({ size: "sm" }), smallButton)}
+            >
+              {t.upgrade}
+            </Link>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                run(
+                  () => changeBillingPlanAction({ plan: option.plan, interval: option.interval }),
+                  fmt(t.switched, { plan: option.label })
+                )
+              }
+              disabled={pending}
+              className={smallButton}
+            >
+              {t.switch}
+            </Button>
+          )}
         </div>
       ) : null}
     </section>

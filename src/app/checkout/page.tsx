@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import { CheckoutFlow, InkLink, Note } from "@/components/billing/checkout-flow";
 import { CheckoutShell } from "@/components/billing/checkout-shell";
 import { OrderSummary } from "@/components/billing/order-summary";
+import { UpgradeFlow } from "@/components/billing/upgrade-flow";
 import type { PaddleClientConfig } from "@/components/billing/use-paddle";
 import { fmt } from "@/i18n/format";
 import { getI18n } from "@/i18n/server";
 import { WithMessages } from "@/i18n/with-messages";
 import { getCurrentUser } from "@/lib/auth";
 import { workspaceAccess } from "@/lib/billing-access";
+import { upgradePath, upgradeQuote } from "@/lib/billing-upgrade";
 import { getCurrentBusiness } from "@/lib/business";
 import { checkoutStage, trialEndLabel } from "@/lib/checkout-state";
 import { paddleConfig, type PaidInterval } from "@/lib/paddle/paddle-config";
@@ -43,6 +45,27 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
   const paddle: PaddleClientConfig | null = config ? { env: config.env, clientToken: config.clientToken } : null;
   const intervalParam = first(params?.interval);
   const requested: PaidInterval | null = intervalParam === "year" ? "YEAR" : intervalParam === "month" ? "MONTH" : null;
+
+  // A clinic paying for Basic (or on its trial) upgrades here: Upgrade → checkout → Pay.
+  if (stage.kind === "subscribed" && business?.paddleSubscriptionId && first(params?.plan) !== "basic") {
+    const path = upgradePath(business);
+    if (path.kind === "change" || path.kind === "end_trial") {
+      const interval = requested ?? business.billingInterval ?? "MONTH";
+      const quote = config ? await upgradeQuote(config, business.paddleSubscriptionId, path, interval, locale) : null;
+      return (
+        <WithMessages namespaces={["billing"]}>
+          <UpgradeFlow
+            clinicName={business.name}
+            interval={interval}
+            endsTrial={path.kind === "end_trial"}
+            quote={quote}
+            paddle={paddle}
+            previewPriceId={config?.prices.PRO[interval].noTrial ?? null}
+          />
+        </WithMessages>
+      );
+    }
+  }
 
   // A clinic with a plan running sees that plan; choosing another happens in Settings › Billing.
   if (stage.kind === "subscribed" || stage.kind === "free_account") {

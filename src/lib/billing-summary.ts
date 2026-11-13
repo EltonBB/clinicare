@@ -32,6 +32,8 @@ export type BillingChangeOption = {
   label: string;
   /** What switching costs, in a sentence the confirm step shows. */
   effect: string;
+  /** Basic → Pro: opens the upgrade checkout (Upgrade → checkout → Pay) instead of switching in place. */
+  upgrade: boolean;
 };
 
 export type BillingSummary = {
@@ -153,17 +155,25 @@ export function buildBillingSummary(
       ? (["BASIC", "PRO"] as const)
           .flatMap((plan) => (["MONTH", "YEAR"] as const).map((next) => ({ plan, interval: next })))
           .filter((option) => option.plan !== currentPlan || option.interval !== interval)
-          .map((option) => ({
-            ...option,
-            label: fmt(t.changeLabel, { plan: PLAN_NAME[option.plan], interval: billed(option.interval) }),
-            effect: trialing
-              ? t.effects.trial
-              : option.interval !== interval
-                ? t.effects.newPeriod
-                : option.plan === "PRO"
-                  ? t.effects.payDifference
-                  : t.effects.credited,
-          }))
+          .map((option) => {
+            const upgrade = option.plan === "PRO" && currentPlan === "BASIC";
+            return {
+              ...option,
+              label: fmt(t.changeLabel, { plan: PLAN_NAME[option.plan], interval: billed(option.interval) }),
+              upgrade,
+              effect: upgrade
+                ? trialing
+                  ? t.effects.upgradeFromTrial
+                  : t.effects.upgrade
+                : trialing
+                  ? t.effects.trial
+                  : option.interval !== interval
+                    ? t.effects.newPeriod
+                    : option.plan === "PRO"
+                      ? t.effects.payDifference
+                      : t.effects.credited,
+            };
+          })
       : [];
 
   return {

@@ -44,8 +44,16 @@ describe("buildBillingHistory", () => {
   });
 
   it("names a trial start and a failed payment for what they are", () => {
-    const history = buildBillingHistory([txn({ id: "txn_failed", status: "past_due" }), txn({ id: "txn_trial", total: "0" })]);
+    const history = buildBillingHistory([
+      txn({ id: "txn_failed", status: "past_due" }),
+      txn({ id: "txn_trial", origin: "web", total: "0" }),
+    ]);
     expect(history.rows.map((row) => row.status)).toEqual(["Payment failed", "Free trial"]);
+  });
+
+  it("doesn't call a plan change that account credit covered a free trial", () => {
+    const history = buildBillingHistory([txn({ id: "txn_change", origin: "subscription_update", total: "0" })]);
+    expect(history.rows).toMatchObject([{ amount: "€0.00", status: "Paid" }]);
   });
 
   it("has no card when nothing was paid by card", () => {

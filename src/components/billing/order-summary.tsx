@@ -28,6 +28,7 @@ export function OrderSummary({
   trial,
   trialEndsOn,
   checkout,
+  lines,
 }: {
   plan: PublicPlan;
   interval: PaidInterval;
@@ -40,6 +41,8 @@ export function OrderSummary({
   /** "November 10, 2026": when a trial started today ends (worked out on the server). */
   trialEndsOn?: string;
   checkout?: PaddleCheckoutData | null;
+  /** Rows worked out on the server (the upgrade's quote), in place of the trial rows. */
+  lines?: Array<{ label: string; value: string }>;
 }) {
   const { locale, m } = useI18n();
   const t = m.billing.order;
@@ -66,7 +69,13 @@ export function OrderSummary({
         <span className="text-sm text-white/55">{fmt(t.per, { period: per })}</span>
       </p>
 
-      {trial !== null ? (
+      {lines ? (
+        <dl className="mt-8 divide-y divide-white/10 border-y border-white/10 text-sm">
+          {lines.map((line) => (
+            <Row key={line.label} label={line.label} value={line.value} />
+          ))}
+        </dl>
+      ) : trial !== null ? (
         <dl className="mt-8 divide-y divide-white/10 border-y border-white/10 text-sm">
           <Row label={t.dueToday} value={dueToday ?? (trial ? t.nothing : listPrice)} />
           {trial && trialEndsOn ? <Row label={fmt(t.from, { date: trialEndsOn })} value={fmt(t.aPeriod, { price, period: per })} /> : null}
