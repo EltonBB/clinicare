@@ -123,7 +123,12 @@ export async function applySubscriptionSnapshot(
   let billingMode = business.billingMode;
   if (billingMode === "COMPLIMENTARY") {
     const paidFromDayOne = subscription.status !== "trialing" && !subscription.items.some((item) => item.trial_dates);
-    const chosenByOwner = hasValidFreeUpgradeStamp(config.webhookSecret, business.id, subscription.custom_data);
+    // The stamp's age counts to when the checkout created the subscription, not
+    // to now: a webhook processed late (an outage, retries, the reconcile cron)
+    // must not cancel a payment made while the stamp was fresh.
+    const created = subscription.created_at ? new Date(subscription.created_at) : null;
+    const paidAt = created && !Number.isNaN(created.getTime()) ? created : occurredAt;
+    const chosenByOwner = hasValidFreeUpgradeStamp(config.webhookSecret, business.id, subscription.custom_data, paidAt);
     if (business.paddleSubscriptionId === subscription.id || !paidFromDayOne || !chosenByOwner) {
       return refuseSubscription(config, subscription, business.id, "free_account");
     }

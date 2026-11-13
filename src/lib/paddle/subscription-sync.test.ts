@@ -234,15 +234,18 @@ describe("applySubscriptionSnapshot", () => {
     expect(mocks.cancelPaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_new");
   });
 
+  // The checkout rendered an hour before the clinic paid.
+  const STAMPED_PAID = {
+    ...SUB,
+    items: [{ price: { id: "pri_pm" }, trial_dates: null }],
+    custom_data: { businessId: "biz_1", ...freeUpgradeStamp("s", "biz_1", new Date(OCCURRED.getTime() - 3_600_000)) },
+    created_at: OCCURRED.toISOString(),
+  };
+
   it("makes a free clinic a paying one when its own owner paid from checkout (the server's stamp)", async () => {
-    const paid = {
-      ...SUB,
-      items: [{ price: { id: "pri_pm" }, trial_dates: null }],
-      custom_data: { businessId: "biz_1", ...freeUpgradeStamp("s", "biz_1") },
-    };
     mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...CLINIC, billingMode: "COMPLIMENTARY" });
 
-    expect(await applySubscriptionSnapshot(CONFIG, paid, OCCURRED)).toBe("applied");
+    expect(await applySubscriptionSnapshot(CONFIG, STAMPED_PAID, OCCURRED)).toBe("applied");
     expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
     expect(mocks.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -250,6 +253,22 @@ describe("applySubscriptionSnapshot", () => {
         data: expect.objectContaining({ billingMode: "SUBSCRIPTION", plan: "PRO", subscriptionStatus: "ACTIVE" }),
       })
     );
+  });
+
+  it("still honours the payment when its webhook is processed days later (an outage, retries, the reconcile cron)", async () => {
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...CLINIC, billingMode: "COMPLIMENTARY" });
+
+    const threeDaysLater = new Date(OCCURRED.getTime() + 3 * 86_400_000);
+    expect(await applySubscriptionSnapshot(CONFIG, STAMPED_PAID, threeDaysLater)).toBe("applied");
+    expect(mocks.cancelPaddleSubscription).not.toHaveBeenCalled();
+  });
+
+  it("refuses a stamp more than a day old when the subscription was created", async () => {
+    mocks.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...CLINIC, billingMode: "COMPLIMENTARY" });
+    const late = { ...STAMPED_PAID, created_at: new Date(OCCURRED.getTime() + 24 * 3_600_000).toISOString() };
+
+    expect(await applySubscriptionSnapshot(CONFIG, late, OCCURRED)).toBe("unmatched");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it("refuses a stamp signed for another clinic, a forged one, or a stamped trial", async () => {

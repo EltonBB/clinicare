@@ -23,17 +23,22 @@ export function freeUpgradeStamp(secret: string, businessId: string, now: Date =
   return { freeUpgradeAt: at, freeUpgradeSig: sign(secret, businessId, at) };
 }
 
-/** Whether the custom data carries this clinic's own stamp, made in the last day. */
+/**
+ * Whether the custom data carries this clinic's own stamp, made in the day
+ * before `paidAt`: when the checkout created the subscription, never when we
+ * happen to process it, so a webhook retried (or reconciled) days later still
+ * honours a payment made in time.
+ */
 export function hasValidFreeUpgradeStamp(
   secret: string,
   businessId: string,
   customData: Record<string, unknown> | null,
-  now: Date = new Date()
+  paidAt: Date
 ): boolean {
   const at = customData?.freeUpgradeAt;
   const sig = customData?.freeUpgradeSig;
   if (typeof at !== "string" || typeof sig !== "string") return false;
-  const age = now.getTime() - Number(at);
+  const age = paidAt.getTime() - Number(at);
   if (!Number.isFinite(age) || age < 0 || age > MAX_AGE_MS) return false;
   const expected = Buffer.from(sign(secret, businessId, at), "hex");
   const given = Buffer.from(sig, "hex");
