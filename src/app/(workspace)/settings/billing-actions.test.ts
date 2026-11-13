@@ -21,15 +21,22 @@ const mocks = vi.hoisted(() => ({
   schedulePaddleCancel: vi.fn(),
   resumePaddleSubscription: vi.fn(),
   getCardUpdateTransactionId: vi.fn(),
-  upgradeLockFree: vi.fn(() => true),
+  subscriptionLockFree: vi.fn(() => true),
+  locksTaken: [] as unknown[][],
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     business: { update: mocks.businessUpdate, updateMany: mocks.businessUpdateMany },
-    // The upgrade's per-subscription lock: free unless a test says it's held.
-    $transaction: (run: (tx: { $queryRaw: () => Promise<Array<{ locked: boolean }>> }) => unknown) =>
-      run({ $queryRaw: async () => [{ locked: mocks.upgradeLockFree() }] }),
+    // The per-subscription lock: free unless a test says it's held.
+    // Each lock taken is recorded as its (namespace, key) pair.
+    $transaction: (run: (tx: { $queryRaw: (sql: TemplateStringsArray, ...values: unknown[]) => Promise<Array<{ locked: boolean }>> }) => unknown) =>
+      run({
+        $queryRaw: async (_sql, ...values) => {
+          mocks.locksTaken.push(values);
+          return [{ locked: mocks.subscriptionLockFree() }];
+        },
+      }),
   },
 }));
 
@@ -97,11 +104,14 @@ const PAYING = {
   cancelAt: null,
 };
 
+/** Paddle's live subscription, as read under the lock: active, nothing scheduled. */
+const LIVE = { id: "sub_1", status: "active", items: [], address_id: "add_1", business_id: null, scheduled_change: null };
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.paddleConfig.mockReturnValue(CONFIG);
   mocks.getAuthedBusiness.mockResolvedValue({ business: PAYING, user: { id: "u" } });
-  mocks.getPaddleSubscription.mockResolvedValue({ id: "sub_1", status: "active", items: [], address_id: "add_1", business_id: null });
+  mocks.getPaddleSubscription.mockResolvedValue(LIVE);
   mocks.changePaddleSubscriptionPrice.mockResolvedValue({ id: "sub_1" });
   mocks.applySubscriptionSnapshot.mockResolvedValue("applied");
 });
@@ -188,6 +198,7 @@ describe("changeBillingPlanAction", () => {
 
   it("keeps Basic's trial going on a period change, billing nothing now", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, plan: "BASIC", subscriptionStatus: "TRIALING" }, user: { id: "u" } });
+    mocks.getPaddleSubscription.mockResolvedValue({ ...LIVE, status: "trialing", items: [{ price: { id: "pri_bm_t" }, trial_dates: null }] });
     await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" });
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_by_t", { trialing: true });
   });
@@ -205,8 +216,76 @@ describe("changeBillingPlanAction", () => {
 
   it("lets a clinic already trialing on Pro (before the rule) change its billing period", async () => {
     mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, plan: "PRO", subscriptionStatus: "TRIALING" }, user: { id: "u" } });
+    mocks.getPaddleSubscription.mockResolvedValue({ ...LIVE, status: "trialing", items: [{ price: { id: "pri_pm_t" }, trial_dates: null }] });
     await changeBillingPlanAction({ plan: "PRO", interval: "YEAR" });
     expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_py_t", { trialing: true });
+  });
+
+  it("waits while an upgrade or another plan change holds the subscription", async () => {
+    mocks.subscriptionLockFree.mockReturnValueOnce(false);
+    expect(await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" })).toEqual({
+      ok: false,
+      error: "Another change to your plan is in progress. Wait a moment, then refresh this page.",
+    });
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
+  });
+
+  it("never puts a Basic price over an upgrade another tab just paid for", async () => {
+    // The page still shows Basic's trial; Paddle already has Pro, active.
+    mocks.getAuthedBusiness.mockResolvedValue({
+      business: { ...PAYING, plan: "BASIC", subscribedPlan: "BASIC", subscriptionStatus: "TRIALING" },
+      user: { id: "u" },
+    });
+    const live = { ...LIVE, status: "active", items: [{ price: { id: "pri_pm" }, trial_dates: null }] };
+    mocks.getPaddleSubscription.mockResolvedValue(live);
+    expect(await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" })).toEqual({
+      ok: false,
+      error: "Your plan has just changed. Refresh this page to see it.",
+    });
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
+    // What Paddle has is recorded now, so the refresh shows Pro.
+    expect(mocks.applySubscriptionSnapshot).toHaveBeenCalledWith(CONFIG, live, expect.any(Date));
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("takes the same lock as the upgrade, keyed by the subscription", async () => {
+    mocks.locksTaken.length = 0;
+    await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" });
+    mocks.getAuthedBusiness.mockResolvedValue({
+      business: { ...PAYING, plan: "BASIC", subscribedPlan: "BASIC", billingInterval: "MONTH", proTrialEndsAt: null },
+      user: { id: "u" },
+    });
+    await upgradeToProAction({ interval: "MONTH" });
+    expect(mocks.locksTaken).toHaveLength(2);
+    expect(mocks.locksTaken[0]).toEqual(mocks.locksTaken[1]);
+    expect(mocks.locksTaken[0]).toContain("sub_1");
+  });
+
+  it("reports a change Paddle made as done even when recording it fails (the webhook repeats it)", async () => {
+    mocks.applySubscriptionSnapshot.mockRejectedValue(new Error("db"));
+    expect(await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" })).toEqual({ ok: true });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("charges the regular price when Paddle has ended a trial the saved status still shows", async () => {
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, plan: "BASIC", subscriptionStatus: "TRIALING" }, user: { id: "u" } });
+    mocks.getPaddleSubscription.mockResolvedValue({ ...LIVE, status: "active", items: [{ price: { id: "pri_bm" }, trial_dates: null }] });
+    await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" });
+    expect(mocks.changePaddleSubscriptionPrice).toHaveBeenCalledWith(CONFIG, "sub_1", "pri_by", { trialing: false });
+  });
+
+  it("refuses when Paddle shows a change the page doesn't (an end scheduled, a failed payment)", async () => {
+    for (const live of [
+      { ...LIVE, scheduled_change: { action: "cancel", effective_at: "2026-12-01T00:00:00Z" } },
+      { ...LIVE, status: "past_due" },
+    ]) {
+      mocks.getPaddleSubscription.mockResolvedValue(live);
+      expect(await changeBillingPlanAction({ plan: "BASIC", interval: "YEAR" })).toEqual({
+        ok: false,
+        error: "Your plan has just changed. Refresh this page to see it.",
+      });
+    }
+    expect(mocks.changePaddleSubscriptionPrice).not.toHaveBeenCalled();
   });
 
   it("refuses a clinic with no live subscription, one set to end, a failing payment, or a free one", async () => {
@@ -310,7 +389,7 @@ describe("upgradeToProAction", () => {
 
   it("runs one upgrade per subscription at a time (two tabs): the second is told to wait", async () => {
     as(BASIC);
-    mocks.upgradeLockFree.mockReturnValueOnce(false);
+    mocks.subscriptionLockFree.mockReturnValueOnce(false);
     expect(await upgradeToProAction({ interval: "YEAR" })).toEqual({
       ok: false,
       error: "An upgrade is already in progress. Wait a moment, then refresh this page.",
@@ -450,6 +529,20 @@ describe("cancelPlanAction / resumePlanAction", () => {
     mocks.resumePaddleSubscription.mockResolvedValue({ id: "sub_1" });
     expect(await resumePlanAction()).toEqual({ ok: true });
     expect(mocks.resumePaddleSubscription).toHaveBeenCalledWith(CONFIG, "sub_1");
+  });
+
+  it("waits while another change holds the subscription", async () => {
+    mocks.subscriptionLockFree.mockReturnValueOnce(false);
+    expect(await cancelPlanAction()).toEqual({
+      ok: false,
+      error: "Another change to your plan is in progress. Wait a moment, then refresh this page.",
+    });
+    expect(mocks.schedulePaddleCancel).not.toHaveBeenCalled();
+
+    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...PAYING, cancelAt: new Date(Date.now() + 86_400_000) }, user: { id: "u" } });
+    mocks.subscriptionLockFree.mockReturnValueOnce(false);
+    expect(await resumePlanAction()).toMatchObject({ ok: false });
+    expect(mocks.resumePaddleSubscription).not.toHaveBeenCalled();
   });
 
   it("does nothing for a free clinic or one without a running plan", async () => {

@@ -216,6 +216,8 @@ export const serverText: Record<string, string> = {
   "Your last payment didn't go through. Update your card first.": "Pagesa juaj e fundit nuk kaloi. Përditësoni së pari kartën.",
   "Upgrade to Pro from checkout, where you see what's due today.": "Kaloni në Pro nga pagesa, ku shihni sa paguani sot.",
   "An upgrade is already in progress. Wait a moment, then refresh this page.": "Një kalim në Pro është duke u kryer. Prisni pak, pastaj rifreskoni faqen.",
+  "Another change to your plan is in progress. Wait a moment, then refresh this page.": "Një ndryshim tjetër i planit është duke u kryer. Prisni pak, pastaj rifreskoni faqen.",
+  "Your plan has just changed. Refresh this page to see it.": "Plani juaj sapo ndryshoi. Rifreskoni faqen për ta parë.",
   "Your clinic is already on Pro.": "Klinika juaj është tashmë në Pro.",
   "The upgrade didn't go through. Check your card in Settings › Billing and try again.": "Kalimi në Pro nuk u krye. Kontrolloni kartën te Cilësimet › Faturimi dhe provoni përsëri.",
   "We couldn't change your plan. Please try again.": "Nuk mundëm ta ndryshonim planin. Ju lutemi provoni përsëri.",
