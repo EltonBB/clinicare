@@ -467,7 +467,7 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
       // (or a trial Paddle has already ended) since checkout rendered changes it.
       const now = await upgradeAmounts(config, subscriptionId, live.status === "trialing", parsed.data.interval);
       if (!now || !sameAmounts(now, parsed.data.approved)) return { kind: "quote_changed" as const, subscription: live };
-      const charged = await chargeForPro(config, live, proPrice, config.prices.BASIC[business.billingInterval ?? "MONTH"].trial, businessId);
+      const charged = await chargeForPro(config, live, proPrice, businessId);
       return { kind: "charged" as const, subscription: charged };
     });
     if (outcome === "busy") return { ok: false, error: UPGRADE_BUSY };
@@ -508,30 +508,34 @@ export async function upgradeToProAction(input: z.input<typeof upgradeSchema>): 
  * (Paddle applies it only once the charge succeeds). On Basic's free trial:
  * Paddle only lets a trialing subscription change price without billing, so
  * the item moves to Pro, then activating ends the trial with one charge; any
- * failure in either step restores Basic's trial price (only while Paddle still
- * says trialing, since a request that timed out on our side may have applied).
+ * failure in either step puts back the exact price Paddle had (only while
+ * Paddle still says trialing, since a request that timed out on our side may
+ * have applied). The price comes from `live`, read under the lock, never from
+ * the saved interval, which can lag a period change made in another tab.
  */
 async function chargeForPro(
   config: PaddleConfig,
   live: PaddleSubscription,
   proPrice: string,
-  basicTrialPrice: string,
   businessId: string
 ): Promise<PaddleSubscription> {
   if (live.status !== "trialing") {
     return changePaddleSubscriptionPrice(config, live.id, proPrice, { trialing: false });
   }
+  // A declined card must change nothing, so know what to put back before touching it.
+  const originalPrice = live.items[0]?.price.id;
+  if (!originalPrice) throw new Error("The trialing subscription has no item to restore.");
   try {
     await changePaddleSubscriptionPrice(config, live.id, proPrice, { trialing: true });
     return await activatePaddleSubscription(config, live.id);
   } catch (error) {
-    await restoreBasicTrial(config, live.id, basicTrialPrice, businessId);
+    await restoreBasicTrial(config, live.id, originalPrice, businessId);
     throw error;
   }
 }
 
 /**
- * After a failed trial activation, puts the item back on Basic's trial price,
+ * After a failed trial activation, puts the item back on the price it had,
  * but only while Paddle still says the trial runs: an activation that timed out
  * on our side may have charged, and must not be undone.
  */
