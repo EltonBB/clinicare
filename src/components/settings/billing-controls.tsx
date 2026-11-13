@@ -124,7 +124,7 @@ export function BillingControls({
           >
             {t.resume}
           </Button>
-        ) : billing.changeOptions.some((option) => option.upgrade) ? (
+        ) : billing.changeOptions.some((option) => option.upgrade) || (billing.kind === "free" && !billing.isPro) ? (
           <Link href="/checkout?plan=pro" className={cn(buttonVariants({ size: "sm" }), "h-9 rounded-(--radius-card)")}>
             {t.upgrade}
           </Link>

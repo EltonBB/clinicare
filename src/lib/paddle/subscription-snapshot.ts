@@ -17,6 +17,8 @@ export type PaddleSubscription = {
   canceled_at: string | null;
   /** When Paddle last changed it; absent from older payloads. */
   updated_at?: string;
+  /** When the checkout created it. */
+  created_at?: string;
   items: Array<{ price: { id: string }; trial_dates: { starts_at: string; ends_at: string } | null }>;
 };
 

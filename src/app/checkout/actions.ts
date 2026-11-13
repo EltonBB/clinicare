@@ -11,5 +11,6 @@ import { getAuthedBusiness } from "@/lib/business";
 export async function checkoutReadyAction(): Promise<{ ready: boolean }> {
   const context = await getAuthedBusiness(undefined, { budget: "background" });
   if ("error" in context) return { ready: false };
-  return { ready: canUseWorkspace(context.business) };
+  // A free clinic can already use the workspace: it is ready once it pays.
+  return { ready: canUseWorkspace(context.business) && context.business.billingMode === "SUBSCRIPTION" };
 }
