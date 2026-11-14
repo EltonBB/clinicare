@@ -72,7 +72,7 @@ function date(value: string | null | undefined): Date | null {
  * the caller finds the clinic, guards event order, and writes `data`.
  *
  * - The plan and interval come from the price (only this app's eight prices),
- *   except that an owner-offered Pro trial still running keeps the clinic on
+ *   except that a free Pro trial still running keeps the clinic on
  *   Pro while Paddle bills Basic (`subscribedPlan` is what Paddle bills).
  *   "Still running" is judged at `now`, not when the event happened: a late
  *   event must not hand back Pro after the trial ended.

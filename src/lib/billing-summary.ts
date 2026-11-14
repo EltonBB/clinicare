@@ -56,7 +56,7 @@ export type BillingSummary = {
   canResume: boolean;
   canUpdateCard: boolean;
   changeOptions: BillingChangeOption[];
-  /** The owner-offered free Pro trial: waiting to be started, or running until a date. */
+  /** The free Pro trial: waiting to be started, or running until a date. */
   proTrial: { state: "offered" } | { state: "active"; endsOn: string } | null;
 };
 

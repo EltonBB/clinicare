@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireCurrentWorkspace } from "@/lib/business";
+import { proTrialState } from "@/lib/pro-trial";
 import { isProBusinessPlan } from "@/lib/billing";
 import { ProFeatureLock } from "@/components/billing/pro-feature-lock";
 import { WorkspaceLockedState } from "@/components/billing/workspace-locked-state";
@@ -101,7 +102,10 @@ export default async function ReportsPage({
   if (!isProBusinessPlan(business.plan)) {
     return (
       <WithMessages namespaces={["reports"]}>
-        <ProFeatureLock sample={getSampleReportsView(undefined, undefined, (await getI18n()).locale)} />
+        <ProFeatureLock
+          sample={getSampleReportsView(undefined, undefined, (await getI18n()).locale)}
+          proTrialOffered={proTrialState(business).kind === "offered"}
+        />
       </WithMessages>
     );
   }

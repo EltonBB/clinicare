@@ -230,6 +230,7 @@ export const reports: Translation<typeof en> = {
     title: "Raportet janë pjesë e planit Pro",
     copy: "Prirjet, ngarkesa e stafit dhe një vështrim javor mbi atë që duhet përmirësuar, të ndërtuara nga vizitat tuaja.",
     upgrade: "Kalo në Pro",
+    tryPro: "Fillo provën falas 14-ditore të Pro",
     compare: "Krahaso planet",
     previewLabel: "Pamje paraprake e raporteve me të dhëna shembull",
     sample: "Të dhëna shembull",

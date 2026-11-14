@@ -14,7 +14,7 @@ import { formatZonedFullDate } from "@/lib/time-zone";
  * action re-checks it, so the two can't disagree.
  *
  * - `change`: pays for Basic. The subscription moves to Pro now and Paddle
- *   charges the prorated difference to the card on file. An owner-offered Pro
+ *   charges the prorated difference to the card on file. A free Pro
  *   trial that is running ends with it (the clinic chose to pay).
  * - `end_trial`: on Basic's free trial. Pro is paid from day one, so the trial
  *   ends and Pro is charged now.
@@ -43,7 +43,7 @@ export function upgradePath(business: UpgradeSource, now: Date = new Date()): Up
   if (business.billingMode === "COMPLIMENTARY") return { kind: "free" };
   const usable = (USABLE_SUBSCRIPTION_STATUSES as readonly string[]).includes(business.subscriptionStatus);
   if (!usable || !business.paddleSubscriptionId) return { kind: "subscribe" };
-  // What Paddle bills; `plan` is Pro during an owner-offered Pro trial on Basic.
+  // What Paddle bills; `plan` is Pro during a free Pro trial on Basic.
   if ((business.subscribedPlan ?? business.plan) !== "BASIC") return { kind: "already_pro" };
   if (business.cancelAt && business.cancelAt > now) return { kind: "resume_first" };
   if (business.subscriptionStatus === "PAST_DUE") return { kind: "card_first" };

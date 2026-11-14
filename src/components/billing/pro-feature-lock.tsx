@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
 
+import { StartProTrialButton } from "@/components/billing/start-pro-trial-button";
 import { planPricing } from "@/components/marketing/shared/plan-strip";
 import { LocalPlanPrice } from "@/components/marketing/shared/plan-strip-interactive";
 import { ReportsSections } from "@/components/reports/reports-overview";
@@ -16,8 +17,9 @@ import { cn } from "@/lib/utils";
  * the way to checkout), then the real Reports page rendered over a sample
  * clinic so the owner sees exactly what they would get. The sample is labelled
  * as such and is inert: nothing in it can be clicked, focused or read out.
+ * Once the free Pro trial is offered (lib/pro-trial.ts), it starts from here too.
  */
-export async function ProFeatureLock({ sample }: { sample: ReportsViewModel }) {
+export async function ProFeatureLock({ sample, proTrialOffered }: { sample: ReportsViewModel; proTrialOffered: boolean }) {
   const { m } = await getI18n();
   const t = m.reports.locked;
   const proPlan = localizedPlans(m.common.plans).find((plan) => plan.key === "pro")!;
@@ -54,6 +56,7 @@ export async function ProFeatureLock({ sample }: { sample: ReportsViewModel }) {
           >
             {t.upgrade}
           </Link>
+          {proTrialOffered ? <StartProTrialButton label={t.tryPro} className="h-10 rounded-(--radius-card) px-4" /> : null}
           <Link
             href="/pricing"
             className="text-sm font-medium text-muted-foreground transition-colors duration-(--duration-base) hover:text-foreground lg:text-center"

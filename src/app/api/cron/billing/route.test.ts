@@ -14,7 +14,10 @@ vi.mock("@/lib/cron-monitor", () => ({ withCronMonitor: (_path: string, run: () 
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/paddle/paddle-config", () => ({ paddleConfig: mocks.paddleConfig }));
 vi.mock("@/lib/paddle/reconcile", () => ({ reconcileOverdueSubscriptions: mocks.reconcileOverdueSubscriptions }));
-vi.mock("@/lib/pro-trial-data", () => ({ endExpiredProTrials: vi.fn(async () => 0) }));
+vi.mock("@/lib/pro-trial-data", () => ({
+  endExpiredProTrials: vi.fn(async () => 0),
+  scheduleProTrialOffers: vi.fn(async () => ({ opened: 0, reset: 0 })),
+}));
 
 import { GET } from "./route";
 

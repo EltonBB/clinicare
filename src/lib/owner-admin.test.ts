@@ -109,8 +109,8 @@ describe("ownerBillingRow", () => {
     });
   });
 
-  it("shows whether a paying Basic clinic can be offered the Pro trial", () => {
-    expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC" }), NOW, ZONE).proTrial).toBe("offerable");
+  it("shows when a paying Basic clinic has been offered the Pro trial", () => {
+    expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC" }), NOW, ZONE).proTrial).toBeNull();
     expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC", proTrialOfferedAt: NOW }), NOW, ZONE).proTrial).toBe("offered");
     expect(ownerBillingRow(row({}), NOW, ZONE).proTrial).toBeNull();
   });

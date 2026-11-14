@@ -378,7 +378,7 @@ export async function startCardUpdateAction(): Promise<BillingActionResult<{ tra
   }
 }
 
-/** Starts the owner-offered free Pro trial: Pro now, Basic billing unchanged. */
+/** Starts the free Pro trial (offered after 30 days of paid Basic): Pro now, Basic billing unchanged. */
 export async function startProTrialAction(): Promise<BillingActionResult> {
   const context = await getAuthedBusiness(SESSION_EXPIRED);
   if ("error" in context) return { ok: false, error: context.error };
@@ -418,7 +418,7 @@ const UPGRADE_FAILED = "The upgrade didn't go through. Check your card in Settin
  * trial and charges it. If that charge fails, the item goes back to Basic's
  * trial price, so a declined card never leaves a clinic on a free Pro trial.
  *
- * An owner-offered Pro trial that is running ends here: the clinic now pays for Pro.
+ * A free Pro trial that is running ends here: the clinic now pays for Pro.
  */
 const upgradeSchema = z.object({
   interval: z.enum(["MONTH", "YEAR"]),

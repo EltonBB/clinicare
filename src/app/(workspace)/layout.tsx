@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 
+import { ProTrialEndedDialog } from "@/components/billing/pro-trial-ended-dialog";
 import { AppShell } from "@/components/layout/app-shell";
 import { getI18n } from "@/i18n/server";
 import { getSessionSignedInAt } from "@/lib/auth";
@@ -13,6 +14,7 @@ import { billingBanner } from "@/lib/billing-banner";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { getCached } from "@/lib/cache";
 import { isOnboardingCompleted } from "@/lib/onboarding";
+import { proTrialEndedAt } from "@/lib/pro-trial";
 import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
 
@@ -82,6 +84,9 @@ export default async function WorkspaceLayout({
     () => resolveMediaDisplayUrl(business.logoUrl)
   );
 
+  // The free Pro trial just ran out: ask "upgrade to Pro, or stay on Basic?".
+  const proTrialEnded = proTrialEndedAt(business);
+
   return (
     <WithMessages namespaces={["shell", "settings"]}>
     <AppShell
@@ -101,6 +106,7 @@ export default async function WorkspaceLayout({
     >
       {children}
       <WorkspaceToaster />
+      {proTrialEnded ? <ProTrialEndedDialog businessId={business.id} endedAt={proTrialEnded.toISOString()} /> : null}
     </AppShell>
     </WithMessages>
   );

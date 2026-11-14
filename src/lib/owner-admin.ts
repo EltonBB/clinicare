@@ -58,7 +58,7 @@ export type OwnerBillingRow = {
   /** A clinic Paddle is billing can't be made free here: cancel it there first. */
   canMakeFree: boolean;
   /** The free Pro trial: can be offered, or how far it has got. */
-  proTrial: "offerable" | "offered" | "active" | null;
+  proTrial: "offered" | "active" | null;
 };
 
 export function ownerBillingRow(
