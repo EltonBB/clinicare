@@ -21,7 +21,7 @@ export function OwnerBillingControl({
   isFree: boolean;
   plan: string;
   canMakeFree: boolean;
-  proTrial: "offered" | "active" | null;
+  proTrial: "offered" | "active" | "ended" | "stayed" | null;
 }) {
   const t = useI18n().m.owner.control;
   const serverText = useServerText();
@@ -61,7 +61,9 @@ export function OwnerBillingControl({
         </Button>
       </div>
       {proTrial ? (
-        <p className="text-xs text-muted-foreground">{proTrial === "offered" ? t.trialOffered : t.onTrial}</p>
+        <p className="text-xs text-muted-foreground">
+          {{ offered: t.trialOffered, active: t.onTrial, ended: t.trialEnded, stayed: t.trialStayed }[proTrial]}
+        </p>
       ) : null}
       {error ? <p className="text-xs text-destructive">{serverText(error)}</p> : null}
     </div>

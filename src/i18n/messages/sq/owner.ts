@@ -31,5 +31,7 @@ export const owner: Translation<typeof en> = {
     save: "Ruaj",
     trialOffered: "Prova e Pro u ofrua",
     onTrial: "Në provën e Pro",
+    trialEnded: "Prova e Pro përfundoi",
+    trialStayed: "Qëndroi në Basic pas provës së Pro",
   },
 };

@@ -1,59 +1,45 @@
 "use client";
 
-import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
+import { answerProTrialEndAction } from "@/app/(workspace)/settings/billing-actions";
 import { Button } from "@/components/ui/button";
-import { buttonVariants } from "@/components/ui/button-variants";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n/client";
-import { cn } from "@/lib/utils";
-
-const noSubscribe = () => () => {};
-
-function readAnswered(key: string): boolean {
-  try {
-    return window.localStorage.getItem(key) === "1";
-  } catch {
-    return false;
-  }
-}
 
 /**
  * When the free Pro trial ran out (lib/pro-trial.ts `proTrialEndedAt`): upgrade
- * to Pro, or stay on Basic. Staying needs nothing doing (the clinic is back on
- * Basic already), so an answer is only remembered on this device, per trial.
+ * to Pro, or stay on Basic. Either answer is recorded on the server, so the
+ * popup asks once, on any device; staying needs nothing more (the clinic is
+ * back on Basic already).
  */
-export function ProTrialEndedDialog({ businessId, endedAt }: { businessId: string; endedAt: string }) {
+export function ProTrialEndedDialog() {
   const t = useI18n().m.settings.billing.trialEnded;
-  const key = `vela:pro-trial-ended:${businessId}:${endedAt}`;
-  // Closed on the server and until the browser says it hasn't been answered here.
-  const answered = useSyncExternalStore(noSubscribe, () => readAnswered(key), () => true);
-  const [closed, setClosed] = useState(false);
+  const router = useRouter();
+  const [open, setOpen] = useState(true);
 
-  function answer() {
-    setClosed(true);
-    try {
-      window.localStorage.setItem(key, "1");
-    } catch {
-      // Private mode: it asks again next time, which is harmless.
-    }
+  function answer(upgrade: boolean) {
+    setOpen(false);
+    // Best effort, and never in the way: if it fails, the popup simply asks again next time.
+    answerProTrialEndAction().catch(() => null);
+    if (upgrade) router.push("/checkout?plan=pro");
   }
 
   return (
-    <Dialog open={!answered && !closed} onOpenChange={(open) => (open ? null : answer())}>
+    <Dialog open={open} onOpenChange={(next) => (next ? null : answer(false))}>
       <DialogContent className="gap-0 p-0 sm:max-w-md" showCloseButton={false}>
         <DialogHeader className="gap-2 px-5 pb-5 pt-5">
           <DialogTitle className="text-lg">{t.title}</DialogTitle>
           <DialogDescription className="leading-6">{t.body}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={answer}>
+          <Button type="button" variant="outline" onClick={() => answer(false)}>
             {t.stay}
           </Button>
-          <Link href="/checkout?plan=pro" onClick={answer} className={cn(buttonVariants())}>
+          <Button type="button" onClick={() => answer(true)}>
             {t.upgrade}
-          </Link>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

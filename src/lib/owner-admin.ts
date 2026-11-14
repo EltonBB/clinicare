@@ -43,6 +43,7 @@ export type OwnerBillingSource = Pick<
   | "proTrialOfferedAt"
   | "proTrialStartedAt"
   | "proTrialEndsAt"
+  | "proTrialAnsweredAt"
 >;
 
 export type OwnerBillingRow = {
@@ -57,8 +58,8 @@ export type OwnerBillingRow = {
   isFree: boolean;
   /** A clinic Paddle is billing can't be made free here: cancel it there first. */
   canMakeFree: boolean;
-  /** The free Pro trial: can be offered, or how far it has got. */
-  proTrial: "offered" | "active" | null;
+  /** The free Pro trial: offered, running, or over while still on Basic (and whether the clinic chose to stay). */
+  proTrial: "offered" | "active" | "ended" | "stayed" | null;
 };
 
 export function ownerBillingRow(
@@ -95,7 +96,15 @@ export function ownerBillingRow(
       ? t.access.full
       : fmt(access.kind === "needs_plan" ? t.access.choosing : t.access.readOnly, { kept });
 
-  const proTrial = proTrialState(business, now).kind;
+  const trialKind = proTrialState(business, now).kind;
+  // After a trial, a clinic that paid for Pro shows as Pro; one still on Basic shows whether it chose to stay.
+  const afterTrial =
+    trialKind === "none" && business.proTrialStartedAt && (business.subscribedPlan ?? business.plan) === "BASIC"
+      ? business.proTrialAnsweredAt
+        ? ("stayed" as const)
+        : ("ended" as const)
+      : null;
+  const proTrial = trialKind === "none" ? afterTrial : trialKind;
 
   return {
     id: business.id,
@@ -108,6 +117,6 @@ export function ownerBillingRow(
     dueForDeletion: !!keptUntil && keptUntil <= now,
     isFree,
     canMakeFree: !billedByPaddle,
-    proTrial: proTrial === "none" ? null : proTrial,
+    proTrial,
   };
 }

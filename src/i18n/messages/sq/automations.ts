@@ -147,4 +147,9 @@ export const automations: Translation<typeof en> = {
     newer: "Më të rejat",
     older: "Më të vjetrat",
   },
+  proTrial: {
+    title: "Provë falas 14-ditore e Pro",
+    detail: "Provoni falas të gjitha automatizimet. Vazhdoni të paguani çmimin e Basic.",
+    start: "Fillo provën falas",
+  },
 };

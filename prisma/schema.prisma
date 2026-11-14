@@ -57,6 +57,9 @@ model Business {
   proTrialOfferedAt      DateTime?
   proTrialStartedAt      DateTime?
   proTrialEndsAt         DateTime?
+  // When the clinic answered the popup at the trial's end ("Upgrade to Pro" or
+  // "Stay on Basic"): it asks once, on any device. Null until then.
+  proTrialAnsweredAt     DateTime?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   staffMembers           StaffMember[]

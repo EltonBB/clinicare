@@ -60,6 +60,10 @@ export const shell: Translation<typeof en> = {
     checkinToday: "Hyri në punë në {time}. Verifikoni që është aty.",
     checkinYesterday: "Hyri në punë dje në {time}. Verifikoni që është aty.",
     checkinOn: "Hyri në punë më {day} në {time}. Verifikoni që është aty.",
+    proTrial: {
+      title: "Prova juaj falas 14-ditore e Pro është gati",
+      detail: "Provoni falas raportet dhe të gjitha automatizimet. Vazhdoni të paguani çmimin e Basic.",
+    },
   },
   idle: {
     title: "Jeni ende këtu?",

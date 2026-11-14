@@ -24,25 +24,25 @@ describe("endExpiredProTrials", () => {
 
 describe("scheduleProTrialOffers", () => {
   const now = new Date("2026-11-09T13:00:00Z");
-  const paysForBasic = {
+  const onBasic = (statuses: string[]) => ({
     billingMode: "SUBSCRIPTION",
-    subscriptionStatus: "ACTIVE",
+    subscriptionStatus: { in: statuses },
     AND: [
       { OR: [{ subscribedPlan: "BASIC" }, { subscribedPlan: null, plan: "BASIC" }] },
       { OR: [{ cancelAt: null }, { cancelAt: { lte: now } }] },
     ],
-  };
+  });
 
-  it("restarts a clock that hasn't run out once the clinic stops paying for Basic, then starts new ones 30 days out", async () => {
+  it("restarts a clock that hasn't run out once the clinic leaves Basic (not on a retried payment), then starts new ones 30 days out", async () => {
     updateMany.mockClear();
     updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 3 });
     expect(await scheduleProTrialOffers(now)).toEqual({ opened: 3, reset: 1 });
     expect(updateMany).toHaveBeenNthCalledWith(1, {
-      where: { proTrialStartedAt: null, proTrialOfferedAt: { gt: now }, NOT: paysForBasic },
+      where: { proTrialStartedAt: null, proTrialOfferedAt: { gt: now }, NOT: onBasic(["ACTIVE", "PAST_DUE"]) },
       data: { proTrialOfferedAt: null },
     });
     expect(updateMany).toHaveBeenNthCalledWith(2, {
-      where: { ...paysForBasic, proTrialStartedAt: null, proTrialOfferedAt: null },
+      where: { ...onBasic(["ACTIVE"]), proTrialStartedAt: null, proTrialOfferedAt: null },
       data: { proTrialOfferedAt: new Date("2026-12-09T13:00:00Z") },
     });
   });

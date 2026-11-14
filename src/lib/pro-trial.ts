@@ -5,14 +5,16 @@ import type { Business } from "@prisma/client";
  * 2026-11-09): offered on its own once the clinic has paid for Basic for
  * PRO_TRIAL_AFTER_DAYS, started by the clinic (Settings › Billing or the
  * Reports lock), Pro for PRO_TRIAL_DAYS while it keeps paying the Basic price.
- * When it ends a popup asks: upgrade to Pro, or stay on Basic. Doing nothing
+ * When it ends a popup asks, once: upgrade to Pro, or stay on Basic. Doing nothing
  * stays on Basic; Vela never moves a clinic onto a higher price it didn't
  * choose. Offered once, started once.
  */
 export const PRO_TRIAL_DAYS = 14;
 export const PRO_TRIAL_AFTER_DAYS = 30;
-/** How long after a trial ran out its end popup still asks. */
+/** How long after a trial ran out its end popup still asks, unanswered. */
 export const PRO_TRIAL_ENDED_ASK_DAYS = 7;
+/** How long the bell marks a newly opened offer with a dot. */
+export const PRO_TRIAL_NEW_OFFER_DAYS = 7;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -34,6 +36,7 @@ export type ProTrialSource = Pick<
 >;
 
 export type ProTrialState = { kind: "none" } | { kind: "offered" } | { kind: "active"; endsAt: Date };
+
 
 function paysForBasic(business: ProTrialSource, now: Date): boolean {
   return (
@@ -57,13 +60,28 @@ export function proTrialState(business: ProTrialSource, now: Date = new Date()):
 }
 
 /**
- * When a trial ran its full length out in the last PRO_TRIAL_ENDED_ASK_DAYS and
- * the clinic is still on Basic: the end popup asks "upgrade or stay?". A trial
- * ended early (Back to Basic, or paid for Pro) is shorter and never asks.
+ * The offer's row in the notification bell, while it's open: "new" for its
+ * first week (the bell shows a dot), "open" after that (the row stays, the dot
+ * doesn't, so an offer the clinic doesn't want never nags).
  */
-export function proTrialEndedAt(business: ProTrialSource, now: Date = new Date()): Date | null {
+export function proTrialBell(business: ProTrialSource, now: Date = new Date()): "new" | "open" | null {
+  if (proTrialState(business, now).kind !== "offered") return null;
+  const openedAt = business.proTrialOfferedAt;
+  return openedAt && now.getTime() - openedAt.getTime() < PRO_TRIAL_NEW_OFFER_DAYS * DAY_MS ? "new" : "open";
+}
+
+/**
+ * When a trial ran its full length out in the last PRO_TRIAL_ENDED_ASK_DAYS, the
+ * clinic is still on Basic and hasn't answered: the end popup asks "upgrade or
+ * stay?". A trial ended early (Back to Basic, or paid for Pro) is shorter and
+ * never asks.
+ */
+export function proTrialEndedAt(
+  business: ProTrialSource & Pick<Business, "proTrialAnsweredAt">,
+  now: Date = new Date()
+): Date | null {
   const { proTrialStartedAt: startedAt, proTrialEndsAt: endsAt } = business;
-  if (!startedAt || !endsAt || endsAt > now) return null;
+  if (!startedAt || !endsAt || endsAt > now || business.proTrialAnsweredAt) return null;
   if (endsAt.getTime() - startedAt.getTime() < PRO_TRIAL_DAYS * DAY_MS) return null;
   if (now.getTime() - endsAt.getTime() > PRO_TRIAL_ENDED_ASK_DAYS * DAY_MS) return null;
   return paysForBasic(business, now) ? endsAt : null;

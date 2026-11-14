@@ -39,6 +39,7 @@ export default async function OwnerPage() {
       proTrialOfferedAt: true,
       proTrialStartedAt: true,
       proTrialEndsAt: true,
+      proTrialAnsweredAt: true,
     },
     orderBy: { createdAt: "desc" },
   });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PRO_TRIAL_DAYS,
+  proTrialBell,
   proTrialEndedAt,
   proTrialOfferOpensAt,
   proTrialState,
@@ -12,7 +13,9 @@ const NOW = new Date("2026-10-26T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 const daysFromNow = (days: number) => new Date(NOW.getTime() + days * DAY);
 
-function clinic(overrides: Partial<ProTrialSource> = {}): ProTrialSource {
+type Clinic = ProTrialSource & { proTrialAnsweredAt: Date | null };
+
+function clinic(overrides: Partial<Clinic> = {}): Clinic {
   return {
     plan: "BASIC",
     subscribedPlan: "BASIC",
@@ -22,6 +25,7 @@ function clinic(overrides: Partial<ProTrialSource> = {}): ProTrialSource {
     proTrialOfferedAt: daysFromNow(-1),
     proTrialStartedAt: null,
     proTrialEndsAt: null,
+    proTrialAnsweredAt: null,
     ...overrides,
   };
 }
@@ -74,6 +78,10 @@ describe("proTrialEndedAt", () => {
     expect(proTrialEndedAt(ran, NOW)).toEqual(endsAt);
   });
 
+  it("asks once: not after the clinic has answered", () => {
+    expect(proTrialEndedAt({ ...ran, proTrialAnsweredAt: NOW }, NOW)).toBeNull();
+  });
+
   it("asks right away, before the hourly sweep has moved the plan back", () => {
     expect(proTrialEndedAt({ ...ran, plan: "PRO" }, NOW)).toEqual(endsAt);
   });
@@ -85,5 +93,18 @@ describe("proTrialEndedAt", () => {
     expect(proTrialEndedAt({ ...ran, plan: "PRO", subscribedPlan: "PRO" }, NOW)).toBeNull();
     expect(proTrialEndedAt(ran, daysFromNow(7))).toBeNull();
     expect(proTrialEndedAt(clinic(), NOW)).toBeNull();
+  });
+});
+
+describe("proTrialBell", () => {
+  it("marks an offer as new for its first week, then keeps it without the dot", () => {
+    expect(proTrialBell(clinic({ proTrialOfferedAt: daysFromNow(-2) }), NOW)).toBe("new");
+    expect(proTrialBell(clinic({ proTrialOfferedAt: daysFromNow(-8) }), NOW)).toBe("open");
+  });
+
+  it("shows nothing before the offer opens, once started, or when not on paid Basic", () => {
+    expect(proTrialBell(clinic({ proTrialOfferedAt: daysFromNow(2) }), NOW)).toBeNull();
+    expect(proTrialBell(clinic({ proTrialStartedAt: NOW, proTrialEndsAt: daysFromNow(14), plan: "PRO" }), NOW)).toBeNull();
+    expect(proTrialBell(clinic({ subscriptionStatus: "PAST_DUE" }), NOW)).toBeNull();
   });
 });
