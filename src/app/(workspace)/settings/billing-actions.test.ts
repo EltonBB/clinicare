@@ -83,8 +83,8 @@ vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: 
 import {
   cancelPlanAction,
   changeBillingPlanAction,
-  answerProTrialEndAction,
   endProTrialAction,
+  stayOnBasicAfterTrialAction,
   getBillingHistoryAction,
   getInvoiceLinkAction,
   getBillingDetailsAction,
@@ -539,7 +539,7 @@ describe("the free Pro trial", () => {
     });
   });
 
-  it("records the answer to the end popup once, and only after a full trial ran out", async () => {
+  it("saves 'stay on Basic' once, and only after a full trial ran out", async () => {
     const ended = {
       ...BASIC,
       proTrialStartedAt: new Date(Date.now() - 15 * 86_400_000),
@@ -548,7 +548,7 @@ describe("the free Pro trial", () => {
     };
     mocks.getAuthedBusiness.mockResolvedValue({ business: ended, user: { id: "u" } });
     mocks.businessUpdateMany.mockResolvedValue({ count: 1 });
-    expect(await answerProTrialEndAction()).toEqual({ ok: true });
+    expect(await stayOnBasicAfterTrialAction()).toEqual({ ok: true });
     expect(mocks.businessUpdateMany).toHaveBeenCalledWith({
       where: { id: "biz_1", proTrialAnsweredAt: null },
       data: { proTrialAnsweredAt: expect.any(Date) },
@@ -556,7 +556,7 @@ describe("the free Pro trial", () => {
 
     mocks.businessUpdateMany.mockClear();
     mocks.getAuthedBusiness.mockResolvedValue({ business: ON_TRIAL, user: { id: "u" } });
-    expect(await answerProTrialEndAction()).toEqual({ ok: true });
+    expect(await stayOnBasicAfterTrialAction()).toEqual({ ok: true });
     expect(mocks.businessUpdateMany).not.toHaveBeenCalled();
   });
 });

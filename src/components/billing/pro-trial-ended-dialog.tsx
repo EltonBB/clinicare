@@ -3,41 +3,45 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { answerProTrialEndAction } from "@/app/(workspace)/settings/billing-actions";
+import { stayOnBasicAfterTrialAction } from "@/app/(workspace)/settings/billing-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n/client";
 
 /**
  * When the free Pro trial ran out (lib/pro-trial.ts `proTrialEndedAt`): upgrade
- * to Pro, or stay on Basic. Either answer is recorded on the server, so the
- * popup asks once, on any device; staying needs nothing more (the clinic is
- * back on Basic already).
+ * to Pro, or stay on Basic. Staying (or closing the popup) is saved, so it asks
+ * no more on any device. Upgrading goes to checkout and saves nothing: paid, the
+ * clinic is on Pro and the popup is gone; not paid, it asks again.
  */
 export function ProTrialEndedDialog() {
   const t = useI18n().m.settings.billing.trialEnded;
   const router = useRouter();
   const [open, setOpen] = useState(true);
 
-  function answer(upgrade: boolean) {
+  function stay() {
     setOpen(false);
-    // Best effort, and never in the way: if it fails, the popup simply asks again next time.
-    answerProTrialEndAction().catch(() => null);
-    if (upgrade) router.push("/checkout?plan=pro");
+    // Best effort: if saving fails, the popup simply asks again next time.
+    stayOnBasicAfterTrialAction().catch(() => null);
+  }
+
+  function upgrade() {
+    setOpen(false);
+    router.push("/checkout?plan=pro");
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? null : answer(false))}>
+    <Dialog open={open} onOpenChange={(next) => (next ? null : stay())}>
       <DialogContent className="gap-0 p-0 sm:max-w-md" showCloseButton={false}>
         <DialogHeader className="gap-2 px-5 pb-5 pt-5">
           <DialogTitle className="text-lg">{t.title}</DialogTitle>
           <DialogDescription className="leading-6">{t.body}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => answer(false)}>
+          <Button type="button" variant="outline" onClick={stay}>
             {t.stay}
           </Button>
-          <Button type="button" onClick={() => answer(true)}>
+          <Button type="button" onClick={upgrade}>
             {t.upgrade}
           </Button>
         </DialogFooter>

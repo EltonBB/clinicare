@@ -97,7 +97,8 @@ export function ownerBillingRow(
       : fmt(access.kind === "needs_plan" ? t.access.choosing : t.access.readOnly, { kept });
 
   const trialKind = proTrialState(business, now).kind;
-  // After a trial, a clinic that paid for Pro shows as Pro; one still on Basic shows whether it chose to stay.
+  // After a trial, a clinic that paid for Pro shows as Pro; one still on Basic shows
+  // "stayed" only when it chose to (an Upgrade it didn't pay for leaves it "ended").
   const afterTrial =
     trialKind === "none" && business.proTrialStartedAt && (business.subscribedPlan ?? business.plan) === "BASIC"
       ? business.proTrialAnsweredAt

@@ -554,15 +554,16 @@ async function restoreBasicTrial(config: PaddleConfig, subscriptionId: string, b
 }
 
 /**
- * Records the answer to the popup at the Pro trial's end ("Upgrade to Pro" goes
- * on to checkout, "Stay on Basic" needs nothing more), so it asks once, on any
- * device. Nothing changes in billing.
+ * "Stay on Basic" at the Pro trial's end (or closing that popup): saved, so it
+ * asks no more on any device, and the owner page can tell an explicit "stay"
+ * from an upgrade that wasn't paid. Nothing changes in billing: the clinic is
+ * on Basic already.
  */
-export async function answerProTrialEndAction(): Promise<BillingActionResult> {
+export async function stayOnBasicAfterTrialAction(): Promise<BillingActionResult> {
   const context = await getAuthedBusiness(SESSION_EXPIRED, { access: "read" });
   if ("error" in context) return { ok: false, error: context.error };
   if (!proTrialEndedAt(context.business)) return { ok: true };
-  // Guarded in the write: a second tab answering too changes nothing.
+  // Guarded in the write: a second tab staying too changes nothing.
   await prisma.business.updateMany({
     where: { id: context.business.id, proTrialAnsweredAt: null },
     data: { proTrialAnsweredAt: new Date() },
