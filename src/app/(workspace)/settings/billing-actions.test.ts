@@ -495,7 +495,7 @@ describe("upgradeToProAction", () => {
   });
 });
 
-describe("the owner-offered Pro trial", () => {
+describe("the free Pro trial", () => {
   const BASIC = { ...PAYING, plan: "BASIC", subscribedPlan: "BASIC", billingInterval: "YEAR", proTrialOfferedAt: new Date(), proTrialStartedAt: null, proTrialEndsAt: null };
   const ON_TRIAL = {
     ...BASIC,
@@ -519,9 +519,11 @@ describe("the owner-offered Pro trial", () => {
     expect(await startProTrialAction()).toMatchObject({ ok: false });
   });
 
-  it("can't be started without an offer", async () => {
-    mocks.getAuthedBusiness.mockResolvedValue({ business: { ...BASIC, proTrialOfferedAt: null }, user: { id: "u" } });
-    expect(await startProTrialAction()).toMatchObject({ ok: false });
+  it("can't be started without an offer, or before 30 days of paid Basic", async () => {
+    for (const proTrialOfferedAt of [null, new Date(Date.now() + 86_400_000)]) {
+      mocks.getAuthedBusiness.mockResolvedValue({ business: { ...BASIC, proTrialOfferedAt }, user: { id: "u" } });
+      expect(await startProTrialAction()).toMatchObject({ ok: false });
+    }
     expect(mocks.businessUpdateMany).not.toHaveBeenCalled();
   });
 

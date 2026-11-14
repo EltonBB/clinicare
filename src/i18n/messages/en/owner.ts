@@ -28,7 +28,6 @@ export const owner = {
     freePro: "Free · Pro",
     paying: "Must pay",
     save: "Save",
-    offerTrial: "Offer Pro trial",
     trialOffered: "Pro trial offered",
     onTrial: "On a Pro trial",
   },

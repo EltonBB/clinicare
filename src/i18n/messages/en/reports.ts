@@ -231,6 +231,7 @@ export const reports = {
     title: "Reports are part of Pro",
     copy: "Trends, staff load and a weekly read on what to fix next, built from your own visits.",
     upgrade: "Upgrade to Pro",
+    tryPro: "Start 14-day free trial of Pro",
     compare: "Compare plans",
     previewLabel: "Reports preview with sample data",
     sample: "Sample data",

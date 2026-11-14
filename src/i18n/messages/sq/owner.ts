@@ -29,7 +29,6 @@ export const owner: Translation<typeof en> = {
     freePro: "Falas · Pro",
     paying: "Duhet të paguajë",
     save: "Ruaj",
-    offerTrial: "Ofro provën e Pro",
     trialOffered: "Prova e Pro u ofrua",
     onTrial: "Në provën e Pro",
   },

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Returns clinics whose owner-offered Pro trial has run out, without them
+ * Returns clinics whose free Pro trial has run out, without them
  * choosing, to the plan Paddle bills (Basic). Run by the hourly billing cron.
  */
 export async function endExpiredProTrials(now: Date = new Date()): Promise<number> {

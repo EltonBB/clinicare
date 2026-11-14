@@ -1,6 +1,7 @@
 import type { BillingInterval, BillingMode, BusinessPlan, BusinessPlanStatus, SubscriptionStatus } from "@prisma/client";
 
 import { USABLE_SUBSCRIPTION_STATUSES } from "@/lib/billing-access";
+import { proTrialOfferOpensAt } from "@/lib/pro-trial";
 
 import type { PriceInfo } from "./paddle-config";
 
@@ -19,6 +20,8 @@ export type PaddleSubscription = {
   updated_at?: string;
   /** When the checkout created it. */
   created_at?: string;
+  /** Its first charge (after a free trial, when the trial ended); null before it. */
+  first_billed_at?: string | null;
   items: Array<{ price: { id: string }; trial_dates: { starts_at: string; ends_at: string } | null }>;
 };
 
@@ -37,6 +40,8 @@ export type SnapshotData = {
   trialUsedAt: Date | null;
   lockedAt: Date | null;
   billingSyncedAt: Date;
+  /** Set once, the first time Basic is seen paid: when the free Pro trial is offered. */
+  proTrialOfferedAt?: Date;
 };
 
 export type SnapshotUpdate =
@@ -72,11 +77,13 @@ function date(value: string | null | undefined): Date | null {
  * the caller finds the clinic, guards event order, and writes `data`.
  *
  * - The plan and interval come from the price (only this app's eight prices),
- *   except that an owner-offered Pro trial still running keeps the clinic on
+ *   except that a free Pro trial still running keeps the clinic on
  *   Pro while Paddle bills Basic (`subscribedPlan` is what Paddle bills).
  *   "Still running" is judged at `now`, not when the event happened: a late
  *   event must not hand back Pro after the trial ended.
  * - `trialUsedAt` is set once, the first time a trial is seen: one per clinic.
+ * - `proTrialOfferedAt` is set once, the first time Basic is seen paid: the
+ *   free Pro trial opens 30 days after that first charge (lib/pro-trial.ts).
  * - `lockedAt` starts the 90-day retention clock when the subscription stops
  *   being usable, keeps an earlier start, and clears once it is usable again.
  * - Whether a clinic is free is never changed here, only on the owner page:
@@ -88,7 +95,14 @@ export function subscriptionSnapshotUpdate(
   subscription: PaddleSubscription,
   occurredAt: Date,
   prices: Map<string, PriceInfo>,
-  existing: { billingMode: BillingMode; trialUsedAt: Date | null; lockedAt: Date | null; proTrialEndsAt?: Date | null },
+  existing: {
+    billingMode: BillingMode;
+    trialUsedAt: Date | null;
+    lockedAt: Date | null;
+    proTrialEndsAt?: Date | null;
+    proTrialOfferedAt?: Date | null;
+    proTrialStartedAt?: Date | null;
+  },
   now: Date = new Date()
 ): SnapshotUpdate {
   const status = STATUS[subscription.status];
@@ -102,6 +116,12 @@ export function subscriptionSnapshotUpdate(
   const trialStart = date(item.trial_dates?.starts_at);
   const firstTrialSeen = status === "TRIALING" || trialStart ? (trialStart ?? occurredAt) : null;
   const billingMode = existing.billingMode;
+  // The free Pro trial opens 30 days after Basic's first paid charge (Paddle's
+  // own date; the event's time when it gives none), once per clinic.
+  const offerPro =
+    status === "ACTIVE" && price.plan === "BASIC" && !existing.proTrialOfferedAt && !existing.proTrialStartedAt
+      ? proTrialOfferOpensAt(date(subscription.first_billed_at) ?? occurredAt)
+      : null;
 
   return {
     kind: "update",
@@ -123,6 +143,7 @@ export function subscriptionSnapshotUpdate(
           ? null
           : (existing.lockedAt ?? date(subscription.canceled_at) ?? occurredAt),
       billingSyncedAt: occurredAt,
+      ...(offerPro ? { proTrialOfferedAt: offerPro } : {}),
     },
   };
 }

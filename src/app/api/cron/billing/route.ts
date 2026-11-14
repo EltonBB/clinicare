@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 }
 
 async function run() {
-  // Owner-offered Pro trials that ran out without a choice go back to Basic.
+  // Free Pro trials that ran out without a choice go back to Basic.
   const proTrialsEnded = await endExpiredProTrials();
 
   const config = paddleConfig();
