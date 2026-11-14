@@ -22,6 +22,7 @@ function row(overrides: Partial<OwnerBillingSource>): OwnerBillingSource {
     proTrialOfferedAt: null,
     proTrialStartedAt: null,
     proTrialEndsAt: null,
+    proTrialAnsweredAt: null,
     ...overrides,
   };
 }
@@ -113,6 +114,14 @@ describe("ownerBillingRow", () => {
     expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC" }), NOW, ZONE).proTrial).toBeNull();
     expect(ownerBillingRow(row({ plan: "BASIC", subscribedPlan: "BASIC", proTrialOfferedAt: NOW }), NOW, ZONE).proTrial).toBe("offered");
     expect(ownerBillingRow(row({}), NOW, ZONE).proTrial).toBeNull();
+  });
+
+  it("shows how a finished Pro trial ended for a clinic still on Basic", () => {
+    const over = { plan: "BASIC" as const, subscribedPlan: "BASIC" as const, proTrialStartedAt: new Date("2026-09-01T00:00:00Z"), proTrialEndsAt: new Date("2026-09-15T00:00:00Z") };
+    expect(ownerBillingRow(row(over), NOW, ZONE).proTrial).toBe("ended");
+    expect(ownerBillingRow(row({ ...over, proTrialAnsweredAt: new Date("2026-09-15T08:00:00Z") }), NOW, ZONE).proTrial).toBe("stayed");
+    // Paid for Pro afterwards: the plan says so, nothing more to show.
+    expect(ownerBillingRow(row({ ...over, plan: "PRO", subscribedPlan: "PRO" }), NOW, ZONE).proTrial).toBeNull();
   });
 });
 

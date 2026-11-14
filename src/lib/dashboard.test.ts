@@ -157,6 +157,7 @@ describe("buildDashboardViewFromWorkspace — no-show risk", () => {
     proTrialOfferedAt: null,
     proTrialStartedAt: null,
     proTrialEndsAt: null,
+    proTrialAnsweredAt: null,
     createdAt: now,
     updatedAt: now,
   };

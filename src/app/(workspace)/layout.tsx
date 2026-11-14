@@ -14,7 +14,7 @@ import { billingBanner } from "@/lib/billing-banner";
 import { requireCurrentWorkspace, toBusinessIdentity } from "@/lib/business";
 import { getCached } from "@/lib/cache";
 import { isOnboardingCompleted } from "@/lib/onboarding";
-import { proTrialEndedAt } from "@/lib/pro-trial";
+import { proTrialBell, proTrialEndedAt } from "@/lib/pro-trial";
 import { resolveMediaDisplayUrl } from "@/lib/media-storage-server";
 import { autoCloseStaleTimeEntries } from "@/lib/staff-clock";
 
@@ -100,13 +100,14 @@ export default async function WorkspaceLayout({
       brandAccentColor={business.brandAccentColor}
       logoUrl={logoDisplayUrl}
       billingBanner={billingBanner(access, undefined, locale)}
+      proTrialOffer={proTrialBell(business)}
       unreadCount={0}
       inboxUnreadCount={0}
       notifications={[]}
     >
       {children}
       <WorkspaceToaster />
-      {proTrialEnded ? <ProTrialEndedDialog businessId={business.id} endedAt={proTrialEnded.toISOString()} /> : null}
+      {proTrialEnded ? <ProTrialEndedDialog /> : null}
     </AppShell>
     </WithMessages>
   );

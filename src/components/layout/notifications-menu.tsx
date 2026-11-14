@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Bell, TriangleAlert } from "lucide-react";
+import { ArrowRight, Bell, Gift, TriangleAlert } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -31,6 +31,9 @@ type NotificationsMenuProps = {
   /** A WhatsApp problem while visits coming up are owed reminders (see reminderWarning). */
   reminderWarning: ReminderWarning;
   onOpenWhatsAppSettings: () => void;
+  /** The free Pro trial is on offer: "new" (first week, the bell shows a dot) or "open". */
+  proTrialOffer: "new" | "open" | null;
+  onOpenBillingSettings: () => void;
 };
 
 export function NotificationsMenu({
@@ -40,6 +43,8 @@ export function NotificationsMenu({
   hasStaffUnread,
   reminderWarning,
   onOpenWhatsAppSettings,
+  proTrialOffer,
+  onOpenBillingSettings,
 }: NotificationsMenuProps) {
   const { locale, m } = useI18n();
   const t = m.shell.notifications;
@@ -65,7 +70,7 @@ export function NotificationsMenu({
         className="relative inline-flex size-9 items-center justify-center rounded-(--radius-tile) border border-transparent text-muted-foreground transition-[background-color,border-color,color,transform] duration-(--duration-base) hover:border-border/70 hover:bg-[#f7f9fc] hover:text-foreground active:scale-[0.97] active:bg-[#eef2f8]"
       >
         <Bell className="size-[18px]" />
-        {unreadCount > 0 || warning ? (
+        {unreadCount > 0 || warning || proTrialOffer === "new" ? (
           <span
             className={cn(
               "absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-white",
@@ -92,7 +97,7 @@ export function NotificationsMenu({
 
         {/* Nothing pending: the header already says "All clear", so there is
             no second empty message (and no box) below it. */}
-        {warning || hasUpdates ? (
+        {warning || hasUpdates || proTrialOffer ? (
           <div className="space-y-0.5 px-2 py-2">
             {warning ? (
               // A menu item (not a plain button) so choosing it closes the menu
@@ -105,6 +110,18 @@ export function NotificationsMenu({
                 <span className="min-w-0">
                   <span className="block text-sm font-medium text-foreground">{warning.title}</span>
                   <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{warning.detail}</span>
+                </span>
+              </DropdownMenuItem>
+            ) : null}
+            {proTrialOffer ? (
+              <DropdownMenuItem
+                onClick={onOpenBillingSettings}
+                className="items-start gap-2.5 rounded-(--radius-tile) px-2.5 py-2.5 transition-colors duration-(--duration-base) hover:bg-[#f7f9fc] focus:bg-[#f7f9fc]"
+              >
+                <Gift className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">{t.proTrial.title}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{t.proTrial.detail}</span>
                 </span>
               </DropdownMenuItem>
             ) : null}

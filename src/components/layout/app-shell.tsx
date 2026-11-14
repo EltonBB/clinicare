@@ -93,6 +93,8 @@ type AppShellProps = {
   // Patient-inbox-only unread — feeds WorkspaceLiveContext (dashboard KPI, Messages card).
   inboxUnreadCount?: number;
   notifications?: NotificationItem[];
+  // The free Pro trial is on offer (lib/pro-trial.ts proTrialBell): a bell row opening Settings › Billing.
+  proTrialOffer?: "new" | "open" | null;
 };
 
 export function AppShell({
@@ -108,6 +110,7 @@ export function AppShell({
   unreadCount = 0,
   inboxUnreadCount = 0,
   notifications = [],
+  proTrialOffer = null,
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -176,6 +179,7 @@ export function AppShell({
     [pathname, searchParams]
   );
   const openWhatsAppSettings = useCallback(() => openSettingsSection("whatsapp"), [openSettingsSection]);
+  const openBillingSettings = useCallback(() => openSettingsSection("billing"), [openSettingsSection]);
   const settingsNotice =
     searchParams.get("notice") === "email_updated" ? t.emailUpdated : "";
   const [searchOpen, setSearchOpen] = useState(false);
@@ -401,6 +405,8 @@ export function AppShell({
                   hasStaffUnread={liveStaffUnreadCount > 0}
                   reminderWarning={reminderWarning}
                   onOpenWhatsAppSettings={openWhatsAppSettings}
+                  proTrialOffer={proTrialOffer}
+                  onOpenBillingSettings={openBillingSettings}
                 />
                 <div className="lg:hidden">
                   <LogoutButton />

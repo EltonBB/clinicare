@@ -30,5 +30,7 @@ export const owner = {
     save: "Save",
     trialOffered: "Pro trial offered",
     onTrial: "On a Pro trial",
+    trialEnded: "Pro trial ended",
+    trialStayed: "Stayed on Basic after the Pro trial",
   },
 };

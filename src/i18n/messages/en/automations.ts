@@ -152,4 +152,9 @@ export const automations = {
     newer: "Newer",
     older: "Older",
   },
+  proTrial: {
+    title: "14-day free trial of Pro",
+    detail: "Try every automation free. You keep paying the Basic price.",
+    start: "Start free trial",
+  },
 };

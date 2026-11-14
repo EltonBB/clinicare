@@ -31,7 +31,7 @@ import type { PaddleSubscription } from "@/lib/paddle/subscription-snapshot";
 import { subscriptionChangedAt } from "@/lib/paddle/subscription-snapshot";
 import { applySubscriptionSnapshot } from "@/lib/paddle/subscription-sync";
 import { prisma } from "@/lib/prisma";
-import { PRO_TRIAL_DAYS, proTrialState } from "@/lib/pro-trial";
+import { PRO_TRIAL_DAYS, proTrialEndedAt, proTrialState } from "@/lib/pro-trial";
 
 const SESSION_EXPIRED = "Your session expired. Log in again to manage billing.";
 const BILLING_UNAVAILABLE = "Billing isn't available right now. Please try again later.";
@@ -551,6 +551,25 @@ async function restoreBasicTrial(config: PaddleConfig, subscriptionId: string, b
       if (attempt === 2) logger.error("Couldn't put a trial back on Basic after a failed upgrade.", error, { businessId, subscriptionId });
     }
   }
+}
+
+/**
+ * "Stay on Basic" at the Pro trial's end (or closing that popup): saved, so it
+ * asks no more on any device, and the owner page can tell an explicit "stay"
+ * from an upgrade that wasn't paid. Nothing changes in billing: the clinic is
+ * on Basic already.
+ */
+export async function stayOnBasicAfterTrialAction(): Promise<BillingActionResult> {
+  const context = await getAuthedBusiness(SESSION_EXPIRED, { access: "read" });
+  if ("error" in context) return { ok: false, error: context.error };
+  if (!proTrialEndedAt(context.business)) return { ok: true };
+  // Guarded in the write: a second tab staying too changes nothing.
+  await prisma.business.updateMany({
+    where: { id: context.business.id, proTrialAnsweredAt: null },
+    data: { proTrialAnsweredAt: new Date() },
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 /** Ends the Pro trial early and goes back to Basic; nothing changes in billing. */

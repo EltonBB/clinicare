@@ -61,6 +61,10 @@ export const shell = {
     checkinToday: "Checked in at {time} — verify they're in.",
     checkinYesterday: "Checked in yesterday at {time} — verify they're in.",
     checkinOn: "Checked in {day} at {time} — verify they're in.",
+    proTrial: {
+      title: "Your 14-day free trial of Pro is ready",
+      detail: "Try Reports and every automation free. You keep paying the Basic price.",
+    },
   },
   idle: {
     title: "Still there?",

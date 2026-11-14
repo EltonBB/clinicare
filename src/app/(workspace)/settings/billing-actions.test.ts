@@ -84,6 +84,7 @@ import {
   cancelPlanAction,
   changeBillingPlanAction,
   endProTrialAction,
+  stayOnBasicAfterTrialAction,
   getBillingHistoryAction,
   getInvoiceLinkAction,
   getBillingDetailsAction,
@@ -536,6 +537,27 @@ describe("the free Pro trial", () => {
       where: { id: "biz_1" },
       data: { plan: "BASIC", proTrialEndsAt: expect.any(Date) },
     });
+  });
+
+  it("saves 'stay on Basic' once, and only after a full trial ran out", async () => {
+    const ended = {
+      ...BASIC,
+      proTrialStartedAt: new Date(Date.now() - 15 * 86_400_000),
+      proTrialEndsAt: new Date(Date.now() - 86_400_000),
+      proTrialAnsweredAt: null,
+    };
+    mocks.getAuthedBusiness.mockResolvedValue({ business: ended, user: { id: "u" } });
+    mocks.businessUpdateMany.mockResolvedValue({ count: 1 });
+    expect(await stayOnBasicAfterTrialAction()).toEqual({ ok: true });
+    expect(mocks.businessUpdateMany).toHaveBeenCalledWith({
+      where: { id: "biz_1", proTrialAnsweredAt: null },
+      data: { proTrialAnsweredAt: expect.any(Date) },
+    });
+
+    mocks.businessUpdateMany.mockClear();
+    mocks.getAuthedBusiness.mockResolvedValue({ business: ON_TRIAL, user: { id: "u" } });
+    expect(await stayOnBasicAfterTrialAction()).toEqual({ ok: true });
+    expect(mocks.businessUpdateMany).not.toHaveBeenCalled();
   });
 });
 
