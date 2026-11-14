@@ -51,8 +51,8 @@ model Business {
   // gets, which is Pro during the free Pro trial on a Basic subscription.
   subscribedPlan         BusinessPlan?
   // Free Pro trial for a paying Basic clinic (lib/pro-trial.ts): the offer opens
-  // at proTrialOfferedAt (set once by the billing sync, 30 days after Basic's
-  // first paid charge), started once by the clinic, Pro until proTrialEndsAt
+  // at proTrialOfferedAt (set by the hourly billing cron, 30 days after the
+  // clinic is first seen paying for Basic), started once by the clinic, Pro until proTrialEndsAt
   // (set to the moment it pays for Pro or returns to Basic early).
   proTrialOfferedAt      DateTime?
   proTrialStartedAt      DateTime?

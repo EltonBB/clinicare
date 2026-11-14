@@ -6,7 +6,7 @@ import { withCronMonitor } from "@/lib/cron-monitor";
 import { logger } from "@/lib/logger";
 import { paddleConfig } from "@/lib/paddle/paddle-config";
 import { reconcileOverdueSubscriptions } from "@/lib/paddle/reconcile";
-import { endExpiredProTrials } from "@/lib/pro-trial-data";
+import { endExpiredProTrials, scheduleProTrialOffers } from "@/lib/pro-trial-data";
 
 export const dynamic = "force-dynamic";
 // RECONCILE_BATCH (25) Paddle calls, each capped at 10s: 250s worst case.
@@ -24,14 +24,16 @@ export async function GET(request: Request) {
 }
 
 async function run() {
-  // Free Pro trials that ran out without a choice go back to Basic.
+  // Free Pro trials that ran out without a choice go back to Basic; clinics
+  // paying for Basic start (or restart) their 30 days to the trial offer.
   const proTrialsEnded = await endExpiredProTrials();
+  const proTrialOffers = await scheduleProTrialOffers();
 
   const config = paddleConfig();
   if (!config) {
     // Billing isn't switched on in this environment: nothing to reconcile.
     return NextResponse.json(
-      { ok: true, skipped: true, reason: "billing_not_configured", proTrialsEnded },
+      { ok: true, skipped: true, reason: "billing_not_configured", proTrialsEnded, proTrialOffers },
       { headers: { "Cache-Control": "no-store" } }
     );
   }
@@ -49,7 +51,7 @@ async function run() {
     const result = await reconcileOverdueSubscriptions(config);
     return NextResponse.json(
       // A failed Paddle call fails the check-in (withCronMonitor reads `degraded`).
-      { ok: true, ...result, proTrialsEnded, degraded: result.failed > 0, triggeredAt: new Date().toISOString() },
+      { ok: true, ...result, proTrialsEnded, proTrialOffers, degraded: result.failed > 0, triggeredAt: new Date().toISOString() },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

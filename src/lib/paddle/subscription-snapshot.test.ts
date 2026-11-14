@@ -157,36 +157,4 @@ describe("subscriptionSnapshotUpdate", () => {
       data: { plan: "BASIC", billingSyncedAt: OCCURRED },
     });
   });
-
-  it("opens the free Pro trial 30 days after Basic's first paid charge, set once", () => {
-    const paid = sub({
-      status: "active",
-      first_billed_at: "2026-10-01T09:00:00Z",
-      items: [{ price: { id: "pri_bm" }, trial_dates: null }],
-    });
-    expect(subscriptionSnapshotUpdate(paid, OCCURRED, LOOKUP, EXISTING)).toMatchObject({
-      data: { proTrialOfferedAt: new Date("2026-10-31T09:00:00Z") },
-    });
-    // Paddle gave no date: counted from the event.
-    const undated = subscriptionSnapshotUpdate({ ...paid, first_billed_at: null }, OCCURRED, LOOKUP, EXISTING);
-    expect(undated.kind === "update" && undated.data.proTrialOfferedAt).toEqual(new Date("2026-11-25T12:00:00Z"));
-    for (const existing of [
-      { ...EXISTING, proTrialOfferedAt: new Date("2026-09-01T00:00:00Z") },
-      { ...EXISTING, proTrialStartedAt: new Date("2026-09-01T00:00:00Z") },
-    ]) {
-      const kept = subscriptionSnapshotUpdate(paid, OCCURRED, LOOKUP, existing);
-      expect(kept.kind === "update" && "proTrialOfferedAt" in kept.data).toBe(false);
-    }
-  });
-
-  it("doesn't start the Pro trial clock on a free trial, on Pro, or while a payment fails", () => {
-    for (const subscription of [
-      sub(),
-      sub({ status: "active", items: [{ price: { id: "pri_pm" }, trial_dates: null }] }),
-      sub({ status: "past_due", items: [{ price: { id: "pri_bm" }, trial_dates: null }] }),
-    ]) {
-      const result = subscriptionSnapshotUpdate(subscription, OCCURRED, LOOKUP, EXISTING);
-      expect(result.kind === "update" && "proTrialOfferedAt" in result.data).toBe(false);
-    }
-  });
 });

@@ -16,7 +16,7 @@ export const PRO_TRIAL_ENDED_ASK_DAYS = 7;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** When the offer opens: PRO_TRIAL_AFTER_DAYS after Basic's first paid charge. */
+/** When the offer opens: PRO_TRIAL_AFTER_DAYS after the clinic was first seen paying for Basic. */
 export function proTrialOfferOpensAt(firstPaidAt: Date): Date {
   return new Date(firstPaidAt.getTime() + PRO_TRIAL_AFTER_DAYS * DAY_MS);
 }
@@ -45,8 +45,8 @@ function paysForBasic(business: ProTrialSource, now: Date): boolean {
 }
 
 /**
- * `proTrialOfferedAt` is when the offer opens: the billing sync sets it the
- * first time it sees Basic paid (proTrialOfferOpensAt), so it may still lie ahead.
+ * `proTrialOfferedAt` is when the offer opens, so it may still lie ahead: the
+ * hourly billing cron sets and resets it (pro-trial-data.ts `scheduleProTrialOffers`).
  */
 export function proTrialState(business: ProTrialSource, now: Date = new Date()): ProTrialState {
   if (business.proTrialStartedAt && business.proTrialEndsAt && business.proTrialEndsAt > now) {
