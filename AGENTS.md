@@ -15,7 +15,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 At the start of every new chat or task in this project:
 
 1. Read this `AGENTS.md` file first.
-2. Read `PROJECT_STATUS.md` immediately after.
+2. Read `HANDOFF.md` (the cross-PC handoff: where the work stands, what happened last, what's next; rewrite it when you stop), then `PROJECT_STATUS.md`.
 3. Read `ROADMAP.md` for strategy: market sequencing, compliance plan, messaging channels, and the infrastructure plan (AWS, no cloud migration).
 4. Inspect the repo enough to validate the status file against the actual code before planning or coding.
 5. Reply with a short project summary covering:
